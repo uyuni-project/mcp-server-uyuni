@@ -41,6 +41,8 @@ You can add an `MCP Server tool` and set the `MCP Command` to:
 
 `uv run --env-file=.venv/credentials --directory PATH OF THIS CHECKOUT mcp-server-uyuni.py`
 
+![Langflow](docs/example_langflow.png)
+
 ## License
 
 MIT
