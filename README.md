@@ -33,7 +33,7 @@ Then, you can use this command with an `mcp-client`:
 
 You can run
 
-`npx @modelcontextprotocol/inspector uv --env-file=.venv/credentials --directory PATH OF THIS CHECKOUT run mcp-server-uyuni.py`
+`npx @modelcontextprotocol/inspector uv run --env-file=.venv/credentials --directory PATH OF THIS CHECKOUT mcp-server-uyuni.py`
 
 ## Use with langflow
 
