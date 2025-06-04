@@ -64,6 +64,48 @@ async def get_cpu_of_a_system(system_id: int) -> Dict[str, Any]: # Changed retur
         print(f"Warning: Failed to get CPU data for system ID {system_id}. Response: {cpu_data}") # Basic warning
         return {} # Return empty dict on failure/unexpected format
 
+@mcp.tool()
+async def get_all_systems_cpu_info() -> List[Dict[str, Any]]:
+    """
+    Retrieves CPU information for all active systems in the Uyuni server.
+
+    For each active system, this tool fetches its name, ID, and detailed CPU attributes.
+
+    Returns:
+        List[Dict[str, Any]]: A list of dictionaries. Each dictionary contains:
+                              - 'system_name' (str): The name of the system.
+                              - 'system_id' (int): The unique ID of the system.
+                              - 'cpu_info' (Dict[str, Any]): CPU attributes for the system.
+                              Returns an empty list if no systems are found or if
+                              fetching system list fails. Individual system CPU fetch
+                              failures will result in empty 'cpu_info' for that system.
+    """
+    all_systems_cpu_data = []
+    active_systems = await get_list_of_active_systems() # Calls your existing tool
+
+    if not active_systems:
+        print("Warning: No active systems found or failed to retrieve system list.")
+        return []
+
+    for system_summary in active_systems:
+        system_id = system_summary.get('system_id')
+        system_name = system_summary.get('system_name')
+
+        if system_id is None:
+            print(f"Warning: Skipping system due to missing ID: {system_summary}")
+            continue
+
+        print(f"Fetching CPU info for system: {system_name} (ID: {system_id})")
+        cpu_info = await get_cpu_of_a_system(system_id) # Calls your other existing tool
+
+        all_systems_cpu_data.append({
+            'system_name': system_name,
+            'system_id': system_id,
+            'cpu_info': cpu_info
+        })
+
+    return all_systems_cpu_data
+
 if __name__ == "__main__":
     # Initialize and run the server
     url = 'https://' + os.environ['UYUNI_SERVER']
