@@ -1,7 +1,6 @@
 from typing import Any, List, Dict
-import httpx # Used by get_list_of_active_systems and now get_cpu_of_a_system
+import httpx
 from mcp.server.fastmcp import FastMCP
-import requests # Still used by get_all_systems_cpu_info (indirectly)
 import os
 
 # Initialize FastMCP server
