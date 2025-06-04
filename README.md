@@ -6,6 +6,9 @@ Model Context Protocol Server for Uyuni Server API.
 
 * get_list_of_active_systems
 * get_cpu_of_a_system
+* get_all_systems_cpu_info
+* check_system_updates
+* check_all_systems_for_updates
 
 ## Usage
 
