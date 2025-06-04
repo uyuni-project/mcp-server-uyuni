@@ -1,9 +1,8 @@
 from typing import Any, List, Dict
-import httpx
+import httpx # Used by get_list_of_active_systems and now get_cpu_of_a_system
 from mcp.server.fastmcp import FastMCP
-import requests
+import requests # Still used by get_all_systems_cpu_info (indirectly)
 import os
-import pprint
 
 # Initialize FastMCP server
 mcp = FastMCP("mcp-server-uyuni")
@@ -22,11 +21,26 @@ async def get_list_of_active_systems() -> List[Dict[str, Any]]:
                               the response format is unexpected, or no systems are found.
     """
 
-    data = {"login": username, "password": password}
-    response = requests.post(url + '/rhn/manager/api/login', json=data, verify=False)
-    cookies = response.cookies
-    res2 = requests.get(url + '/rhn/manager/api/system/listSystems', cookies=cookies, verify=False)
-    systems_data = res2.json()
+    async with httpx.AsyncClient(verify=False) as client:
+        login_data = {"login": username, "password": password}
+        try:
+            login_response = await client.post(url + '/rhn/manager/api/login', json=login_data)
+            login_response.raise_for_status() # Raise an exception for bad status codes (4xx or 5xx)
+
+            systems_response = await client.get(url + '/rhn/manager/api/system/listSystems')
+            systems_response.raise_for_status()
+            systems_data = systems_response.json()
+
+        except httpx.HTTPStatusError as e:
+            print(f"HTTP error occurred while fetching active systems: {e.request.url} - {e.response.status_code} - {e.response.text}")
+            return []
+        except httpx.RequestError as e:
+            print(f"Request error occurred while fetching active systems: {e.request.url} - {e}")
+            return []
+        except Exception as e: # Catch other potential errors like JSONDecodeError
+            print(f"An unexpected error occurred while fetching active systems: {e}")
+            return []
+  
     filtered_systems = []
     if systems_data.get('success') and 'result' in systems_data:
         for system in systems_data['result']:
@@ -39,7 +53,7 @@ async def get_list_of_active_systems() -> List[Dict[str, Any]]:
     return filtered_systems
 
 @mcp.tool()
-async def get_cpu_of_a_system(system_id: int) -> Dict[str, Any]: # Changed return type hint
+async def get_cpu_of_a_system(system_id: int) -> Dict[str, Any]:
     """Retrieves detailed CPU information for a specific system in the Uyuni server.
 
     Fetches CPU attributes such as model, core count, architecture, etc.
@@ -52,16 +66,28 @@ async def get_cpu_of_a_system(system_id: int) -> Dict[str, Any]: # Changed retur
                         Returns an empty dictionary if the API call fails,
                         the response format is unexpected, or CPU data is not available.
     """
-    data = {"login": username, "password": password}
-    response = requests.post(url + '/rhn/manager/api/login', json=data, verify=False)
-    cookies = response.cookies
-    res2 = requests.get(url + '/rhn/manager/api/system/getCpu?sid=' + str(system_id), cookies=cookies, verify=False)
+    async with httpx.AsyncClient(verify=False) as client:
+        login_data = {"login": username, "password": password}
+        try:
+            login_response = await client.post(url + '/rhn/manager/api/login', json=login_data)
+            login_response.raise_for_status()
+            cpu_response = await client.get(url + '/rhn/manager/api/system/getCpu?sid=' + str(system_id))
+            cpu_response.raise_for_status()
+            cpu_data = cpu_response.json()
 
-    cpu_data = res2.json()
+        except httpx.HTTPStatusError as e:
+            print(f"HTTP error occurred while fetching CPU data for system ID {system_id}: {e.request.url} - {e.response.status_code} - {e.response.text}")
+            return {}
+        except httpx.RequestError as e:
+            print(f"Request error occurred while fetching CPU data for system ID {system_id}: {e.request.url} - {e}")
+            return {}
+        except Exception as e: # Catch other potential errors like JSONDecodeError
+            print(f"An unexpected error occurred while fetching CPU data for system ID {system_id}: {e}")
+            return {}
     if cpu_data.get('success') and isinstance(cpu_data.get('result'), dict):
         return cpu_data['result']
     else:
-        print(f"Warning: Failed to get CPU data for system ID {system_id}. Response: {cpu_data}") # Basic warning
+        print(f"Warning: Failed to get CPU data for system ID {system_id} or unexpected format. Response: {cpu_data}")
         return {} # Return empty dict on failure/unexpected format
 
 @mcp.tool()
