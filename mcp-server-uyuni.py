@@ -40,7 +40,7 @@ async def get_list_of_active_systems() -> List[Dict[str, Any]]:
 
 @mcp.tool()
 async def get_cpu_of_a_system(system_id: int) -> Dict[str, Any]: # Changed return type hint
-  """Retrieves detailed CPU information for a specific system.
+  """Retrieves detailed CPU information for a specific system in the Uyuni server.
 
   Fetches CPU attributes such as model, core count, architecture, etc.
 
