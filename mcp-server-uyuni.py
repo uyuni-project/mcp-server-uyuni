@@ -239,6 +239,81 @@ async def check_all_systems_for_updates() -> List[Dict[str, Any]]:
     print(f"Finished checking systems. Found {len(systems_with_updates)} systems with updates.")
     return systems_with_updates
 
+@mcp.tool()
+async def apply_pending_updates_to_system(system_id: int) -> str:
+    """
+    Checks for pending updates on a system, schedules all of them to be applied,
+    and returns the action ID of the scheduled task.
+
+    This tool first calls 'check_system_updates' to determine relevant errata.
+    If updates are found, it then calls the 'system/scheduleApplyErrata' API
+    endpoint to apply all found errata.
+
+    Args:
+        system_id: The unique identifier of the system.
+
+    Returns:
+        str: The action url if updates were successfully scheduled.
+             Otherwise, returns an empty string.
+    """
+    print(f"Attempting to apply pending updates for system ID: {system_id}")
+
+    # 1. Use check_system_updates to get relevant errata
+    update_info = await check_system_updates(system_id)
+
+    if not update_info or not update_info.get('has_pending_updates'):
+        print(f"No pending updates found for system ID {system_id}, or an error occurred while fetching update information.")
+        return ""
+
+    errata_list = update_info.get('updates', [])
+    if not errata_list:
+        # This case should ideally be covered by 'has_pending_updates' being false,
+        # but good to have a safeguard.
+        print(f"Update check for system ID {system_id} indicated updates, but the updates list is empty.")
+        return ""
+
+    errata_ids = [erratum.get('id') for erratum in errata_list if erratum.get('id') is not None]
+
+    if not errata_ids:
+        print(f"Could not extract any valid errata IDs for system ID {system_id} from the update information: {errata_list}")
+        return ""
+
+    print(f"Found {len(errata_ids)} errata to apply for system ID {system_id}. IDs: {errata_ids}")
+
+    # 2. Schedule apply errata using the API endpoint
+    async with httpx.AsyncClient(verify=False) as client:
+        login_data = {"login": username, "password": password}
+        payload = {"sid": system_id, "errataIds": errata_ids}
+
+        try:
+            login_response = await client.post(url + '/rhn/manager/api/login', json=login_data)
+            login_response.raise_for_status()
+
+            errata_response = await client.post(url + '/rhn/manager/api/system/scheduleApplyErrata', json=payload)
+            errata_response.raise_for_status()
+            errata_data = errata_response.json()
+
+
+        except httpx.HTTPStatusError as e:
+            print(f"HTTP error scheduling errata application for system ID {system_id}: {e.request.url} - {e.response.status_code} - {e.response.text}")
+            return ""
+        except httpx.RequestError as e:
+            print(f"Request error scheduling errata application for system ID {system_id}: {e.request.url} - {e}")
+            return ""
+        except Exception as e: # Catch other potential errors like JSONDecodeError
+            print(f"An unexpected error occurred while scheduling errata for system ID {system_id}: {e}")
+            return ""
+
+        if errata_data.get('success') and isinstance(errata_data.get('result'), list) and errata_data['result'] and isinstance(errata_data['result'][0], int):
+            action_id = errata_data['result'][0]
+            print(f"Successfully scheduled action {action_id} to apply {len(errata_ids)} errata to system ID {system_id}.")
+            return "Update successfully scheduled at " +url + "/rhn/schedule/ActionDetails.do?aid=" + str(action_id)
+        else:
+            print(f"Failed to schedule errata for system ID {system_id} or unexpected API response format. Response: {errata_data}")
+            return None
+
+
+
 if __name__ == "__main__":
     # Initialize and run the server
     url = 'https://' + os.environ['UYUNI_SERVER']
