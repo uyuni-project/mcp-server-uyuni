@@ -131,10 +131,56 @@ async def get_all_systems_cpu_info() -> List[Dict[str, Any]]:
 
     return all_systems_cpu_data
 
+async def _fetch_cves_for_erratum(client: httpx.AsyncClient, base_url: str, advisory_name: str, system_id: int, list_cves_path: str) -> List[str]:
+    """
+    Internal helper to fetch CVEs for a given erratum advisory name.
+
+    Args:
+        client: The httpx.AsyncClient instance (must have active login session).
+        base_url: The base URL of the Uyuni server.
+        advisory_name: The advisory name of the erratum to fetch CVEs for.
+        system_id: The ID of the system (for logging purposes).
+        list_cves_path: The API path for listing CVEs.
+
+    Returns:
+        List[str]: A list of CVE identifier strings. Returns an empty list on failure or if no CVEs are found.
+    """
+    if not advisory_name:
+        print(f"Warning: advisory_name is missing for system ID {system_id}, cannot fetch CVEs.")
+        return []
+
+    cves_list = []
+    try:
+        print(f"Fetching CVEs for advisory: {advisory_name} (system ID: {system_id})")
+        cves_response = await client.get(
+            base_url + list_cves_path,
+            params={'advisoryName': advisory_name} # Changed parameter to advisoryName
+        )
+        cves_response.raise_for_status()
+        cves_data = cves_response.json()
+        print(f"CVEs response for advisory {advisory_name}: {cves_data}")
+
+        cve_list_from_api = cves_data.get('result')
+        if cves_data.get('success'):
+            if isinstance(cve_list_from_api, list):
+                cves_list = [str(cve) for cve in cve_list_from_api if cve] # Ensure CVEs are strings and not None/empty
+            elif cve_list_from_api is None: # Treat null as empty list
+                pass # cves_list is already []
+            else: # Unexpected format for CVE list
+                print(f"Warning: Unexpected format for CVEs list for advisory {advisory_name} (system {system_id}). Expected list or None, got {type(cve_list_from_api)}. Response: {cves_data}")
+        else: # API call for CVEs reported failure
+            print(f"Warning: Failed to get CVEs (API call unsuccessful) for advisory {advisory_name} (system {system_id}). Response: {cves_data}")
+    except httpx.HTTPStatusError as e_cve:
+        print(f"HTTP error fetching CVEs for advisory {advisory_name} (system {system_id}): {e_cve.request.url} - {e_cve.response.status_code} - {e_cve.response.text}")
+    except Exception as e_cve: # Catch other errors during CVE fetch, including httpx.RequestError
+        print(f"Unexpected error fetching CVEs for advisory {advisory_name} (system {system_id}): {e_cve}")
+    return cves_list
+
 @mcp.tool()
 async def check_system_updates(system_id: int) -> Dict[str, Any]:
     """
-    Checks if a specific system in the Uyuni server has pending updates (relevant errata).
+    Checks if a specific system in the Uyuni server has pending updates (relevant errata),
+    including associated CVEs for each update.
 
     Args:
         system_id: The unique identifier of the system.
@@ -145,6 +191,8 @@ async def check_system_updates(system_id: int) -> Dict[str, Any]:
                         - 'has_pending_updates' (bool): True if there are pending updates, False otherwise.
                         - 'update_count' (int): The number of pending updates.
                         - 'updates' (List[Dict[str, Any]]): A list of pending update details.
+                          Each update dictionary will also include a 'cves' key
+                          containing a list of CVE identifiers associated with that update.
                         Returns a dictionary with 'has_pending_updates': False and empty 'updates'
                         if the API call fails or the format is unexpected.
     """
@@ -154,6 +202,7 @@ async def check_system_updates(system_id: int) -> Dict[str, Any]:
         'update_count': 0,
         'updates': []
     }
+    list_cves_path = '/rhn/manager/api/errata/listCves' # Path for listing CVEs for an erratum
 
     async with httpx.AsyncClient(verify=False) as client:
         login_data = {"login": username, "password": password}
@@ -171,21 +220,36 @@ async def check_system_updates(system_id: int) -> Dict[str, Any]:
         except httpx.RequestError as e:
             print(f"Request error occurred while checking updates for system ID {system_id}: {e.request.url} - {e}")
             return default_error_response
-        except Exception as e: 
+        except Exception as e: # Catch other potential errors like JSONDecodeError
             print(f"An unexpected error occurred while checking updates for system ID {system_id}: {e}")
             return default_error_response
 
-    if errata_data.get('success') and isinstance(errata_data.get('result'), list):
-        updates_list = errata_data['result']
-        return {
+        # Process errata and fetch CVEs within the same client session
+        if not errata_data.get('success') or not isinstance(errata_data.get('result'), list):
+            print(f"Warning: Failed to get updates for system ID {system_id} or unexpected format. Response: {errata_data}")
+            return default_error_response
+
+        updates_list_from_api = errata_data['result']
+        enriched_updates_list = []
+
+        for erratum in updates_list_from_api:
+            erratum_id = erratum.get('id')
+            advisory_name = erratum.get('advisory_name') # Get advisory_name from erratum
+            # Initialize with the original erratum data and an empty list for CVEs
+            erratum_with_cves = {**erratum, 'cves': []}
+
+            if advisory_name: # Check if advisory_name is present
+                # Call the helper function to fetch CVEs
+                erratum_with_cves['cves'] = await _fetch_cves_for_erratum(client, url, advisory_name, system_id, list_cves_path)
+            
+            enriched_updates_list.append(erratum_with_cves)
+        
+        return { # This return is now correctly inside the async with client block
             'system_id': system_id,
-            'has_pending_updates': len(updates_list) > 0,
-            'update_count': len(updates_list),
-            'updates': updates_list
+            'has_pending_updates': len(enriched_updates_list) > 0,
+            'update_count': len(enriched_updates_list),
+            'updates': enriched_updates_list
         }
-    else:
-        print(f"Warning: Failed to get updates for system ID {system_id} or unexpected format. Response: {errata_data}")
-        return default_error_response
 
 @mcp.tool()
 async def check_all_systems_for_updates() -> List[Dict[str, Any]]:
@@ -193,7 +257,7 @@ async def check_all_systems_for_updates() -> List[Dict[str, Any]]:
     Checks all active systems in the Uyuni server for pending updates.
 
     Returns a list containing information only for those systems that have
-    one or more pending updates.
+    one or more pending updates. Each update detail will include associated CVEs.
 
     Returns:
         List[Dict[str, Any]]: A list of dictionaries. Each dictionary represents
@@ -202,6 +266,8 @@ async def check_all_systems_for_updates() -> List[Dict[str, Any]]:
                               - 'system_id' (int): The unique ID of the system.
                               - 'update_count' (int): The number of pending updates.
                               - 'updates' (List[Dict[str, Any]]): A list of pending update details.
+                                Each update dictionary in this list will also contain a 'cves' key
+                                with a list of associated CVE identifiers.
                               Returns an empty list if no systems are found,
                               fetching the system list fails, or no systems have updates.
     """
@@ -240,7 +306,7 @@ async def check_all_systems_for_updates() -> List[Dict[str, Any]]:
     return systems_with_updates
 
 @mcp.tool()
-async def apply_pending_updates_to_system(system_id: int) -> str:
+async def schedule_apply_pending_updates_to_system(system_id: int) -> str:
     """
     Checks for pending updates on a system, schedules all of them to be applied,
     and returns the action ID of the scheduled task.
@@ -310,8 +376,107 @@ async def apply_pending_updates_to_system(system_id: int) -> str:
             return "Update successfully scheduled at " +url + "/rhn/schedule/ActionDetails.do?aid=" + str(action_id)
         else:
             print(f"Failed to schedule errata for system ID {system_id} or unexpected API response format. Response: {errata_data}")
-            return None
+            return "" # Match return type hint str
 
+@mcp.tool()
+async def get_systems_needing_security_update_for_cve(cve_identifier: str) -> List[Dict[str, Any]]:
+    """
+    Finds systems requiring a security update due to a specific CVE identifier.
+
+    This tool identifies systems that are vulnerable to a given Common
+    Vulnerabilities and Exposures (CVE) identifier. It first looks up the
+    security errata (patches/updates) associated with the CVE. Then, for each
+    relevant erratum, it retrieves the list of systems that are affected by
+    that erratum's advisory and thus require the security update.
+
+    Args:
+        cve_identifier: The CVE identifier string (e.g., "CVE-2008-3270").
+
+    Returns:
+        List[Dict[str, Any]]: A list of unique systems affected by the specified CVE.
+                              Each dictionary contains 'system_id' (int) and
+                              'system_name' (str), and 'cve_identifier' (str)
+                              (the CVE for which the system needs an update). Returns an empty list if
+                              the CVE is not found, no systems are affected,
+                              or an API error occurs.
+    """
+    affected_systems_map = {}  # Use a dict to store unique systems by ID {system_id: {details}}
+
+    find_by_cve_path = '/rhn/manager/api/errata/findByCve'
+    list_affected_systems_path = '/rhn/manager/api/errata/listAffectedSystems'
+
+    async with httpx.AsyncClient(verify=False) as client:
+        login_data = {"login": username, "password": password}
+        try:
+            # 1. Login
+            login_response = await client.post(url + '/rhn/manager/api/login', json=login_data)
+            login_response.raise_for_status()
+
+            # 2. Call findByCve
+            print(f"Searching for errata related to CVE: {cve_identifier}")
+            cve_response = await client.get(
+                url + find_by_cve_path,
+                params={'cveName': cve_identifier}
+            )
+            cve_response.raise_for_status()
+            errata_data = cve_response.json()
+
+            if not errata_data.get('success') or not isinstance(errata_data.get('result'), list):
+                print(f"Failed to find errata for CVE {cve_identifier} or unexpected API response format. Response: {errata_data}")
+                return []
+
+            errata_list = errata_data['result']
+            if not errata_list:
+                print(f"No errata found for CVE {cve_identifier}.")
+                return []
+
+            # 3. For each erratum, call listAffectedSystems
+            for erratum in errata_list:
+                advisory_name = erratum.get('advisory_name')
+                if not advisory_name:
+                    print(f"Skipping erratum due to missing 'advisory_name': {erratum}")
+                    continue
+
+                print(f"Fetching systems affected by advisory: {advisory_name} (related to CVE: {cve_identifier})")
+                systems_response = await client.get(
+                    url + list_affected_systems_path,
+                    params={'advisoryName': advisory_name}
+                )
+                systems_response.raise_for_status()
+                systems_data = systems_response.json()
+
+                if systems_data.get('success') and isinstance(systems_data.get('result'), list):
+                    for system_info in systems_data['result']:
+                        system_id = system_info.get('id')
+                        system_name = system_info.get('name')
+                        if system_id is not None and system_name is not None:
+                            if system_id not in affected_systems_map: # Add if new
+                                affected_systems_map[system_id] = {
+                                    'system_id': system_id,
+                                    'system_name': system_name,
+                                    'cve_identifier': cve_identifier # Add the CVE to the output
+                                }
+                        else:
+                            print(f"Warning: Received system data with missing ID or name for advisory {advisory_name}: {system_info}")
+                else:
+                    print(f"Warning: Failed to list affected systems for advisory {advisory_name} or unexpected API response format. Response: {systems_data}")
+
+        except httpx.HTTPStatusError as e:
+            print(f"HTTP error occurred while processing CVE {cve_identifier}: {e.request.url} - {e.response.status_code} - {e.response.text}")
+            return []
+        except httpx.RequestError as e:
+            print(f"Request error occurred while processing CVE {cve_identifier}: {e.request.url} - {e}")
+            return []
+        except Exception as e:  # Catch other potential errors like JSONDecodeError
+            print(f"An unexpected error occurred while processing CVE {cve_identifier}: {e}")
+            return []
+
+    if not affected_systems_map:
+        print(f"No systems found affected by CVE {cve_identifier} after checking all related errata.")
+    else:
+        print(f"Found {len(affected_systems_map)} unique system(s) affected by CVE {cve_identifier}.")
+
+    return list(affected_systems_map.values())
 
 
 if __name__ == "__main__":
