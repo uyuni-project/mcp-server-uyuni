@@ -111,6 +111,24 @@ Note the url should be http://localhost/mcp-server-uyuni as explained in https:/
 ![OpenWeb UI with MCP Support with Gemini 2.0 flash model](docs/example_openwebui_gemini.png)
 
 
+## Release Process
+
+To create a new release for `mcp-server-uyuni`, follow these steps:
+
+1.  **Update Documentation (`README.md`):**
+    *   Ensure the list of available tools under the "## Tools" section is current and reflects all implemented tools in `mcp-server-uyuni.py`.
+    *   Review and update any screenshots in the `docs/` directory and their references in this `README.md` to reflect the latest UI or functionality, if necessary.
+    *   Verify all usage instructions and examples are still accurate.
+2.  **Update Manual Test Cases (`TEST_CASES.md`):**
+    *   Refer to the "How to Update for a New Tag/Release" section within `TEST_CASES.md`.
+    *   Add a new status column for the upcoming release version (e.g., `Status (vX.Y.Z)`).
+    *   Execute all relevant manual test cases against the code to be released.
+    *   Record the `Pass`, `Fail`, `Blocked`, or `N/A` status for each test case in the new version column.
+3.  **Commit Changes:** Commit all the updates to `README.md`, `TEST_CASES.md`, and any other changed files.
+4.  **Create Git Tag:** Create a new Git tag for the release (e.g., `git tag vX.Y.Z`).
+5.  **Push Changes and Tags:** Push your commits and the new tag to the repository (e.g., `git push && git push --tags`).
+
+
 ## License
 
 MIT
