@@ -1,5 +1,6 @@
 from typing import Any, List, Dict
 import httpx
+from datetime import datetime, timezone
 from mcp.server.fastmcp import FastMCP
 import os
 
@@ -528,6 +529,54 @@ async def get_systems_needing_reboot() -> List[Dict[str, Any]]:
             return []
 
     return systems_needing_reboot_list
+
+@mcp.tool()
+async def schedule_system_reboot(system_id: int) -> str:
+    """
+    Schedules an immediate reboot for a specific system on the Uyuni server.
+
+    Args:
+        system_id: The unique identifier (sid) of the system to be rebooted.
+
+    The reboot is scheduled to occur as soon as possible (effectively "now").
+    Returns:
+        str: A message indicating the action ID if the reboot was successfully scheduled,
+             e.g., "System reboot successfully scheduled. Action ID: 12345".
+             Returns an empty string if scheduling fails or an error occurs.
+    """
+    schedule_reboot_path = '/rhn/manager/api/system/scheduleReboot'
+    action_url_template = url + "/rhn/schedule/ActionDetails.do?aid={}"
+
+    # Generate current time in ISO 8601 format (UTC)
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    async with httpx.AsyncClient(verify=False) as client:
+        login_data = {"login": username, "password": password}
+        payload = {"sid": system_id, "earliestOccurrence": now_iso}
+
+        try:
+            login_response = await client.post(url + '/rhn/manager/api/login', json=login_data)
+            login_response.raise_for_status()
+
+            reboot_schedule_response = await client.post(url + schedule_reboot_path, json=payload)
+            reboot_schedule_response.raise_for_status()
+            response_data = reboot_schedule_response.json()
+
+            if response_data.get('success') and isinstance(response_data.get('result'), int):
+                action_id = response_data['result']
+                success_message = f"System reboot successfully scheduled. Action URL: {action_url_template.format(action_id)}"
+                print(success_message)
+                return success_message
+            else:
+                print(f"Failed to schedule reboot for system ID {system_id} or unexpected API response. Response: {response_data}")
+                return ""
+
+        except httpx.HTTPStatusError as e:
+            print(f"HTTP error occurred while scheduling reboot for system ID {system_id}: {e.request.url} - {e.response.status_code} - {e.response.text}")
+            return ""
+        except Exception as e: # Catch other errors like RequestError, JSONDecodeError
+            print(f"An unexpected error occurred while scheduling reboot for system ID {system_id}: {e}")
+            return ""
 
 if __name__ == "__main__":
     # Initialize and run the server
