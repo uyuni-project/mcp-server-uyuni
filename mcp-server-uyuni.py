@@ -478,6 +478,56 @@ async def get_systems_needing_security_update_for_cve(cve_identifier: str) -> Li
 
     return list(affected_systems_map.values())
 
+@mcp.tool()
+async def get_systems_needing_reboot() -> List[Dict[str, Any]]:
+    """
+    Fetches a list of systems from the Uyuni server that require a reboot.
+
+    The returned list contains dictionaries, each with 'system_id' (int),
+    'system_name' (str), and 'reboot_status' (str, typically 'reboot_required')
+    for a system that has been identified by Uyuni as needing a reboot.
+
+    Returns:
+        List[Dict[str, Any]]: A list of system dictionaries (system_id, system_name, reboot_status)
+                              for systems requiring a reboot. Returns an empty list
+                              if the API call fails, the response format is unexpected,
+                              or no systems require a reboot.
+    """
+    systems_needing_reboot_list = []
+    list_reboot_path = '/rhn/manager/api/system/listSuggestedReboot'
+
+    async with httpx.AsyncClient(verify=False) as client:
+        login_data = {"login": username, "password": password}
+        try:
+            login_response = await client.post(url + '/rhn/manager/api/login', json=login_data)
+            login_response.raise_for_status()
+
+            reboot_response = await client.get(url + list_reboot_path)
+            reboot_response.raise_for_status()
+            reboot_data = reboot_response.json()
+
+            if reboot_data.get('success') and isinstance(reboot_data.get('result'), list):
+                for system_info in reboot_data['result']:
+                    system_id = system_info.get('id')
+                    system_name = system_info.get('name')
+                    if system_id is not None and system_name is not None:
+                        systems_needing_reboot_list.append({
+                            'system_id': system_id,
+                            'system_name': system_name,
+                            'reboot_status': 'reboot_required' # Explicitly state reboot is needed
+                        })
+            else:
+                print(f"Failed to get list of systems needing reboot or unexpected API response format. Response: {reboot_data}")
+                return []
+
+        except httpx.HTTPStatusError as e:
+            print(f"HTTP error occurred while fetching systems needing reboot: {e.request.url} - {e.response.status_code} - {e.response.text}")
+            return []
+        except Exception as e: # Catch other errors like RequestError, JSONDecodeError
+            print(f"An unexpected error occurred while fetching systems needing reboot: {e}")
+            return []
+
+    return systems_needing_reboot_list
 
 if __name__ == "__main__":
     # Initialize and run the server
