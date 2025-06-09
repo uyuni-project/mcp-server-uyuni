@@ -9,6 +9,10 @@ Model Context Protocol Server for Uyuni Server API.
 * get_all_systems_cpu_info
 * check_system_updates
 * check_all_systems_for_updates
+* schedule_apply_pending_updates_to_system
+* get_systems_needing_security_update_for_cve
+* get_systems_needing_reboot
+* schedule_system_reboot
 
 ## Usage
 
@@ -110,4 +114,3 @@ Note the url should be http://localhost/mcp-server-uyuni as explained in https:/
 ## License
 
 MIT
-
