@@ -65,7 +65,7 @@ Configure the OpenAI API URL by following these instructions:
 
 https://docs.openwebui.com/getting-started/quick-start/starting-with-openai
 
-For gemini, use the URL https://generativelanguage.googleapis.com/v1beta/openai/ and get the token API from the Google AI Studio https://aistudio.google.com/
+For gemini, use the URL https://generativelanguage.googleapis.com/v1beta/openai and get the token API from the Google AI Studio https://aistudio.google.com/
 
 ### Setup Open WebUI MCP Support
 
