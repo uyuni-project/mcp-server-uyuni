@@ -2,6 +2,13 @@
 
 This document tracks the manual test cases executed for different versions/tags of the `mcp-server-uyuni` project.
 
+## Test Environment (for v0.1 tests)
+
+*   **MCP Client**: Open WebUI version 0.6.10 with MCP OpenAPI Proxy 1.0
+*   **LLM**: Google Gemini 2.0 Flash
+
+This document tracks the manual test cases executed for different versions/tags of the `mcp-server-uyuni` project.
+
 ## Test Case Table
 
 | Test Case ID | Tool / Feature Tested                      | Question / Prompt                                           | Expected Result                                                                                                                                                           | Status (v0.1) | Notes / Bug ID |
