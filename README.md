@@ -125,8 +125,16 @@ To create a new release for `mcp-server-uyuni`, follow these steps:
     *   Execute all relevant manual test cases against the code to be released.
     *   Record the `Pass`, `Fail`, `Blocked`, or `N/A` status for each test case in the new version column.
 3.  **Commit Changes:** Commit all the updates to `README.md`, `TEST_CASES.md`, and any other changed files.
-4.  **Create Git Tag:** Create a new Git tag for the release (e.g., `git tag vX.Y.Z`).
-5.  **Push Changes and Tags:** Push your commits and the new tag to the repository (e.g., `git push && git push --tags`).
+4.  **Update CHANGELOG.md:**
+    *   Generate the changelog using `conventional-changelog-cli`. If you don't have it installed globally, you can use `npx`.
+    *   The command to generate the changelog using the `conventionalcommits` preset and output it to `CHANGELOG.md` (prepending the new changes) is:
+        ```bash
+        npx conventional-changelog-cli -p conventionalcommits -i CHANGELOG.md -s
+        ```
+    *   Review the generated `CHANGELOG.md` for accuracy and formatting.
+    *   Commit the updated `CHANGELOG.md`.
+5.  **Create Git Tag:** Create a new Git tag for the release (e.g., `git tag vX.Y.Z`). Follow [semantic versioning rules](https://semver.org/).
+6.  **Push Changes and Tags:** Push your commits (including the changelog update) and the new tag to the repository (e.g., `git push && git push --tags`).
 
 
 ## License
