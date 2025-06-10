@@ -380,6 +380,53 @@ async def schedule_apply_pending_updates_to_system(system_id: int) -> str:
             return "" # Match return type hint str
 
 @mcp.tool()
+async def schedule_apply_specific_update(system_id: int, errata_id: int) -> str:
+    """
+    Schedules a specific update (erratum) to be applied to a system.
+
+    Args:
+        system_id: The unique identifier of the system.
+        errata_id: The unique identifier of the erratum to be applied.
+
+    Returns:
+        str: The action URL if the update was successfully scheduled.
+             Otherwise, returns an empty string.
+    """
+    print(f"Attempting to apply specific update (errata ID: {errata_id}) to system ID: {system_id}")
+
+    async with httpx.AsyncClient(verify=False) as client:
+        login_data = {"login": username, "password": password}
+        # The API expects a list of errata IDs, even if it's just one.
+        payload = {"sid": system_id, "errataIds": [errata_id]}
+
+        try:
+            login_response = await client.post(url + '/rhn/manager/api/login', json=login_data)
+            login_response.raise_for_status()
+
+            schedule_response = await client.post(url + '/rhn/manager/api/system/scheduleApplyErrata', json=payload)
+            schedule_response.raise_for_status()
+            response_data = schedule_response.json()
+
+        except httpx.HTTPStatusError as e:
+            print(f"HTTP error scheduling specific update (errata ID: {errata_id}) for system ID {system_id}: {e.request.url} - {e.response.status_code} - {e.response.text}")
+            return ""
+        except httpx.RequestError as e:
+            print(f"Request error scheduling specific update (errata ID: {errata_id}) for system ID {system_id}: {e.request.url} - {e}")
+            return ""
+        except Exception as e: # Catch other potential errors like JSONDecodeError
+            print(f"An unexpected error occurred while scheduling specific update (errata ID: {errata_id}) for system ID {system_id}: {e}")
+            return ""
+
+        if response_data.get('success') and isinstance(response_data.get('result'), list) and response_data['result'] and isinstance(response_data['result'][0], int):
+            action_id = response_data['result'][0]
+            success_message = f"Update (errata ID: {errata_id}) successfully scheduled for system ID {system_id}. Action URL: {url}/rhn/schedule/ActionDetails.do?aid={action_id}"
+            print(success_message)
+            return success_message
+        else:
+            print(f"Failed to schedule specific update (errata ID: {errata_id}) for system ID {system_id} or unexpected API response format. Response: {response_data}")
+            return ""
+
+@mcp.tool()
 async def get_systems_needing_security_update_for_cve(cve_identifier: str) -> List[Dict[str, Any]]:
     """
     Finds systems requiring a security update due to a specific CVE identifier.
