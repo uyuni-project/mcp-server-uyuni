@@ -233,17 +233,26 @@ async def check_system_updates(system_id: int) -> Dict[str, Any]:
         updates_list_from_api = errata_data['result']
         enriched_updates_list = []
 
-        for erratum in updates_list_from_api:
-            erratum_id = erratum.get('id')
-            advisory_name = erratum.get('advisory_name') # Get advisory_name from erratum
-            # Initialize with the original erratum data and an empty list for CVEs
-            erratum_with_cves = {**erratum, 'cves': []}
+        for erratum_api_data in updates_list_from_api:
+            # Create a new dictionary for the update, renaming 'id' to 'update_id'
+            update_details = dict(erratum_api_data) # Start with a copy
 
-            if advisory_name: # Check if advisory_name is present
-                # Call the helper function to fetch CVEs
-                erratum_with_cves['cves'] = await _fetch_cves_for_erratum(client, url, advisory_name, system_id, list_cves_path)
+            # Rename 'id' to 'update_id'
+            if 'id' in update_details:
+                update_details['update_id'] = update_details.pop('id')
+            else:
+                # This case is unlikely for errata from the API but good for robustness
+                update_details['update_id'] = None
+
+            advisory_name = update_details.get('advisory_name')
             
-            enriched_updates_list.append(erratum_with_cves)
+            # Initialize and fetch CVEs
+            update_details['cves'] = []
+            if advisory_name:
+                # Call the helper function to fetch CVEs
+                update_details['cves'] = await _fetch_cves_for_erratum(client, url, advisory_name, system_id, list_cves_path)
+            
+            enriched_updates_list.append(update_details)
         
         return { # This return is now correctly inside the async with client block
             'system_id': system_id,
@@ -339,7 +348,7 @@ async def schedule_apply_pending_updates_to_system(system_id: int) -> str:
         print(f"Update check for system ID {system_id} indicated updates, but the updates list is empty.")
         return ""
 
-    errata_ids = [erratum.get('id') for erratum in errata_list if erratum.get('id') is not None]
+    errata_ids = [erratum.get('update_id') for erratum in errata_list if erratum.get('update_id') is not None]
 
     if not errata_ids:
         print(f"Could not extract any valid errata IDs for system ID {system_id} from the update information: {errata_list}")
@@ -386,7 +395,7 @@ async def schedule_apply_specific_update(system_id: int, errata_id: int) -> str:
 
     Args:
         system_id: The unique identifier of the system.
-        errata_id: The unique identifier of the erratum to be applied.
+        errata_id: The unique identifier of the erratum (also referred to as update ID) to be applied.
 
     Returns:
         str: The action URL if the update was successfully scheduled.
