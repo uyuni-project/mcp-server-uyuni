@@ -58,4 +58,3 @@ This document tracks the manual test cases executed for different versions/tags 
     *   `Blocked`: The test case could not be executed (e.g., due to an external dependency or an unresolved bug in another area).
     *   `N/A`: The test case is not applicable to this version.
 5.  Commit this `TEST_CASES.md` file with a message like "Update manual test statuses for v1.0.1".
-6.  Proceed to create and push the Git tag `v1.0.1`.

@@ -20,6 +20,7 @@ if [ -z "$COMMIT_SOURCE" ]; then
 # Footer (optional, e.g., BREAKING CHANGE: or Closes #issue)
 # 
 # Allowed types: feat, fix, docs, style, refactor, perf, test, build, ci, chore
+# Example: feat(systems): add endpoint for listing active systems
 # ------------------------ >8 ------------------------" > "$COMMIT_MSG_FILE.tmp"
   cat "$COMMIT_MSG_FILE" >> "$COMMIT_MSG_FILE.tmp"
   mv "$COMMIT_MSG_FILE.tmp" "$COMMIT_MSG_FILE"
