@@ -10,6 +10,7 @@ Model Context Protocol Server for Uyuni Server API.
 * check_system_updates
 * check_all_systems_for_updates
 * schedule_apply_pending_updates_to_system
+* schedule_apply_specific_update
 * get_systems_needing_security_update_for_cve
 * get_systems_needing_reboot
 * schedule_system_reboot
