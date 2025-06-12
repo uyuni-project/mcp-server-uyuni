@@ -641,6 +641,86 @@ async def schedule_system_reboot(system_id: int) -> str:
                 print(f"Failed to schedule reboot for system ID {system_id} or unexpected API result format. Result: {api_result}")
             return ""
 
+@mcp.tool()
+async def list_all_scheduled_actions() -> List[Dict[str, Any]]:
+    """
+    Fetches a list of all scheduled actions from the Uyuni server.
+
+    This includes completed, in-progress, failed, and archived actions.
+    Each action in the list is a dictionary containing details such as
+    action_id, name, type, scheduler, earliest execution time,
+    prerequisite action ID (if any), and counts of systems in
+    completed, failed, or in-progress states.
+
+    Returns:
+        List[Dict[str, Any]]: A list of action dictionaries.
+                              Returns an empty list if the API call fails,
+                              the response format is unexpected, or no actions are found.
+    """
+    list_actions_path = '/rhn/manager/api/schedule/listAllActions'
+    processed_actions_list = []
+
+    async with httpx.AsyncClient(verify=False) as client:
+        api_result = await _call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path=list_actions_path,
+            error_context="listing all scheduled actions",
+            default_on_error=[] # Return empty list on error
+        )
+
+        if isinstance(api_result, list):
+            for action_dict in api_result:
+                if isinstance(action_dict, dict):
+                    # Create a new dict to avoid modifying the original if it's shared
+                    modified_action = dict(action_dict)
+                    if 'id' in modified_action:
+                        modified_action['action_id'] = modified_action.pop('id')
+                    processed_actions_list.append(modified_action)
+                else:
+                    print(f"Warning: Unexpected item format in actions list: {action_dict}")
+        elif api_result: # Log if not default empty list but also not a list
+            print(f"Warning: Expected a list for all scheduled actions, but received: {type(api_result)}")
+    return processed_actions_list
+
+@mcp.tool()
+async def cancel_action(action_id: int) -> str:
+    """
+    Cancels a specified action on the Uyuni server.
+
+    If the action ID is invalid or the action cannot be canceled,
+    the operation will fail.
+
+    Args:
+        action_id: The integer ID of the action to be canceled.
+
+    Returns:
+        str: A success message if the action was canceled,
+             e.g., "Successfully canceled action: 123".
+             Returns an error message if the cancellation failed for any reason,
+             e.g., "Failed to cancel action 123. Please check the action ID and server logs."
+    """
+    cancel_actions_path = '/rhn/manager/api/schedule/cancelActions'
+
+    if not isinstance(action_id, int): # Basic type check, though FastMCP might handle this
+        return "Invalid action ID provided. Must be an integer."
+
+    async with httpx.AsyncClient(verify=False) as client:
+        payload = {"actionIds": [action_id]} # API expects a list
+        api_result = await _call_uyuni_api(
+            client=client,
+            method="POST",
+            api_path=cancel_actions_path,
+            json_body=payload,
+            error_context=f"canceling action {action_id}",
+            default_on_error=0 # API returns 1 on success, so 0 can signify an error or unexpected response
+        )
+        if api_result == 1:
+            return f"Successfully canceled action: {action_id}"
+        else:
+            # The _call_uyuni_api helper already prints detailed errors.
+            return f"Failed to cancel action: {action_id}. The API did not return success (expected 1, got {api_result}). Check server logs for details."
+
 if __name__ == "__main__":
     # Initialize global Uyuni connection details from environment variables
     # This needs to be done before any mcp.tool function is called by the mcp server.
