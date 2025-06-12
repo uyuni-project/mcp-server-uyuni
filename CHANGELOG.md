@@ -1,4 +1,7 @@
 ### Features
+## 0.2.1 (2025-06-12)
+* **system:** add tool for scheduling a specific update
+
 ## 0.2.0 (2025-06-11)
 * **system:** add tool for scheduling a system update
 * **errata:** add a tool to check which systems are affected by a security issue identified by a CVE
