@@ -37,19 +37,19 @@ Replace the values by the ones that make sense for you.
 
 Then, you can use this command with an `mcp-client`:
 
-`uv run --env-file=.venv/credentials --directory PATH OF THIS CHECKOUT mcp-server-uyuni.py`
+`uv run --env-file=.venv/credentials --directory PATH OF THIS CHECKOUT mcp-server-uyuni`
 
 ## Debug with mcp inspect
 
 You can run
 
-`npx @modelcontextprotocol/inspector uv run --env-file=.venv/credentials --directory PATH OF THIS CHECKOUT mcp-server-uyuni.py`
+`npx @modelcontextprotocol/inspector uv run --env-file=.venv/credentials --directory PATH OF THIS CHECKOUT mcp-server-uyuni`
 
 ## Use with langflow
 
 You can add an `MCP Server tool` and set the `MCP Command` to:
 
-`uv run --env-file=.venv/credentials --directory PATH OF THIS CHECKOUT mcp-server-uyuni.py`
+`uv run --env-file=.venv/credentials --directory PATH OF THIS CHECKOUT mcp-server-uyuni`
 
 ![Langflow](docs/example_langflow.png)
 ![Langflow Play](docs/example_langflow_2.png)
@@ -91,7 +91,7 @@ Then, you need a `config.json` with a content like this. Replace the values by t
   "mcpServers": {
     "mcp-server-uyuni": {
       "command": "uv",
-      "args": ["run", "--env-file=PATH OF THIS CHECKOUT/.venv/credentials","--directory","PATH OF THIS CHECKOUT","mcp-server-uyuni.py"]
+      "args": ["run", "--env-file=PATH OF THIS CHECKOUT/.venv/credentials","--directory","PATH OF THIS CHECKOUT","mcp-server-uyuni]
     }
   }
 }
@@ -113,13 +113,21 @@ Note the url should be http://localhost/mcp-server-uyuni as explained in https:/
 ![OpenWeb UI with MCP Support with GPT 4 model](docs/example_openwebui_gpt.png)
 ![OpenWeb UI with MCP Support with Gemini 2.0 flash model](docs/example_openwebui_gemini.png)
 
+## Build
+
+Docker build:
+```
+docker build -t  mcp-server-uyuni .
+```
+
+Then, instead of using `uv run` you can use `docker run -i --rm  --env-file .venv/credentials mcp-server-uyuni` at any of the mcp-client configurations explained above.
 
 ## Release Process
 
 To create a new release for `mcp-server-uyuni`, follow these steps:
 
 1.  **Update Documentation (`README.md`):**
-    *   Ensure the list of available tools under the "## Tools" section is current and reflects all implemented tools in `mcp-server-uyuni.py`.
+    *   Ensure the list of available tools under the "## Tools" section is current and reflects all implemented tools in `srv/mcp-server-uyuni/server.py`.
     *   Review and update any screenshots in the `docs/` directory and their references in this `README.md` to reflect the latest UI or functionality, if necessary.
     *   Verify all usage instructions and examples are still accurate.
 2.  **Update Manual Test Cases (`TEST_CASES.md`):**
@@ -128,7 +136,7 @@ To create a new release for `mcp-server-uyuni`, follow these steps:
     *   Execute all relevant manual test cases against the code to be released.
     *   Record the `Pass`, `Fail`, `Blocked`, or `N/A` status for each test case in the new version column.
 3.  **Commit Changes:** Commit all the updates to `README.md`, `TEST_CASES.md`, and any other changed files.
-4. **Update version in pyproject.toml:** Use semantic versioning to set the new version.
+4.  **Update version in pyproject.toml:** Use semantic versioning to set the new version.
 5.  **Update CHANGELOG.md:**
     *   Generate the changelog using `conventional-changelog-cli`. If you don't have it installed globally, you can use `npx`.
     *   The command to generate the changelog using the `conventionalcommits` preset and output it to `CHANGELOG.md` (prepending the new changes) is:
@@ -139,6 +147,11 @@ To create a new release for `mcp-server-uyuni`, follow these steps:
     *   Commit the updated `CHANGELOG.md`.
 6.  **Create Git Tag:** Create a new Git tag for the release (e.g., `git tag vX.Y.Z`). Follow [semantic versioning rules](https://semver.org/).
 7.  **Push Changes and Tags:** Push your commits (including the changelog update) and the new tag to the repository (e.g., `git push && git push --tags`).
+8.  **Build the container** See Build Section above
+9.  **Test the container** running the tests in the `TEST_CASES.md`
+10. **Push the container** run `docker tag REGISTRY/mcp-server-uyuni:VERSION mcp-server-uyuni` and `docker push REGISTRY/mcp-server-uyuni:VERSION`. Replace REGISTRY by the container registry where to  push the container. Replace VERSION by the new version.
+
+
 
 
 ## License

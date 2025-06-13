@@ -3,6 +3,7 @@ import httpx
 from datetime import datetime, timezone
 from mcp.server.fastmcp import FastMCP
 import os
+import sys
 
 # Initialize FastMCP server
 mcp = FastMCP("mcp-server-uyuni")
@@ -701,10 +702,10 @@ async def cancel_action(action_id: int) -> str:
              e.g., "Failed to cancel action 123. Please check the action ID and server logs."
     """
     cancel_actions_path = '/rhn/manager/api/schedule/cancelActions'
-
+ 
     if not isinstance(action_id, int): # Basic type check, though FastMCP might handle this
         return "Invalid action ID provided. Must be an integer."
-
+ 
     async with httpx.AsyncClient(verify=False) as client:
         payload = {"actionIds": [action_id]} # API expects a list
         api_result = await _call_uyuni_api(
@@ -713,7 +714,7 @@ async def cancel_action(action_id: int) -> str:
             api_path=cancel_actions_path,
             json_body=payload,
             error_context=f"canceling action {action_id}",
-            default_on_error=0 # API returns 1 on success, so 0 can signify an error or unexpected response
+            default_on_error=0 # API returns 1 on success, so 0 can signify an error or unexpected response from helper
         )
         if api_result == 1:
             return f"Successfully canceled action: {action_id}"
@@ -721,15 +722,23 @@ async def cancel_action(action_id: int) -> str:
             # The _call_uyuni_api helper already prints detailed errors.
             return f"Failed to cancel action: {action_id}. The API did not return success (expected 1, got {api_result}). Check server logs for details."
 
-if __name__ == "__main__":
+def main_cli():
+    global url, username, password # Declare intent to modify globals
+
     # Initialize global Uyuni connection details from environment variables
     # This needs to be done before any mcp.tool function is called by the mcp server.
     url_env = os.environ.get('UYUNI_SERVER')
     if not url_env:
-        raise ValueError("UYUNI_SERVER environment variable not set.")
+        print("Error: UYUNI_SERVER environment variable not set.", file=sys.stderr)
+        sys.exit(1)
     url = 'https://' + url_env
-    username = os.environ['UYUNI_USER'] # These will raise KeyError if not set, which is fine.
-    password = os.environ['UYUNI_PASS']
+
+    try:
+        username = os.environ['UYUNI_USER']
+        password = os.environ['UYUNI_PASS']
+    except KeyError as e:
+        print(f"Error: Environment variable {e} not set.", file=sys.stderr)
+        sys.exit(1)
 
     # Initialize and run the server
     mcp.run(transport='stdio')
