@@ -7,7 +7,6 @@ requires-python = ">=3.10"
 dependencies = [
     "httpx>=0.28.1",
     "mcp[cli]>=1.5.0",
-    "requests>=2.32.3",
 ]
 
 [project.scripts]
@@ -18,6 +17,6 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.uv]
-dev-dependencies = ["pyright>=1.1.389", "ruff>=0.7.3"]
+dev-dependencies = []
 # For a flat layout with mcp_server_uyuni.py in the root,
 # Hatchling's auto-detection will find it when 'packages' is omitted.
