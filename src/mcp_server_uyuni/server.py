@@ -354,7 +354,7 @@ async def check_all_systems_for_updates() -> List[Dict[str, Any]]:
     return systems_with_updates
 
 @mcp.tool()
-async def schedule_apply_pending_updates_to_system(system_id: int) -> str:
+async def schedule_apply_pending_updates_to_system(system_id: int, confirm: bool = False) -> str:
     """
     Checks for pending updates on a system, schedules all of them to be applied,
     and returns the action ID of the scheduled task.
@@ -365,12 +365,16 @@ async def schedule_apply_pending_updates_to_system(system_id: int) -> str:
 
     Args:
         system_id: The unique identifier of the system.
+        confirm: False by default. Only set confirm to True if the user has explicetely confirmed. Ask the user for confirmation.
 
     Returns:
         str: The action url if updates were successfully scheduled.
              Otherwise, returns an empty string.
     """
     print(f"Attempting to apply pending updates for system ID: {system_id}")
+
+    if not confirm:
+        return f"CONFIRMATION REQUIRED: This will apply pending updates to the system {system_id}.  Do you confirm?"
 
     # 1. Use check_system_updates to get relevant errata
     update_info = await check_system_updates(system_id)
@@ -417,19 +421,23 @@ async def schedule_apply_pending_updates_to_system(system_id: int) -> str:
             return ""
 
 @mcp.tool()
-async def schedule_apply_specific_update(system_id: int, errata_id: int) -> str:
+async def schedule_apply_specific_update(system_id: int, errata_id: int, confirm: bool = False) -> str:
     """
     Schedules a specific update (erratum) to be applied to a system.
 
     Args:
         system_id: The unique identifier of the system.
         errata_id: The unique identifier of the erratum (also referred to as update ID) to be applied.
+        confirm: False by default. Only set confirm to True if the user has explicetely confirmed. Ask the user for confirmation.
 
     Returns:
         str: The action URL if the update was successfully scheduled.
              Otherwise, returns an empty string.
     """
     print(f"Attempting to apply specific update (errata ID: {errata_id}) to system ID: {system_id}")
+
+    if not confirm:
+        return f"CONFIRMATION REQUIRED: This will apply specific update (errata ID: {errata_id}) to the system {system_id}. Do you confirm?"
 
     async with httpx.AsyncClient(verify=False) as client:
         # The API expects a list of errata IDs, even if it's just one.
@@ -600,12 +608,13 @@ async def get_systems_needing_reboot() -> List[Dict[str, Any]]:
     return systems_needing_reboot_list
 
 @mcp.tool()
-async def schedule_system_reboot(system_id: int) -> str:
+async def schedule_system_reboot(system_id: int, confirm: bool = False) -> str:
     """
     Schedules an immediate reboot for a specific system on the Uyuni server.
 
     Args:
         system_id: The unique identifier (sid) of the system to be rebooted.
+        confirm: False by default. Only set confirm to True if the user has explicetely confirmed. Ask the user for confirmation.
 
     The reboot is scheduled to occur as soon as possible (effectively "now").
     Returns:
@@ -617,6 +626,9 @@ async def schedule_system_reboot(system_id: int) -> str:
 
     # Generate current time in ISO 8601 format (UTC)
     now_iso = datetime.now(timezone.utc).isoformat()
+
+    if not confirm:
+        return f"CONFIRMATION REQUIRED: This will reboot system {system_id}. Do you confirm?"
 
     async with httpx.AsyncClient(verify=False) as client:
         payload = {"sid": system_id, "earliestOccurrence": now_iso}
@@ -685,7 +697,7 @@ async def list_all_scheduled_actions() -> List[Dict[str, Any]]:
     return processed_actions_list
 
 @mcp.tool()
-async def cancel_action(action_id: int) -> str:
+async def cancel_action(action_id: int, confirm: bool = False) -> str:
     """
     Cancels a specified action on the Uyuni server.
 
@@ -694,6 +706,7 @@ async def cancel_action(action_id: int) -> str:
 
     Args:
         action_id: The integer ID of the action to be canceled.
+        confirm: False by default. Only set confirm to True if the user has explicetely confirmed. Ask the user for confirmation.
 
     Returns:
         str: A success message if the action was canceled,
@@ -705,7 +718,10 @@ async def cancel_action(action_id: int) -> str:
  
     if not isinstance(action_id, int): # Basic type check, though FastMCP might handle this
         return "Invalid action ID provided. Must be an integer."
- 
+
+    if not confirm:
+        return f"CONFIRMATION REQUIRED: This will schedule action {action_id} to be canceled. Do you confirm?"
+
     async with httpx.AsyncClient(verify=False) as client:
         payload = {"actionIds": [action_id]} # API expects a list
         api_result = await _call_uyuni_api(
