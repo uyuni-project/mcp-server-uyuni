@@ -45,14 +45,6 @@ You can run
 
 `npx @modelcontextprotocol/inspector uv run --env-file=.venv/credentials --directory PATH OF THIS CHECKOUT mcp-server-uyuni`
 
-## Use with langflow
-
-You can add an `MCP Server tool` and set the `MCP Command` to:
-
-`uv run --env-file=.venv/credentials --directory PATH OF THIS CHECKOUT mcp-server-uyuni`
-
-![Langflow](docs/example_langflow.png)
-![Langflow Play](docs/example_langflow_2.png)
 
 ## Use with Open WebUI
 
