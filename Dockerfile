@@ -32,3 +32,4 @@ COPY --from=uv --chown=app:app /app/.venv /app/.venv
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
 ENTRYPOINT ["mcp-server-uyuni"]
+
