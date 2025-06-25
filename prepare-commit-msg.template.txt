@@ -1,0 +1,29 @@
+#!/bin/sh
+#
+# Git hook to help with Conventional Commits.
+# This template will be prepended to the commit message.
+#
+# To use this hook, copy it to .git/hooks/prepare-commit-msg and make it executable:
+#   cp prepare-commit-msg.template .git/hooks/prepare-commit-msg
+#   chmod +x .git/hooks/prepare-commit-msg
+
+COMMIT_MSG_FILE=$1
+COMMIT_SOURCE=$2
+SHA1=$3
+
+if [ -z "$COMMIT_SOURCE" ]; then
+  # Only add template if it's a new commit (not an amend or merge)
+  echo "# type(scope): subject
+#
+# Body (optional)
+# 
+# Footer (optional, e.g., BREAKING CHANGE: or Closes #issue)
+# 
+# Allowed types: feat, fix, docs, style, refactor, perf, test, build, ci, chore
+# Example: feat(systems): add endpoint for listing active systems
+# ------------------------ >8 ------------------------" > "$COMMIT_MSG_FILE.tmp"
+  cat "$COMMIT_MSG_FILE" >> "$COMMIT_MSG_FILE.tmp"
+  mv "$COMMIT_MSG_FILE.tmp" "$COMMIT_MSG_FILE"
+fi
+
+exit 0

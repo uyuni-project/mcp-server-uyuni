@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mcp-server-uyuni": {
+      "command": "uv",
+      "args": ["run", "--env-file=/home/jordi/work/galaxy/mcp-server-uyuni/.venv/credentials","--directory","/home/jordi/work/galaxy/mcp-server-uyuni","mcp-server-uyuni"]
+    }
+  }
+}
