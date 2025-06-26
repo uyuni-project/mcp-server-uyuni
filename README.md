@@ -139,11 +139,9 @@ To create a new release for `mcp-server-uyuni`, follow these steps:
     *   Commit the updated `CHANGELOG.md`.
 6.  **Create Git Tag:** Create a new Git tag for the release (e.g., `git tag vX.Y.Z`). Follow [semantic versioning rules](https://semver.org/).
 7.  **Push Changes and Tags:** Push your commits (including the changelog update) and the new tag to the repository (e.g., `git push && git push --tags`).
-8.  **Build the container** See Build Section above
-9.  **Test the container** running the tests in the `TEST_CASES.md`
-10. **Push the container** run `docker tag REGISTRY/mcp-server-uyuni:VERSION mcp-server-uyuni` and `docker push REGISTRY/mcp-server-uyuni:VERSION`. Replace REGISTRY by the container registry where to  push the container. Replace VERSION by the new version.
-
-
+8.  **Automated Build and Push:** Pushing the tag to GitHub will automatically trigger the "Docker Publish" GitHub Action. This action builds the Docker image and pushes it to the GitHub Container Registry (`ghcr.io`) with tags for the specific version (e.g., `v0.3.0`) and major.minor (e.g., `v0.3`). Pushing to `main` will update the `latest` tag.
+9.  **Test the container:** Pull the newly published image from `ghcr.io` and run the tests in `TEST_CASES.md` against it.
+    `docker run -i --rm --env-file .venv/credentials ghcr.io/uyuni-project/mcp-server-uyuni:VERSION` (replace VERSION with the new tag).
 
 
 ## License

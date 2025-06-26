@@ -1,3 +1,10 @@
+##  0.3.0 (2025-06-26)
+
+### Features
+
+* **all:** add confirmation for those tools that change the systems
+* **schedule:** add tools for canceling an action and listing all
+* **all:** add container
 
 ## 0.2.1 (2025-06-12)
 
