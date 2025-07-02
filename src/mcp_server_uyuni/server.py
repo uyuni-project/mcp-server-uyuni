@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, List, Dict, Optional
+from typing import Any, List, Dict, Optional, Union
 import httpx
 from datetime import datetime, timezone
 from mcp.server.fastmcp import FastMCP
@@ -126,49 +126,51 @@ async def get_list_of_active_systems() -> List[Dict[str, Any]]:
 
     return filtered_systems
 
-async def _resolve_system_id(system_identifier: str) -> Optional[str]:
+async def _resolve_system_id(system_identifier: Union[str, int]) -> Optional[str]:
     """
     Resolves a system identifier, which can be a name or an ID, to a numeric system ID string.
 
-    If the identifier is already numeric, it's returned directly.
-    If it's a name, it looks up the ID from the list of active systems.
+     If the identifier is numeric (or a string of digits), it's returned as a string.
+    If it's a non-numeric string, it's treated as a name and the ID is looked up.
 
     Args:
-        system_identifier: The system name (e.g., "buildhost") or system ID (e.g., "1000010000").
-
+        system_identifier: The system name (e.g., "buildhost") or system ID (e.g., 1000010000).
     Returns:
         Optional[str]: The numeric system ID as a string if found, otherwise None.
     """
-    if system_identifier.isdigit():
-        return system_identifier
+    id_str = str(system_identifier)
+    if id_str.isdigit():
+        return id_str
 
-    print(f"System identifier '{system_identifier}' is not numeric, treating as a name and looking up ID.")
+    # If it's not a digit string, it must be a name.
+    system_name = id_str
+    print(f"System identifier '{system_name}' is not numeric, treating as a name and looking up ID.")
 
     active_systems = await get_list_of_active_systems()
     if not active_systems:
-        print(f"Warning: Could not find system name '{system_identifier}' because the list of active systems is empty or could not be retrieved.")
+        print(f"Warning: Could not find system name '{system_name}' because the list of active systems is empty or could not be retrieved.")
         return None
 
     for system in active_systems:
-        if system.get('system_name') == system_identifier:
+        if system.get('system_name') == system_name:
             resolved_id = str(system.get('system_id'))
-            print(f"Found ID {resolved_id} for system name '{system_identifier}'.")
+            print(f"Found ID {resolved_id} for system name '{system_name}'.")
             return resolved_id
 
-    print(f"Warning: System with name '{system_identifier}' not found among active systems.")
+    print(f"Warning: System with name '{system_name}' not found among active systems.")
     return None
 
 @mcp.tool()
-async def get_cpu_of_a_system(system_identifier: str) -> Dict[str, Any]:
+async def get_cpu_of_a_system(system_identifier: Union[str, int]) -> Dict[str, Any]:
     """Retrieves detailed CPU information for a specific system in the Uyuni server.
 
     Fetches CPU attributes such as model, core count, architecture, etc.
 
     Args:
-        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system id (e.g. "1000010000").
+        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
 
     Returns:
-        Dict[str, Any]: A dictionary containing the CPU attributes.
+        Dict[str, Any]: A dictionary containing the CPU attributes and the original system_identifier.
                         Returns an empty dictionary if the API call fails,
                         the response format is unexpected, or CPU data is not available.
     """
@@ -188,6 +190,9 @@ async def get_cpu_of_a_system(system_identifier: str) -> Dict[str, Any]:
         )
 
     if isinstance(cpu_data_result, dict):
+        # Only add the identifier if the API returned actual data
+        if cpu_data_result:
+            cpu_data_result['system_identifier'] = system_identifier
         return cpu_data_result
     # If not a dict but not the default empty dict, log it
     elif cpu_data_result:
@@ -276,17 +281,17 @@ async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str,
     return processed_cves
 
 @mcp.tool()
-async def check_system_updates(system_identifier: str) -> Dict[str, Any]:
+async def check_system_updates(system_identifier: Union[str, int]) -> Dict[str, Any]:
     """
     Checks if a specific system in the Uyuni server has pending updates (relevant errata),
     including associated CVEs for each update.
 
     Args:
-        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system id (e.g. "1000010000").
+        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
 
     Returns:
         Dict[str, Any]: A dictionary containing:
-                        - 'system_identifier' (str): The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system id (e.g. "1000010000").
+                        - 'system_identifier' (Union[str, int]): The original system identifier used in the request.
                         - 'has_pending_updates' (bool): True if there are pending updates, False otherwise.
                         - 'update_count' (int): The number of pending updates.
                         - 'updates' (List[Dict[str, Any]]): A list of pending update details.
@@ -415,7 +420,7 @@ async def check_all_systems_for_updates() -> List[Dict[str, Any]]:
     return systems_with_updates
 
 @mcp.tool()
-async def schedule_apply_pending_updates_to_system(system_identifier: str, confirm: bool = False) -> str:
+async def schedule_apply_pending_updates_to_system(system_identifier: Union[str, int], confirm: bool = False) -> str:
     """
     Checks for pending updates on a system, schedules all of them to be applied,
     and returns the action ID of the scheduled task.
@@ -425,7 +430,7 @@ async def schedule_apply_pending_updates_to_system(system_identifier: str, confi
     endpoint to apply all found errata.
 
     Args:
-        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system id (e.g. "1000010000").
+        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
         confirm: False by default. Only set confirm to True if the user has explicetely confirmed. Ask the user for confirmation.
 
     Returns:
@@ -444,12 +449,6 @@ async def schedule_apply_pending_updates_to_system(system_identifier: str, confi
         print(f"No pending updates found for system {system_identifier}, or an error occurred while fetching update information.")
         return ""
 
-    # The numeric system ID is required for the API payload. It's returned by check_system_updates.
-    system_id_from_check = update_info.get('system_id')
-    if not isinstance(system_id_from_check, int):
-        print(f"Could not determine a valid numeric system ID for '{system_identifier}' from the update check.")
-        return ""
-
     errata_list = update_info.get('updates', [])
     if not errata_list:
         # This case should ideally be covered by 'has_pending_updates' being false,
@@ -463,11 +462,15 @@ async def schedule_apply_pending_updates_to_system(system_identifier: str, confi
         print(f"Could not extract any valid errata IDs for system {system_identifier} from the update information: {errata_list}")
         return ""
 
-    print(f"Found {len(errata_ids)} errata to apply for system {system_identifier} (ID: {system_id_from_check}). IDs: {errata_ids}")
+    system_id = await _resolve_system_id(system_identifier)
+    if not system_id:
+        return "" # Helper function already logged the reason for failure.
+
+    print(f"Found {len(errata_ids)} errata to apply for system {system_identifier} (ID: {system_id}). IDs: {errata_ids}")
 
     # 2. Schedule apply errata using the API endpoint
     async with httpx.AsyncClient(verify=False) as client:
-        payload = {"sid": system_id_from_check, "errataIds": errata_ids}
+        payload = {"sid": int(system_id), "errataIds": errata_ids}
         api_result = await _call_uyuni_api(
             client=client,
             method="POST",
@@ -488,12 +491,12 @@ async def schedule_apply_pending_updates_to_system(system_identifier: str, confi
             return ""
 
 @mcp.tool()
-async def schedule_apply_specific_update(system_identifier: str, errata_id: int, confirm: bool = False) -> str:
+async def schedule_apply_specific_update(system_identifier: Union[str, int], errata_id: int, confirm: bool = False) -> str:
     """
     Schedules a specific update (erratum) to be applied to a system.
 
     Args:
-        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system id (e.g. "1000010000").
+        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
         errata_id: The unique identifier of the erratum (also referred to as update ID) to be applied.
         confirm: False by default. Only set confirm to True if the user has explicetely confirmed. Ask the user for confirmation.
 
@@ -679,12 +682,12 @@ async def get_systems_needing_reboot() -> List[Dict[str, Any]]:
     return systems_needing_reboot_list
 
 @mcp.tool()
-async def schedule_system_reboot(system_identifier: str, confirm: bool = False) -> str:
+async def schedule_system_reboot(system_identifier: Union[str, int], confirm: bool = False) -> str:
     """
     Schedules an immediate reboot for a specific system on the Uyuni server.
 
     Args:
-        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system id (e.g. "1000010000").
+        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
         confirm: False by default. Only set confirm to True if the user has explicetely confirmed. Ask the user for confirmation.
 
     The reboot is scheduled to occur as soon as possible (effectively "now").
