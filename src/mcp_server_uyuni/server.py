@@ -752,6 +752,43 @@ async def cancel_action(action_id: int, confirm: bool = False) -> str:
             # The _call_uyuni_api helper already prints detailed errors.
             return f"Failed to cancel action: {action_id}. The API did not return success (expected 1, got {api_result}). Check server logs for details."
 
+@mcp.tool()
+async def get_unscheduled_errata(system_id: int) -> List[Dict[str, Any]]:
+    """
+    Provides a list of errata that are applicable to a given system.
+
+    If the system ID is invalid then the operation will fail.
+
+    Args:
+        sid: The integer ID of the system for which we want to know the list of applicable errata.
+
+    Returns:
+        List[Dict[str, Any]]: A list of dictionaries with each dictionary defining a errata applicable
+                            to the system given as a parameter.
+                            Retruns an empty dictionary if no applicable errata for the system are found.
+    """
+
+    async with httpx.AsyncClient(verify=False) as client:
+        get_unscheduled_errata = "/rhn/manager/api/system/getUnscheduledErrata"
+        payload = {'sid': str(system_id)}
+        unscheduled_errata_result = await _call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path=get_unscheduled_errata,
+            params=payload,
+            error_context=f"fetching unscheduled errata for system ID {system_id}",
+            default_on_error=None
+        )
+
+        if isinstance(unscheduled_errata_result, list):
+            return unscheduled_errata_result
+        else:
+            if unscheduled_errata_result is not None:
+                print(f"Failed to retrieve unscheduled errata for system ID {system_id} or \
+                      unexpected API result format. Result: {unscheduled_errata_result}")
+            return ""
+
+
 def main_cli():
     global url, username, password # Declare intent to modify globals
 
