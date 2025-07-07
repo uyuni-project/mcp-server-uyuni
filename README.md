@@ -2,6 +2,10 @@
 
 Model Context Protocol Server for Uyuni Server API.
 
+## Disclaimer
+
+This is an open-source project provided "AS IS" without any warranty, express or implied. Use at your own risk. For full details, please refer to the [License](#license) section.
+
 ## Tools
 
 * get_list_of_active_systems
@@ -232,4 +236,4 @@ To create a new release for `mcp-server-uyuni`, follow these steps:
 
 ## License
 
-MIT
+This project is licensed under the Apache License, Version 2.0. See the [LICENSE](LICENSE) file for details.

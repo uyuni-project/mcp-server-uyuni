@@ -77,4 +77,4 @@ If the `config` file is compromised:
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability, please report it to us. (TODO: Add contact information or procedure for reporting vulnerabilities).
+If you discover a security vulnerability, please report it to us by creating a [security advisory[(https://github.com/uyuni-project/mcp-server-uyuni/security/advisories)].
