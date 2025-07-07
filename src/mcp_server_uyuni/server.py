@@ -710,6 +710,93 @@ async def list_all_scheduled_actions() -> List[Dict[str, Any]]:
             print(f"Warning: Expected a list for all scheduled actions, but received: {type(api_result)}")
     return processed_actions_list
 
+async def _get_systems_for_action(client: httpx.AsyncClient, action_id: int, api_path: str, status_context: str) -> List[Dict[str, Any]]:
+    """
+    Internal helper to fetch systems associated with a given action for a specific status
+    (e.g., completed, failed, in-progress).
+
+    Args:
+        client: The httpx.AsyncClient instance (must have active login session).
+        action_id: The ID of the action to query systems for.
+        api_path: The specific API endpoint path to call.
+        status_context: A string describing the status (e.g., "completed") for logging.
+
+    Returns:
+        List[Dict[str, Any]]: A list of system dictionaries, each containing 'system_id'
+                              and 'system_name'. Returns an empty list on failure or if
+                              no systems are found for that status.
+    """
+    systems_list = await _call_uyuni_api(
+        client=client,
+        method="GET",
+        api_path=api_path,
+        params={'actionId': str(action_id)},
+        error_context=f"fetching {status_context} systems for action ID {action_id}",
+        perform_login=False,  # Login is handled by the calling function
+        default_on_error=[]
+    )
+
+    processed_systems = []
+    if isinstance(systems_list, list):
+        for system in systems_list:
+            if isinstance(system, dict):
+                # Rename for consistency with other tools
+                processed_systems.append({
+                    'system_id': system.get('server_id'),
+                    'system_name': system.get('server_name')
+                })
+            else:
+                print(f"Warning: Unexpected item format in {status_context} systems list for action ID {action_id}: {system}")
+    elif systems_list: # Log if not default empty list but also not a list
+        print(f"Warning: Expected a list for {status_context} systems for action ID {action_id}, but received: {type(systems_list)}")
+
+    return processed_systems
+
+@mcp.tool()
+async def get_action_details(action_id: int) -> Dict[str, Any]:
+    """
+    Retrieves detailed information for a specific scheduled action, including lists
+    of systems that have completed, failed, or are in progress for that action.
+
+    Args:
+        action_id: The unique identifier of the scheduled action to look up.
+
+    Returns:
+        Dict[str, Any]: A dictionary containing the details of the action, such as its
+                        type, name, and status. It also includes:
+                        - 'completed_systems': A list of systems that successfully completed the action.
+                        - 'failed_systems': A list of systems where the action failed.
+                        - 'in_progress_systems': A list of systems where the action is still running.
+                        Each system in these lists is a dictionary with 'system_id' and 'system_name'.
+                        Returns an empty dictionary if the action ID is not found or an API error occurs.
+    """
+    lookup_action_path = '/rhn/manager/api/schedule/lookupAction'
+
+    async with httpx.AsyncClient(verify=False) as client:
+        action_details = await _call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path=lookup_action_path,
+            params={'actionId': str(action_id)},
+            error_context=f"getting details for action ID {action_id}",
+            default_on_error=None
+        )
+
+        if not isinstance(action_details, dict) or not action_details:
+            if action_details is not None:
+                print(f"Warning: Expected a dict for action details for action ID {action_id}, but received: {type(action_details)}")
+            return {}
+
+        action_details = dict(action_details)
+        if 'id' in action_details:
+            action_details['action_id'] = action_details.pop('id')
+
+        action_details['completed_systems'] = await _get_systems_for_action(client, action_id, '/rhn/manager/api/schedule/listCompletedSystems', 'completed')
+        action_details['failed_systems'] = await _get_systems_for_action(client, action_id, '/rhn/manager/api/schedule/listFailedSystems', 'failed')
+        action_details['in_progress_systems'] = await _get_systems_for_action(client, action_id, '/rhn/manager/api/schedule/listInProgressSystems', 'in-progress')
+
+        return action_details
+
 @mcp.tool()
 async def cancel_action(action_id: int, confirm: bool = False) -> str:
     """
