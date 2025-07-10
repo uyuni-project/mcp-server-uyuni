@@ -939,6 +939,49 @@ async def list_activation_keys() -> List[Dict[str, str]]:
                 print(f"Warning: Unexpected item format in activation key list: {key_data}")
     return filtered_keys
 
+async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str, Any]]:
+    """
+    Provides a list of errata that are applicable to the system with the system_id
+    passed as parameter and have not ben scheduled yet. All elements in the result are patches that are applicable
+    for the system.
+
+    If the system ID is invalid then the operation will fail.
+
+    Args:
+        sid: The integer ID of the system for which we want to know the list of applicable errata.
+
+    Returns:
+        List[Dict[str, Any]]: A list of dictionaries with each dictionary defining a errata applicable
+                            to the system given as a parameter.
+                            Retruns an empty dictionary if no applicable errata for the system are found.
+    """
+    log_string = f"Getting list of unscheduled errata for system {system_id}"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    async with httpx.AsyncClient(verify=False) as client:
+        get_unscheduled_errata = "/rhn/manager/api/system/getUnscheduledErrata"
+        payload = {'sid': str(system_id)}
+        unscheduled_errata_result = await _call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path=get_unscheduled_errata,
+            params=payload,
+            error_context=f"fetching unscheduled errata for system ID {system_id}",
+            default_on_error=None
+        )
+
+        if isinstance(unscheduled_errata_result, list):
+            for item in unscheduled_errata_result:
+                item['system_id'] = system_id
+
+            return unscheduled_errata_result
+        else:
+            if unscheduled_errata_result is not None:
+                print(f"Failed to retrieve unscheduled errata for system ID {system_id} or \
+                      unexpected API result format. Result: {unscheduled_errata_result}")
+            return ""
+
 def main_cli():
 
     logger.info("Running Uyuni MCP server.")
