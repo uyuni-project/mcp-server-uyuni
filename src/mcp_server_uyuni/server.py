@@ -537,6 +537,95 @@ async def schedule_apply_specific_update(system_id: int, errata_id: int, ctx: Co
             return ""
 
 @mcp.tool()
+async def add_system(
+    host: str,
+    activation_key: str,
+    ctx: Context, 
+    ssh_port: int = 22,
+    ssh_user: str = "root",
+    proxy_id: int = None,
+    salt_ssh: bool = False,
+    confirm: bool = False,
+) -> str:
+    """
+    Adds a new system to be managed by Uyuni.
+
+    This tool remotely connects to the specified host using SSH to register it.
+    It requires an SSH private key to be configured in the UYUNI_SSH_PRIV_KEY
+    environment variable for authentication.
+
+    Args:
+        host: Hostname or IP address of the target system to add.
+        activation_key: The activation key for registering the system.
+        ssh_port: The SSH port on the target machine (default: 22).
+        ssh_user: The user to connect with via SSH (default: 'root').
+        proxy_id: The system ID of a Uyuni proxy to use (optional).
+        salt_ssh: Manage the system with Salt SSH (default: False).
+        confirm: User confirmation is required to execute this action. Set to False
+                 by default. If False, the tool returns a confirmation message. The
+                 model must present this message to the user and, if they agree, call
+                 the tool again with this parameter set to True.
+
+    Returns:
+        A confirmation message if 'confirm' is False.
+        An error message if the UYUNI_SSH_PRIV_KEY environment variable is not set.
+        A success message if the system is scheduled for addition successfully.
+        An error message if the operation fails.
+    """
+    log_string = f"Attempting to add system ID: {host}"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    if not confirm:
+        return f"CONFIRMATION REQUIRED: This will add system {host} to Uyuni. Do you confirm?"
+
+    ssh_priv_key_raw = os.environ.get('UYUNI_SSH_PRIV_KEY')
+    if not ssh_priv_key_raw:
+        return "Error: UYUNI_SSH_PRIV_KEY environment variable is not set. Please set it to your SSH private key."
+
+    # Unescape the raw string from the environment variable to convert literal '\n' to actual newlines for the JSON payload.
+    ssh_priv_key = ssh_priv_key_raw.replace('\\n', '\n')
+
+    print(f"Attempting to add system: {host}")
+
+    ssh_priv_key_pass = os.environ.get('UYUNI_SSH_PRIV_KEY_PASS')
+    if not ssh_priv_key_pass:
+        ssh_priv_key_pass = ""
+
+    payload = {
+        "host": host,
+        "sshPort": ssh_port,
+        "sshUser": ssh_user,
+        "sshPrivKey": ssh_priv_key,
+        "sshPrivKeyPass": ssh_priv_key_pass,
+        "activationKey": activation_key,
+        "saltSSH": salt_ssh,
+    }
+    if proxy_id is not None:
+        payload["proxyId"] = proxy_id
+
+    async with httpx.AsyncClient(verify=False) as client:
+        api_result = await _call_uyuni_api(
+            client=client, method="POST",
+            api_path="/rhn/manager/api/system/bootstrapWithPrivateSshKey",
+            json_body=payload,
+            error_context=f"adding system {host}",
+            default_on_error=None,
+        )
+
+    if api_result == 1:  # The API returns 1 on success
+        success_message = f"System {host} successfully scheduled to be added."
+        print(success_message)
+        return success_message
+    else:
+        # Check if the system was added
+        # FIXME: This is buggy. The API call does not return success but the system appears
+        # However, the system appears after a while, so we cannot check here immeditealy.
+        return f"System {host} was successfully scheduled to be added. Check system list"
+
+            
+
+@mcp.tool()
 async def get_systems_needing_security_update_for_cve(cve_identifier: str, ctx: Context) -> List[Dict[str, Any]]:
     """
     Finds systems requiring a security update due to a specific CVE identifier.
