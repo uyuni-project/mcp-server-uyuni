@@ -115,3 +115,41 @@ async def schedule_system_reboot(system_identifier: Union[str, int], confirm: bo
 
 *   **Avoid Raising Exceptions:** LLMs do not handle exceptions well. A tool that raises an unhandled exception can break the conversational flow. Instead of raising an error (e.g., for a 404 Not Found), have the tool return a predictable "empty" or "failed" value. For example, return an empty list (`[]`), an empty dictionary (`{}`), or a dictionary that clearly indicates failure, like `{'has_pending_updates': False, 'updates': []}`.
 *   **Embrace Tool Composition:** Build more complex tools by having them call simpler, existing tools. This promotes code reuse and modularity. For instance, `check_all_systems_for_updates` works by iterating through all systems and calling `check_system_updates` for each one. This makes the toolset more powerful and easier to maintain.
+
+### Design Simple and Unambiguous Tool Signatures
+
+*   **Avoid too many required parameters:** If a tool has multiple required parameters (e.g., `add_system(host, activation_key)`), the LLM may not attempt to call it if the user's prompt is simple (e.g., "add system 10.10.10.10"). The LLM might not ask for the missing `activation_key` and will simply fail to use the tool. Strive to design tools with fewer required arguments to make them easier for the LLM to invoke.
+*   **Use clear, direct tool names:** Avoid technical jargon that could be ambiguous. For example, a tool named `bootstrap_system` might confuse the LLM into thinking it is being asked to perform the bootstrap action itself, leading it to refuse. A clearer name like `add_system` removes this ambiguity and helps the LLM correctly identify it as a callable tool.
+
+### Be Mindful of LLM and Client Limitations
+
+*   **Token Limits Can Cause Strange Behavior:** When a conversation becomes very long, you might reach the LLM's context token limit. When this happens, the model's responses can become strange or unhelpful. It might repeat information from earlier in the conversation or claim it cannot perform an action it previously could. It often will not explicitly state that the token limit is the issue. If you encounter this behavior, the simplest solution is often to start a new chat session.
+
+### Differentiate Between Client and Server Logging
+
+The server provides two distinct logging mechanisms that serve different purposes. It's important to use the correct one based on the audience for the log message.
+
+*   **Client-Side Logging (`ctx`):**
+    *   **Purpose:** To send log messages and progress updates directly to the end-user via the connected client (e.g., Open WebUI). This is for information the user should see.
+    *   **How to use:** Call methods on the `ctx` object, like `await ctx.info("Starting process...")`.
+    *   **Note:** These are `async` methods and must be awaited.
+
+*   **Server-Side Logging (`logger`):**
+    *   **Purpose:** To record detailed information for debugging the server itself. This information is written to the server's log file and is not intended for the end-user.
+    *   **How to use:** Use the global `logger` object, like `logger.info("Internal state is X")`.
+    *   **Note:** This is a standard, synchronous Python logging call.
+
+**Example:**
+```python
+@mcp.tool()
+async def my_tool(some_input: str, ctx: Context) -> str:
+    # This message goes to the client (e.g., Open WebUI)
+    await ctx.info(f"Starting operation for input: {some_input}")
+
+    # This message goes to the server's log file for debugging
+    logger.info(f"Internal state: received input '{some_input}'")
+
+    # ... tool logic ...
+
+    return "Operation complete."
+```
