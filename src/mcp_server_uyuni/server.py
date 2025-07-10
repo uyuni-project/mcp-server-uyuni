@@ -12,20 +12,40 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+import sys
 from typing import Any, List, Dict
 import httpx
 from datetime import datetime, timezone
-from mcp.server.fastmcp import FastMCP
-import os
-import sys
 
-# Initialize FastMCP server
+
+from mcp.server.fastmcp import FastMCP, Context
+from mcp import LoggingLevel, ServerSession
+
+from mcp_server_uyuni.logging_config import get_logger, Transport
+
 mcp = FastMCP("mcp-server-uyuni")
 
-# Global variables for Uyuni connection - to be initialized in __main__
-url = ""
-username = ""
-password = ""
+REQUIRED_VARS = [
+    "UYUNI_SERVER",
+    "UYUNI_USER",
+    "UYUNI_PASS",
+]
+
+missing_vars = [key for key in REQUIRED_VARS if key not in os.environ]
+
+if missing_vars:
+    raise ImportError(
+        f"Failed to import config: Missing required environment variables: {', '.join(missing_vars)}"
+    )
+
+UYUNI_SERVER = 'https://' + os.environ.get('UYUNI_SERVER')
+UYUNI_USER = os.environ.get('UYUNI_USER')
+UYUNI_PASS = os.environ.get('UYUNI_PASS')
+UYUNI_TRANSPORT = os.environ['TRANSPORT']
+LOG_FILE_PATH = os.environ['LOG_FILE_PATH']
+
+logger = get_logger(log_file=LOG_FILE_PATH, transport=UYUNI_TRANSPORT)
 
 async def _call_uyuni_api(
     client: httpx.AsyncClient,
@@ -42,12 +62,11 @@ async def _call_uyuni_api(
     Helper function to make authenticated API calls to Uyuni.
     Handles login, request execution, error handling, and basic response parsing.
     """
-    global url, username, password # Access global connection details
 
     if perform_login:
-        login_data = {"login": username, "password": password}
+        login_data = {"login": UYUNI_USER, "password": UYUNI_PASS}
         try:
-            login_response = await client.post(url + '/rhn/manager/api/login', json=login_data)
+            login_response = await client.post(UYUNI_SERVER + '/rhn/manager/api/login', json=login_data)
             login_response.raise_for_status()
         except httpx.HTTPStatusError as e:
             print(f"HTTP error during login for {error_context}: {e.request.url} - {e.response.status_code} - {e.response.text}")
@@ -59,7 +78,7 @@ async def _call_uyuni_api(
             print(f"An unexpected error occurred during login for {error_context}: {e}")
             return default_on_error
 
-    full_api_url = url + api_path
+    full_api_url = UYUNI_SERVER + api_path
     try:
         if method.upper() == 'GET':
             response = await client.get(full_api_url, params=params)
@@ -93,7 +112,7 @@ async def _call_uyuni_api(
         return default_on_error
 
 @mcp.tool()
-async def get_list_of_active_systems() -> List[Dict[str, Any]]:
+async def get_list_of_active_systems(ctx: Context) -> List[Dict[str, Any]]:
     """
     Fetches a list of active systems from the Uyuni server, returning their names and IDs.
 
@@ -105,6 +124,10 @@ async def get_list_of_active_systems() -> List[Dict[str, Any]]:
                               Returns an empty list if the API call fails,
                               the response format is unexpected, or no systems are found.
     """
+    log_string = "Getting list of active systems"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
     async with httpx.AsyncClient(verify=False) as client:
         systems_data_result = await _call_uyuni_api(
             client=client,
@@ -127,7 +150,7 @@ async def get_list_of_active_systems() -> List[Dict[str, Any]]:
     return filtered_systems
 
 @mcp.tool()
-async def get_cpu_of_a_system(system_id: int) -> Dict[str, Any]:
+async def get_cpu_of_a_system(system_id: int, ctx: Context) -> Dict[str, Any]:
     """Retrieves detailed CPU information for a specific system in the Uyuni server.
 
     Fetches CPU attributes such as model, core count, architecture, etc.
@@ -140,6 +163,11 @@ async def get_cpu_of_a_system(system_id: int) -> Dict[str, Any]:
                         Returns an empty dictionary if the API call fails,
                         the response format is unexpected, or CPU data is not available.
     """
+
+    log_string = f"Getting CPU information of system with id {system_id}"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
     async with httpx.AsyncClient(verify=False) as client:
         cpu_data_result = await _call_uyuni_api(
             client=client,
@@ -158,7 +186,7 @@ async def get_cpu_of_a_system(system_id: int) -> Dict[str, Any]:
     return {}
 
 @mcp.tool()
-async def get_all_systems_cpu_info() -> List[Dict[str, Any]]:
+async def get_all_systems_cpu_info(ctx: Context) -> List[Dict[str, Any]]:
     """
     Retrieves CPU information for all active systems in the Uyuni server.
 
@@ -173,8 +201,13 @@ async def get_all_systems_cpu_info() -> List[Dict[str, Any]]:
                               fetching system list fails. Individual system CPU fetch
                               failures will result in empty 'cpu_info' for that system.
     """
+
+    log_string = "Get CPU info for all systems"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
     all_systems_cpu_data = []
-    active_systems = await get_list_of_active_systems() # Calls your existing tool
+    active_systems = await get_list_of_active_systems(ctx) # Calls your existing tool
 
     if not active_systems:
         print("Warning: No active systems found or failed to retrieve system list.")
@@ -189,7 +222,7 @@ async def get_all_systems_cpu_info() -> List[Dict[str, Any]]:
             continue
 
         print(f"Fetching CPU info for system: {system_name} (ID: {system_id})")
-        cpu_info = await get_cpu_of_a_system(system_id) # Calls your other existing tool
+        cpu_info = await get_cpu_of_a_system(system_id, ctx) # Calls your other existing tool
 
         all_systems_cpu_data.append({
             'system_name': system_name,
@@ -199,7 +232,8 @@ async def get_all_systems_cpu_info() -> List[Dict[str, Any]]:
 
     return all_systems_cpu_data
 
-async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str, system_id: int, list_cves_path: str) -> List[str]:
+async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str, system_id: int, 
+                                  list_cves_path: str, ctx: Context) -> List[str]:
     """
     Internal helper to fetch CVEs for a given erratum advisory name.
 
@@ -212,6 +246,11 @@ async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str,
     Returns:
         List[str]: A list of CVE identifier strings. Returns an empty list on failure or if no CVEs are found.
     """
+
+    log_string = f"Fetching CVEs for advisory {advisory_name}"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
     if not advisory_name:
         print(f"Warning: advisory_name is missing for system ID {system_id}, cannot fetch CVEs.")
         return []
@@ -239,7 +278,7 @@ async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str,
     return processed_cves
 
 @mcp.tool()
-async def check_system_updates(system_id: int) -> Dict[str, Any]:
+async def check_system_updates(system_id: int, ctx: Context) -> Dict[str, Any]:
     """
     Checks if a specific system in the Uyuni server has pending updates (relevant errata),
     including associated CVEs for each update.
@@ -258,6 +297,11 @@ async def check_system_updates(system_id: int) -> Dict[str, Any]:
                         Returns a dictionary with 'has_pending_updates': False and empty 'updates'
                         if the API call fails or the format is unexpected.
     """
+
+    log_string = f"Checking pending updates for system {system_id}"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
     default_error_response = {
         'system_id': system_id,
         'has_pending_updates': False,
@@ -302,7 +346,7 @@ async def check_system_updates(system_id: int) -> Dict[str, Any]:
             update_details['cves'] = []
             if advisory_name:
                 # Call the helper function to fetch CVEs
-                update_details['cves'] = await _fetch_cves_for_erratum(client, advisory_name, system_id, list_cves_api_path)
+                update_details['cves'] = await _fetch_cves_for_erratum(client, advisory_name, system_id, list_cves_api_path, ctx)
             
             enriched_updates_list.append(update_details)
         
@@ -314,7 +358,7 @@ async def check_system_updates(system_id: int) -> Dict[str, Any]:
         }
 
 @mcp.tool()
-async def check_all_systems_for_updates() -> List[Dict[str, Any]]:
+async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
     """
     Checks all active systems in the Uyuni server for pending updates.
 
@@ -333,8 +377,13 @@ async def check_all_systems_for_updates() -> List[Dict[str, Any]]:
                               Returns an empty list if no systems are found,
                               fetching the system list fails, or no systems have updates.
     """
+
+    log_string = "Checking all system for updates"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
     systems_with_updates = []
-    active_systems = await get_list_of_active_systems() # Get the list of all systems
+    active_systems = await get_list_of_active_systems(ctx) # Get the list of all systems
 
     if not active_systems:
         print("Warning: No active systems found or failed to retrieve system list.")
@@ -352,7 +401,7 @@ async def check_all_systems_for_updates() -> List[Dict[str, Any]]:
 
         print(f"Checking updates for system: {system_name} (ID: {system_id})")
         # Use the existing check_system_updates tool
-        update_check_result = await check_system_updates(system_id)
+        update_check_result = await check_system_updates(system_id, ctx)
 
         if update_check_result.get('has_pending_updates', False):
             # If the system has updates, add its info and update details to the result list
@@ -368,7 +417,7 @@ async def check_all_systems_for_updates() -> List[Dict[str, Any]]:
     return systems_with_updates
 
 @mcp.tool()
-async def schedule_apply_pending_updates_to_system(system_id: int, confirm: bool = False) -> str:
+async def schedule_apply_pending_updates_to_system(system_id: int, ctx: Context, confirm: bool = False) -> str:
     """
     Checks for pending updates on a system, schedules all of them to be applied,
     and returns the action ID of the scheduled task.
@@ -385,13 +434,16 @@ async def schedule_apply_pending_updates_to_system(system_id: int, confirm: bool
         str: The action url if updates were successfully scheduled.
              Otherwise, returns an empty string.
     """
-    print(f"Attempting to apply pending updates for system ID: {system_id}")
+
+    log_string = f"Attempting to apply pending updates for system ID: {system_id}"
+    logger.info(log_string)
+    await ctx.info(log_string)
 
     if not confirm:
         return f"CONFIRMATION REQUIRED: This will apply pending updates to the system {system_id}.  Do you confirm?"
 
     # 1. Use check_system_updates to get relevant errata
-    update_info = await check_system_updates(system_id)
+    update_info = await check_system_updates(system_id, ctx)
 
     if not update_info or not update_info.get('has_pending_updates'):
         print(f"No pending updates found for system ID {system_id}, or an error occurred while fetching update information.")
@@ -435,7 +487,7 @@ async def schedule_apply_pending_updates_to_system(system_id: int, confirm: bool
             return ""
 
 @mcp.tool()
-async def schedule_apply_specific_update(system_id: int, errata_id: int, confirm: bool = False) -> str:
+async def schedule_apply_specific_update(system_id: int, errata_id: int, ctx: Context, confirm: bool = False) -> str:
     """
     Schedules a specific update (erratum) to be applied to a system.
 
@@ -448,7 +500,10 @@ async def schedule_apply_specific_update(system_id: int, errata_id: int, confirm
         str: The action URL if the update was successfully scheduled.
              Otherwise, returns an empty string.
     """
-    print(f"Attempting to apply specific update (errata ID: {errata_id}) to system ID: {system_id}")
+
+    log_string = f"Attempting to apply specific update (errata ID: {errata_id}) to system ID: {system_id}"
+    logger.info(log_string)
+    await ctx.info(log_string)
 
     if not confirm:
         return f"CONFIRMATION REQUIRED: This will apply specific update (errata ID: {errata_id}) to the system {system_id}. Do you confirm?"
@@ -482,7 +537,7 @@ async def schedule_apply_specific_update(system_id: int, errata_id: int, confirm
             return ""
 
 @mcp.tool()
-async def get_systems_needing_security_update_for_cve(cve_identifier: str) -> List[Dict[str, Any]]:
+async def get_systems_needing_security_update_for_cve(cve_identifier: str, ctx: Context) -> List[Dict[str, Any]]:
     """
     Finds systems requiring a security update due to a specific CVE identifier.
 
@@ -503,6 +558,11 @@ async def get_systems_needing_security_update_for_cve(cve_identifier: str) -> Li
                               the CVE is not found, no systems are affected,
                               or an API error occurs.
     """
+
+    log_string = f"Getting systems that need to apply CVE {cve_identifier}"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
     affected_systems_map = {}  # Use a dict to store unique systems by ID {system_id: {details}}
 
     find_by_cve_path = '/rhn/manager/api/errata/findByCve'
@@ -577,7 +637,7 @@ async def get_systems_needing_security_update_for_cve(cve_identifier: str) -> Li
     return list(affected_systems_map.values())
 
 @mcp.tool()
-async def get_systems_needing_reboot() -> List[Dict[str, Any]]:
+async def get_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
     """
     Fetches a list of systems from the Uyuni server that require a reboot.
 
@@ -591,6 +651,11 @@ async def get_systems_needing_reboot() -> List[Dict[str, Any]]:
                               if the API call fails, the response format is unexpected,
                               or no systems require a reboot.
     """
+
+    log_string = "Fetch list of system that require a reboot."
+    logger.info(log_string)
+    await ctx.info(log_string)
+
     systems_needing_reboot_list = []
     list_reboot_path = '/rhn/manager/api/system/listSuggestedReboot'
 
@@ -622,7 +687,7 @@ async def get_systems_needing_reboot() -> List[Dict[str, Any]]:
     return systems_needing_reboot_list
 
 @mcp.tool()
-async def schedule_system_reboot(system_id: int, confirm: bool = False) -> str:
+async def schedule_system_reboot(system_id: int, ctx:Context, confirm: bool = False) -> str:
     """
     Schedules an immediate reboot for a specific system on the Uyuni server.
 
@@ -636,6 +701,11 @@ async def schedule_system_reboot(system_id: int, confirm: bool = False) -> str:
              e.g., "System reboot successfully scheduled. Action ID: 12345".
              Returns an empty string if scheduling fails or an error occurs.
     """
+
+    log_string = f"Schedule system reboot for system {system_id}"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
     schedule_reboot_path = '/rhn/manager/api/system/scheduleReboot'
 
     # Generate current time in ISO 8601 format (UTC)
@@ -669,7 +739,7 @@ async def schedule_system_reboot(system_id: int, confirm: bool = False) -> str:
             return ""
 
 @mcp.tool()
-async def list_all_scheduled_actions() -> List[Dict[str, Any]]:
+async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
     """
     Fetches a list of all scheduled actions from the Uyuni server.
 
@@ -684,6 +754,11 @@ async def list_all_scheduled_actions() -> List[Dict[str, Any]]:
                               Returns an empty list if the API call fails,
                               the response format is unexpected, or no actions are found.
     """
+
+    log_string = "Listing all scheduled actions"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
     list_actions_path = '/rhn/manager/api/schedule/listAllActions'
     processed_actions_list = []
 
@@ -711,7 +786,7 @@ async def list_all_scheduled_actions() -> List[Dict[str, Any]]:
     return processed_actions_list
 
 @mcp.tool()
-async def cancel_action(action_id: int, confirm: bool = False) -> str:
+async def cancel_action(action_id: int, ctx: Context, confirm: bool = False) -> str:
     """
     Cancels a specified action on the Uyuni server.
 
@@ -728,6 +803,11 @@ async def cancel_action(action_id: int, confirm: bool = False) -> str:
              Returns an error message if the cancellation failed for any reason,
              e.g., "Failed to cancel action 123. Please check the action ID and server logs."
     """
+
+    log_string = f"Cancel action {action_id}"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
     cancel_actions_path = '/rhn/manager/api/schedule/cancelActions'
  
     if not isinstance(action_id, int): # Basic type check, though FastMCP might handle this
@@ -753,22 +833,14 @@ async def cancel_action(action_id: int, confirm: bool = False) -> str:
             return f"Failed to cancel action: {action_id}. The API did not return success (expected 1, got {api_result}). Check server logs for details."
 
 def main_cli():
-    global url, username, password # Declare intent to modify globals
 
-    # Initialize global Uyuni connection details from environment variables
-    # This needs to be done before any mcp.tool function is called by the mcp server.
-    url_env = os.environ.get('UYUNI_SERVER')
-    if not url_env:
-        print("Error: UYUNI_SERVER environment variable not set.", file=sys.stderr)
-        sys.exit(1)
-    url = 'https://' + url_env
+    logger.info("Running Uyuni MCP server.")
 
-    try:
-        username = os.environ['UYUNI_USER']
-        password = os.environ['UYUNI_PASS']
-    except KeyError as e:
-        print(f"Error: Environment variable {e} not set.", file=sys.stderr)
-        sys.exit(1)
-
-    # Initialize and run the server
-    mcp.run(transport='stdio')
+    if UYUNI_TRANSPORT == Transport.HTTP.value:
+        mcp.run(transport="streamable-http")
+    elif UYUNI_TRANSPORT == Transport.STDIO.value:
+        mcp.run(transport="stdio")
+    else:
+        # Defaults to stdio transport anyway 
+        # But I explicitety state it here for clarity
+        mcp.run(transport="stdio")
