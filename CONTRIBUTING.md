@@ -153,3 +153,30 @@ async def my_tool(some_input: str, ctx: Context) -> str:
 
     return "Operation complete."
 ```
+
+### Handle Expected Timeouts for Long-Running Actions
+
+Some API calls, like bootstrapping a new system (add_system), can take longer than a typical HTTP timeout. In these cases, a timeout is not a failure but an expected outcome, indicating that a background process has started. The tool should handle this gracefully and inform the user.  
+
+A good pattern for this is:  
+
+1. Define a sentinel object: Create a unique object (e.g., TIMEOUT_HAPPENED = object()) to serve as a special return value. 
+2. Add an expect_timeout parameter to the API helper: In your helper function (like _call_uyuni_api), add a boolean parameter (e.g., expect_timeout=False). 
+3. Conditionally catch httpx.TimeoutException: Inside the helper, if expect_timeout is True, catch the httpx.TimeoutException, log it as an informational event, and return your sentinel object. If False, treat it as a regular error/warning. 
+4. Check for the sentinel in the tool: In the tool function (e.g., add_system), call the helper with expect_timeout=True. Then, check if the result is the sentinel object. If it is, return a user-friendly message explaining that the process has started and may take some time.  
+
+Example from _call_uyuni_api and add_system: 
+```python 
+# In server.py 
+TIMEOUT_HAPPENED = object() 
+
+# ... inside the add_system tool ... 
+api_result = await _call_uyuni_api(..., expect_timeout=True) 
+if api_result is TIMEOUT_HAPPENED:
+
+return "System addition process started. It may take some time..." 
+```
+
+### Design for Predictable Failure and Composition
+
+Avoid Raising Exceptions: LLMs do not handle exceptions well. A tool that raises an unhandled exception can break the conversational flow. Instead of raising an error (e.g., for a 404 Not Found), have the tool return a predictable "empty" or "failed" value. For example, return an empty list ([]), an empty dictionary ({}), or a dictionary that clearly indicates failure, like {'has_pending_updates': False, 'updates': []}.
