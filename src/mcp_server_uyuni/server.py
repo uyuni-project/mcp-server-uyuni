@@ -14,14 +14,12 @@
 
 import os
 import sys
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Optional, Union
 import httpx
 from datetime import datetime, timezone
 
-
 from mcp.server.fastmcp import FastMCP, Context
 from mcp import LoggingLevel, ServerSession
-
 from mcp_server_uyuni.logging_config import get_logger, Transport
 
 mcp = FastMCP("mcp-server-uyuni")
@@ -149,36 +147,94 @@ async def get_list_of_active_systems(ctx: Context) -> List[Dict[str, Any]]:
 
     return filtered_systems
 
+async def _resolve_system_id(system_identifier: Union[str, int]) -> Optional[str]:
+    """
+    Resolves a system identifier, which can be a name or an ID, to a numeric system ID string.
+ 
+    If the identifier is numeric (or a string of digits), it's returned as a string.
+    If it's a non-numeric string, it's treated as a name and the ID is looked up via the system.getId API endpoint.
+ 
+    Args:
+        system_identifier: The system name (e.g., "buildhost") or system ID (e.g., 1000010000).
+    Returns:
+        Optional[str]: The numeric system ID as a string if found, otherwise None.
+    """
+    id_str = str(system_identifier)
+    if id_str.isdigit():
+        return id_str
+ 
+    # If it's not a digit string, it must be a name.
+    system_name = id_str
+    logger.info(f"System identifier '{system_name}' is not numeric, treating as a name and looking up ID.")
+ 
+    async with httpx.AsyncClient(verify=False) as client:
+        # The result from system.getId is an array of system structs
+        systems_list = await _call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path="/rhn/manager/api/system/getId",
+            params={'name': system_name},
+            error_context=f"resolving system ID for name '{system_name}'",
+            default_on_error=[]  # Return an empty list on failure
+        )
+ 
+    if not isinstance(systems_list, list):
+        logger.error(f"Expected a list of systems for name '{system_name}', but received: {type(systems_list)}")
+        return None
+ 
+    if not systems_list:
+        logger.warning(f"System with name '{system_name}' not found.")
+        return None
+ 
+    if len(systems_list) > 1:
+        logger.error(f"Multiple systems found with name '{system_name}'.")
+        return None
+ 
+    first_system = systems_list[0]
+    if isinstance(first_system, dict) and 'id' in first_system:
+        resolved_id = str(first_system['id'])
+        logger.info(f"Found ID {resolved_id} for system name '{system_name}'.")
+        return resolved_id
+    else:
+        logger.error(f"System data for '{system_name}' is malformed. Expected a dict with 'id'. Got: {first_system}")
+        return None
+
 @mcp.tool()
-async def get_cpu_of_a_system(system_id: int, ctx: Context) -> Dict[str, Any]:
+async def get_cpu_of_a_system(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
+
     """Retrieves detailed CPU information for a specific system in the Uyuni server.
 
     Fetches CPU attributes such as model, core count, architecture, etc.
 
     Args:
-        system_id: The unique identifier of the system.
+        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
 
     Returns:
-        Dict[str, Any]: A dictionary containing the CPU attributes.
+        Dict[str, Any]: A dictionary containing the CPU attributes and the original system_identifier.
                         Returns an empty dictionary if the API call fails,
                         the response format is unexpected, or CPU data is not available.
     """
-
-    log_string = f"Getting CPU information of system with id {system_id}"
+    log_string = f"Getting CPU information of system with id {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
+    system_id = await _resolve_system_id(system_identifier)
+    if not system_id:
+        return {} # Helper function already logged the reason for failure.
 
     async with httpx.AsyncClient(verify=False) as client:
         cpu_data_result = await _call_uyuni_api(
             client=client,
             method="GET",
             api_path="/rhn/manager/api/system/getCpu",
-            params={'sid': str(system_id)},
-            error_context=f"fetching CPU data for system ID {system_id}",
+            params={'sid': system_id},
+            error_context=f"fetching CPU data for system {system_identifier}",
             default_on_error={}
         )
 
     if isinstance(cpu_data_result, dict):
+        # Only add the identifier if the API returned actual data
+        if cpu_data_result:
+            cpu_data_result['system_identifier'] = system_identifier
         return cpu_data_result
     # If not a dict but not the default empty dict, log it
     elif cpu_data_result:
@@ -222,7 +278,7 @@ async def get_all_systems_cpu_info(ctx: Context) -> List[Dict[str, Any]]:
             continue
 
         print(f"Fetching CPU info for system: {system_name} (ID: {system_id})")
-        cpu_info = await get_cpu_of_a_system(system_id, ctx) # Calls your other existing tool
+        cpu_info = await get_cpu_of_a_system(str(system_id), ctx) # Calls your other existing tool
 
         all_systems_cpu_data.append({
             'system_name': system_name,
@@ -278,17 +334,18 @@ async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str,
     return processed_cves
 
 @mcp.tool()
-async def check_system_updates(system_id: int, ctx: Context) -> Dict[str, Any]:
+async def check_system_updates(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
+
     """
     Checks if a specific system in the Uyuni server has pending updates (relevant errata),
     including associated CVEs for each update.
 
     Args:
-        system_id: The unique identifier of the system.
+        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
 
     Returns:
         Dict[str, Any]: A dictionary containing:
-                        - 'system_id' (int): The ID of the system checked.
+                        - 'system_identifier' (Union[str, int]): The original system identifier used in the request.
                         - 'has_pending_updates' (bool): True if there are pending updates, False otherwise.
                         - 'update_count' (int): The number of pending updates.
                         - 'updates' (List[Dict[str, Any]]): A list of pending update details.
@@ -297,17 +354,20 @@ async def check_system_updates(system_id: int, ctx: Context) -> Dict[str, Any]:
                         Returns a dictionary with 'has_pending_updates': False and empty 'updates'
                         if the API call fails or the format is unexpected.
     """
-
-    log_string = f"Checking pending updates for system {system_id}"
+    log_string = f"Checking pending updates for system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
-
+    system_id = await _resolve_system_id(system_identifier)
     default_error_response = {
-        'system_id': system_id,
+        'system_identifier': system_identifier,
         'has_pending_updates': False,
         'update_count': 0,
         'updates': []
     }
+    if not system_id:
+        # Return a structure consistent with the success response, but indicating failure.
+        return default_error_response
+
     list_cves_api_path = '/rhn/manager/api/errata/listCves'
 
     async with httpx.AsyncClient(verify=False) as client:
@@ -315,8 +375,8 @@ async def check_system_updates(system_id: int, ctx: Context) -> Dict[str, Any]:
             client=client,
             method="GET",
             api_path="/rhn/manager/api/system/getRelevantErrata",
-            params={'sid': str(system_id)},
-            error_context=f"checking updates for system ID {system_id}",
+            params={'sid': system_id},
+            error_context=f"checking updates for system {system_identifier}",
             default_on_error=None # Distinguish API error from empty list
         )
 
@@ -324,7 +384,7 @@ async def check_system_updates(system_id: int, ctx: Context) -> Dict[str, Any]:
             return default_error_response
         
         if not isinstance(updates_list_from_api, list):
-            print(f"Warning: Expected a list of updates for system ID {system_id}, but received: {type(updates_list_from_api)}")
+            print(f"Warning: Expected a list of updates for system {system_identifier}, but received: {type(updates_list_from_api)}")
             return default_error_response
 
         enriched_updates_list = []
@@ -346,12 +406,12 @@ async def check_system_updates(system_id: int, ctx: Context) -> Dict[str, Any]:
             update_details['cves'] = []
             if advisory_name:
                 # Call the helper function to fetch CVEs
-                update_details['cves'] = await _fetch_cves_for_erratum(client, advisory_name, system_id, list_cves_api_path, ctx)
-            
+                update_details['cves'] = await _fetch_cves_for_erratum(client, advisory_name, int(system_id), list_cves_api_path, ctx)
+
             enriched_updates_list.append(update_details)
-        
+
         return {
-            'system_id': system_id,
+            'system_identifier': system_identifier,
             'has_pending_updates': len(enriched_updates_list) > 0,
             'update_count': len(enriched_updates_list),
             'updates': enriched_updates_list
@@ -417,7 +477,8 @@ async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
     return systems_with_updates
 
 @mcp.tool()
-async def schedule_apply_pending_updates_to_system(system_id: int, ctx: Context, confirm: bool = False) -> str:
+async def schedule_apply_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context, confirm: bool = False) -> str:
+
     """
     Checks for pending updates on a system, schedules all of them to be applied,
     and returns the action ID of the scheduled task.
@@ -427,72 +488,76 @@ async def schedule_apply_pending_updates_to_system(system_id: int, ctx: Context,
     endpoint to apply all found errata.
 
     Args:
-        system_id: The unique identifier of the system.
+        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
         confirm: False by default. Only set confirm to True if the user has explicetely confirmed. Ask the user for confirmation.
 
     Returns:
         str: The action url if updates were successfully scheduled.
              Otherwise, returns an empty string.
     """
-
-    log_string = f"Attempting to apply pending updates for system ID: {system_id}"
+    log_string = f"Attempting to apply pending updates for system ID: {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
 
     if not confirm:
-        return f"CONFIRMATION REQUIRED: This will apply pending updates to the system {system_id}.  Do you confirm?"
+        return f"CONFIRMATION REQUIRED: This will apply pending updates to the system {system_identifier}.  Do you confirm?"
 
     # 1. Use check_system_updates to get relevant errata
-    update_info = await check_system_updates(system_id, ctx)
+    update_info = await check_system_updates(system_identifier, ctx)
 
     if not update_info or not update_info.get('has_pending_updates'):
-        print(f"No pending updates found for system ID {system_id}, or an error occurred while fetching update information.")
+        print(f"No pending updates found for system {system_identifier}, or an error occurred while fetching update information.")
         return ""
 
     errata_list = update_info.get('updates', [])
     if not errata_list:
         # This case should ideally be covered by 'has_pending_updates' being false,
         # but good to have a safeguard.
-        print(f"Update check for system ID {system_id} indicated updates, but the updates list is empty.")
+        print(f"Update check for system {system_identifier} indicated updates, but the updates list is empty.")
         return ""
 
     errata_ids = [erratum.get('update_id') for erratum in errata_list if erratum.get('update_id') is not None]
 
     if not errata_ids:
-        print(f"Could not extract any valid errata IDs for system ID {system_id} from the update information: {errata_list}")
+        print(f"Could not extract any valid errata IDs for system {system_identifier} from the update information: {errata_list}")
         return ""
 
-    print(f"Found {len(errata_ids)} errata to apply for system ID {system_id}. IDs: {errata_ids}")
+    system_id = await _resolve_system_id(system_identifier)
+    if not system_id:
+        return "" # Helper function already logged the reason for failure.
+
+    print(f"Found {len(errata_ids)} errata to apply for system {system_identifier} (ID: {system_id}). IDs: {errata_ids}")
 
     # 2. Schedule apply errata using the API endpoint
     async with httpx.AsyncClient(verify=False) as client:
-        payload = {"sid": system_id, "errataIds": errata_ids}
+        payload = {"sid": int(system_id), "errataIds": errata_ids}
         api_result = await _call_uyuni_api(
             client=client,
             method="POST",
             api_path="/rhn/manager/api/system/scheduleApplyErrata",
             json_body=payload,
-            error_context=f"scheduling errata application for system ID {system_id}",
+            error_context=f"scheduling errata application for system {system_identifier}",
             default_on_error=None # Helper will return None on error
         )
 
         if isinstance(api_result, list) and api_result and isinstance(api_result[0], int):
             action_id = api_result[0]
-            print(f"Successfully scheduled action {action_id} to apply {len(errata_ids)} errata to system ID {system_id}.")
+            print(f"Successfully scheduled action {action_id} to apply {len(errata_ids)} errata to system {system_identifier}.")
             return "Update successfully scheduled at " +url + "/rhn/schedule/ActionDetails.do?aid=" + str(action_id)
         else:
             # Error message already printed by _call_uyuni_api if it returned None
             if api_result is not None: # Log if result is not None but also not the expected format
-                 print(f"Failed to schedule errata for system ID {system_id} or unexpected API response format. Result: {api_result}")
+                 print(f"Failed to schedule errata for system {system_identifier} or unexpected API response format. Result: {api_result}")
             return ""
 
 @mcp.tool()
-async def schedule_apply_specific_update(system_id: int, errata_id: int, ctx: Context, confirm: bool = False) -> str:
+async def schedule_apply_specific_update(system_identifier: Union[str, int], errata_id: int, ctx: Context, confirm: bool = False) -> str:
+
     """
     Schedules a specific update (erratum) to be applied to a system.
 
     Args:
-        system_id: The unique identifier of the system.
+        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
         errata_id: The unique identifier of the erratum (also referred to as update ID) to be applied.
         confirm: False by default. Only set confirm to True if the user has explicetely confirmed. Ask the user for confirmation.
 
@@ -500,29 +565,33 @@ async def schedule_apply_specific_update(system_id: int, errata_id: int, ctx: Co
         str: The action URL if the update was successfully scheduled.
              Otherwise, returns an empty string.
     """
-
-    log_string = f"Attempting to apply specific update (errata ID: {errata_id}) to system ID: {system_id}"
+    log_string = f"Attempting to apply specific update (errata ID: {errata_id}) to system ID: {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
+    system_id = await _resolve_system_id(system_identifier)
+    if not system_id:
+        return "" # Helper function already logged the reason for failure.
+
+    print(f"Attempting to apply specific update (errata ID: {errata_id}) to system: {system_identifier}")
 
     if not confirm:
-        return f"CONFIRMATION REQUIRED: This will apply specific update (errata ID: {errata_id}) to the system {system_id}. Do you confirm?"
+        return f"CONFIRMATION REQUIRED: This will apply specific update (errata ID: {errata_id}) to the system {system_identifier}. Do you confirm?"
 
     async with httpx.AsyncClient(verify=False) as client:
         # The API expects a list of errata IDs, even if it's just one.
-        payload = {"sid": system_id, "errataIds": [errata_id]}
+        payload = {"sid": int(system_id), "errataIds": [errata_id]}
         api_result = await _call_uyuni_api(
             client=client,
             method="POST",
             api_path="/rhn/manager/api/system/scheduleApplyErrata",
             json_body=payload,
-            error_context=f"scheduling specific update (errata ID: {errata_id}) for system ID {system_id}",
+            error_context=f"scheduling specific update (errata ID: {errata_id}) for system {system_identifier}",
             default_on_error=None # Helper returns None on error
         )
 
         if isinstance(api_result, list) and api_result and isinstance(api_result[0], int):
             action_id = api_result[0]
-            success_message = f"Update (errata ID: {errata_id}) successfully scheduled for system ID {system_id}. Action URL: {url}/rhn/schedule/ActionDetails.do?aid={action_id}"
+            success_message = f"Update (errata ID: {errata_id}) successfully scheduled for system {system_identifier}. Action URL: {url}/rhn/schedule/ActionDetails.do?aid={action_id}"
             print(success_message)
             return success_message
         # Some schedule APIs might return int directly in result (though scheduleApplyErrata usually returns a list)
@@ -533,7 +602,7 @@ async def schedule_apply_specific_update(system_id: int, errata_id: int, ctx: Co
             return success_message
         else:
             if api_result is not None: # Log if not None but also not expected format
-                print(f"Failed to schedule specific update (errata ID: {errata_id}) for system ID {system_id} or unexpected API result format. Result: {api_result}")
+                print(f"Failed to schedule specific update (errata ID: {errata_id}) for system {system_identifier} or unexpected API result format. Result: {api_result}")
             return ""
 
 @mcp.tool()
@@ -687,41 +756,44 @@ async def get_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
     return systems_needing_reboot_list
 
 @mcp.tool()
-async def schedule_system_reboot(system_id: int, ctx:Context, confirm: bool = False) -> str:
+async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context, confirm: bool = False) -> str:
+
     """
     Schedules an immediate reboot for a specific system on the Uyuni server.
 
     Args:
-        system_id: The unique identifier (sid) of the system to be rebooted.
+        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
         confirm: False by default. Only set confirm to True if the user has explicetely confirmed. Ask the user for confirmation.
 
     The reboot is scheduled to occur as soon as possible (effectively "now").
     Returns:
         str: A message indicating the action ID if the reboot was successfully scheduled,
-             e.g., "System reboot successfully scheduled. Action ID: 12345".
+             e.g., "System reboot successfully scheduled. Action URL: ...".
              Returns an empty string if scheduling fails or an error occurs.
     """
-
-    log_string = f"Schedule system reboot for system {system_id}"
+    log_string = f"Schedule system reboot for system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
+    system_id = await _resolve_system_id(system_identifier)
+    if not system_id:
+        return "" # Helper function already logged the reason for failure.
+
+    if not confirm:
+        return f"CONFIRMATION REQUIRED: This will reboot system {system_identifier}. Do you confirm?"
 
     schedule_reboot_path = '/rhn/manager/api/system/scheduleReboot'
 
     # Generate current time in ISO 8601 format (UTC)
     now_iso = datetime.now(timezone.utc).isoformat()
 
-    if not confirm:
-        return f"CONFIRMATION REQUIRED: This will reboot system {system_id}. Do you confirm?"
-
     async with httpx.AsyncClient(verify=False) as client:
-        payload = {"sid": system_id, "earliestOccurrence": now_iso}
+        payload = {"sid": int(system_id), "earliestOccurrence": now_iso}
         api_result = await _call_uyuni_api(
             client=client,
             method="POST",
             api_path=schedule_reboot_path,
             json_body=payload,
-            error_context=f"scheduling reboot for system ID {system_id}",
+            error_context=f"scheduling reboot for system {system_identifier}",
             default_on_error=None # Helper returns None on error
         )
 
@@ -735,7 +807,7 @@ async def schedule_system_reboot(system_id: int, ctx:Context, confirm: bool = Fa
         else:
             # Error message already printed by _call_uyuni_api if it returned None
             if api_result is not None: # Log if result is not None but also not an int
-                print(f"Failed to schedule reboot for system ID {system_id} or unexpected API result format. Result: {api_result}")
+                print(f"Failed to schedule reboot for system {system_identifier} or unexpected API result format. Result: {api_result}")
             return ""
 
 @mcp.tool()
