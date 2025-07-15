@@ -406,8 +406,9 @@ async def check_system_updates(system_identifier: Union[str, int], ctx: Context)
             update_details['cves'] = []
             if advisory_name:
                 # Call the helper function to fetch CVEs
-                update_details['cves'] = await _fetch_cves_for_erratum(client, advisory_name, int(system_id), list_cves_api_path, ctx)          
+                update_details['cves'] = await _fetch_cves_for_erratum(client, advisory_name, int(system_id), list_cves_api_path, ctx)
             enriched_updates_list.append(update_details)
+
         return {
             'system_identifier': system_identifier,
             'has_pending_updates': len(enriched_updates_list) > 0,
@@ -459,7 +460,6 @@ async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
 
         print(f"Checking updates for system: {system_name} (ID: {system_id})")
         # Use the existing check_system_updates tool
-        update_check_result = await check_system_updates(str(system_id), ctx)
         update_check_result = await check_system_updates(system_id, ctx)
 
         if update_check_result.get('has_pending_updates', False):
@@ -495,14 +495,13 @@ async def schedule_apply_pending_updates_to_system(system_identifier: Union[str,
     """
     log_string = f"Attempting to apply pending updates for system ID: {system_identifier}"
     logger.info(log_string)
-    await ctx.info(log_string)=======
+    await ctx.info(log_string)
 
     if not confirm:
         return f"CONFIRMATION REQUIRED: This will apply pending updates to the system {system_identifier}.  Do you confirm?"
 
     # 1. Use check_system_updates to get relevant errata
     update_info = await check_system_updates(system_identifier, ctx)
-    update_info = await check_system_updates(system_id, ctx)
 
     if not update_info or not update_info.get('has_pending_updates'):
         print(f"No pending updates found for system {system_identifier}, or an error occurred while fetching update information.")
