@@ -20,13 +20,12 @@ Model Context Protocol Server for Uyuni Server API.
 
 ## Usage
 
-You need `uv` installed. See https://docs.astral.sh/uv
+There are two main ways to run the `mcp-server-uyuni`: using the pre-built Docker container or running it locally with `uv`. Both methods require a `credentials` file.
 
-Once you have `uv`, install the dependencies with:
+### Credentials File
 
-`uv sync`
+Before running the server, you need to create a `credentials` file. You can place it anywhere, but you must provide the correct path to it when running the server.
 
-You need to create the `.venv/credentials` with a content like this:
 
 ```
 UYUNI_SERVER=192.168.1.124:8443
@@ -34,18 +33,19 @@ UYUNI_USER=admin
 UYUNI_PASS=admin
 ```
 
-Replace the values by the ones that make sense for you.
+Replace the values with your Uyuni server details. **This file contains sensitive information and should not be committed to version control.**
 
-Then, you can use this command with an `mcp-client`:
-
-`uv run --env-file=.venv/credentials --directory PATH OF THIS CHECKOUT mcp-server-uyuni`
+Alternatively, you can also set environment variables instead of using a file.
 
 ## Debug with mcp inspect
 
-You can run
+You can run (docker option)
 
-`npx @modelcontextprotocol/inspector uv run --env-file=.venv/credentials --directory PATH OF THIS CHECKOUT mcp-server-uyuni`
+`npx @modelcontextprotocol/inspector docker run -i --rm --env-file /path/to/your/credentials ghcr.io/uyuni-project/mcp-server-uyuni:latest`
 
+or you can run (uv option)
+
+`npx @modelcontextprotocol/inspector uv run --env-file=.venv/credentials --directory . mcp-server-uyuni`
 
 ## Use with Open WebUI
 
@@ -69,26 +69,79 @@ For gemini, use the URL https://generativelanguage.googleapis.com/v1beta/openai 
 
 ### Setup Open WebUI MCP Support
 
-You need to create the `.venv/credentials` with a content like this:
+First, ensure you have your `credentials` file ready as described in the Usage section.
 
-```
-UYUNI_SERVER=192.168.1.124:8443
-UYUNI_USER=admin
-UYUNI_PASS=admin
-```
+Then, you need a `config.json` for the MCP to OpenAPI proxy server.
 
-Then, you need a `config.json` with a content like this. Replace the values by the ones that make sense for you.
+### Option 1: Running with Docker (Recommended)
 
-```
+This is the easiest method for deployment. Pre-built container images are available on the GitHub Container Registry.
+
+ Replace `/path/to/your/credentials` with the absolute path to your `credentials` file. Replace `VERSION` with the desired release tag (e.g., `v0.2.1`) or use `latest` for the most recent build from the `main` branch.
+
+```json
 {
   "mcpServers": {
     "mcp-server-uyuni": {
-      "command": "uv",
-      "args": ["run", "--env-file=PATH OF THIS CHECKOUT/.venv/credentials","--directory","PATH OF THIS CHECKOUT","mcp-server-uyuni]
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "--env-file", "/path/to/your/credentials",
+        "ghcr.io/uyuni-project/mcp-server-uyuni:VERSION"
+      ]
     }
   }
 }
 ```
+
+Alternatively, you can use environment variables instead of a file.
+
+```json
+{
+  "mcpServers": {
+    "mcp-server-uyuni": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-e", "UYUNI_SERVER=192.168.1.124:8443",
+        "-e", "UYUNI_USER=admin",
+        "-e", "UYUNI_PASS=admin",
+        "ghcr.io/uyuni-project/mcp-server-uyuni:VERSION"
+      ]
+    }
+  }
+}
+```
+
+### Option 2: Running Locally with `uv`
+
+This method is ideal for development.
+
+1.  **Install `uv`:** See https://docs.astral.sh/uv
+2.  **Install dependencies:**
+    ```bash
+    uv sync
+    ```
+3.  Replace `/path/to/your/credentials` with the absolute path to your `credentials` file.
+
+```json
+{
+  "mcpServers": {
+    "mcp-server-uyuni": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--env-file", "/path/to/your/credentials",
+        "--directory", ".",
+        "mcp-server-uyuni"
+      ]
+    }
+  }
+}
+```
+
+### Start the MCP to OpenAPI proxy server
+
 
 Then, you can start the Model Context Protocol to Open API proxy server:
 
@@ -96,7 +149,7 @@ Then, you can start the Model Context Protocol to Open API proxy server:
 uvx mcpo --port 9000  --config ./config.json
 ```
 
-## Add the tool
+### Add the tool
 
 And then you can add the tool to the Open Web UI. See https://docs.openwebui.com/openapi-servers/open-webui#step-2-connect-tool-server-in-open-webui .  
 
@@ -106,14 +159,14 @@ Note the url should be http://localhost/mcp-server-uyuni as explained in https:/
 ![OpenWeb UI with MCP Support with GPT 4 model](docs/example_openwebui_gpt.png)
 ![OpenWeb UI with MCP Support with Gemini 2.0 flash model](docs/example_openwebui_gemini.png)
 
-## Build
+## Local Development Build
 
-Docker build:
-```
+To build the Docker image locally for development or testing purposes:
+```bash
 docker build -t  mcp-server-uyuni .
 ```
 
-Then, instead of using `uv run` you can use `docker run -i --rm  --env-file .venv/credentials mcp-server-uyuni` at any of the mcp-client configurations explained above.
+Then, you can use `docker run -i --rm  --env-file .venv/credentials mcp-server-uyuni` at any of the mcp-client configurations explained above.
 
 ## Release Process
 
