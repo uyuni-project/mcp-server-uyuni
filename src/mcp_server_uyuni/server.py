@@ -181,7 +181,7 @@ async def _resolve_system_id(system_identifier: Union[str, int]) -> Optional[str
         )
  
     if not isinstance(systems_list, list):
-        logger.warning(f"Expected a list of systems for name '{system_name}', but received: {type(systems_list)}")
+        logger.error(f"Expected a list of systems for name '{system_name}', but received: {type(systems_list)}")
         return None
  
     if not systems_list:
@@ -189,7 +189,8 @@ async def _resolve_system_id(system_identifier: Union[str, int]) -> Optional[str
         return None
  
     if len(systems_list) > 1:
-        logger.warning(f"Multiple systems found with name '{system_name}'. Using the first one.")
+        logger.error(f"Multiple systems found with name '{system_name}'.")
+        return None
  
     first_system = systems_list[0]
     if isinstance(first_system, dict) and 'id' in first_system:
@@ -197,7 +198,7 @@ async def _resolve_system_id(system_identifier: Union[str, int]) -> Optional[str
         logger.info(f"Found ID {resolved_id} for system name '{system_name}'.")
         return resolved_id
     else:
-        logger.warning(f"System data for '{system_name}' is malformed. Expected a dict with 'id'. Got: {first_system}")
+        logger.error(f"System data for '{system_name}' is malformed. Expected a dict with 'id'. Got: {first_system}")
         return None
 
 @mcp.tool()
@@ -357,21 +358,16 @@ async def check_system_updates(system_identifier: Union[str, int], ctx: Context)
     logger.info(log_string)
     await ctx.info(log_string)
     system_id = await _resolve_system_id(system_identifier)
-    if not system_id:
-        # Return a structure consistent with the success response, but indicating failure.
-        return {
-            'system_identifier': system_identifier,
-            'has_pending_updates': False,
-            'update_count': 0,
-            'updates': []
-        }
-
     default_error_response = {
         'system_identifier': system_identifier,
         'has_pending_updates': False,
         'update_count': 0,
         'updates': []
     }
+    if not system_id:
+        # Return a structure consistent with the success response, but indicating failure.
+        return default_error_response
+
     list_cves_api_path = '/rhn/manager/api/errata/listCves'
 
     async with httpx.AsyncClient(verify=False) as client:
