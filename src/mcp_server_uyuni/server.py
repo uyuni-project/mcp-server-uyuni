@@ -18,10 +18,8 @@ from typing import Any, List, Dict, Optional, Union
 import httpx
 from datetime import datetime, timezone
 
-
 from mcp.server.fastmcp import FastMCP, Context
 from mcp import LoggingLevel, ServerSession
-
 from mcp_server_uyuni.logging_config import get_logger, Transport
 
 mcp = FastMCP("mcp-server-uyuni")
@@ -203,6 +201,7 @@ async def _resolve_system_id(system_identifier: Union[str, int]) -> Optional[str
 
 @mcp.tool()
 async def get_cpu_of_a_system(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
+
     """Retrieves detailed CPU information for a specific system in the Uyuni server.
 
     Fetches CPU attributes such as model, core count, architecture, etc.
@@ -336,6 +335,7 @@ async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str,
 
 @mcp.tool()
 async def check_system_updates(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
+
     """
     Checks if a specific system in the Uyuni server has pending updates (relevant errata),
     including associated CVEs for each update.
@@ -407,6 +407,7 @@ async def check_system_updates(system_identifier: Union[str, int], ctx: Context)
             if advisory_name:
                 # Call the helper function to fetch CVEs
                 update_details['cves'] = await _fetch_cves_for_erratum(client, advisory_name, int(system_id), list_cves_api_path, ctx)
+
             enriched_updates_list.append(update_details)
 
         return {
@@ -477,6 +478,7 @@ async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
 
 @mcp.tool()
 async def schedule_apply_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context, confirm: bool = False) -> str:
+
     """
     Checks for pending updates on a system, schedules all of them to be applied,
     and returns the action ID of the scheduled task.
@@ -550,6 +552,7 @@ async def schedule_apply_pending_updates_to_system(system_identifier: Union[str,
 
 @mcp.tool()
 async def schedule_apply_specific_update(system_identifier: Union[str, int], errata_id: int, ctx: Context, confirm: bool = False) -> str:
+
     """
     Schedules a specific update (erratum) to be applied to a system.
 
@@ -754,6 +757,7 @@ async def get_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
 
 @mcp.tool()
 async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context, confirm: bool = False) -> str:
+
     """
     Schedules an immediate reboot for a specific system on the Uyuni server.
 
