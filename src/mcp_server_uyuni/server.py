@@ -152,10 +152,10 @@ async def get_list_of_active_systems(ctx: Context) -> List[Dict[str, Any]]:
 async def _resolve_system_id(system_identifier: Union[str, int]) -> Optional[str]:
     """
     Resolves a system identifier, which can be a name or an ID, to a numeric system ID string.
-
-     If the identifier is numeric (or a string of digits), it's returned as a string.
-    If it's a non-numeric string, it's treated as a name and the ID is looked up.
-
+ 
+    If the identifier is numeric (or a string of digits), it's returned as a string.
+    If it's a non-numeric string, it's treated as a name and the ID is looked up via the system.getId API endpoint.
+ 
     Args:
         system_identifier: The system name (e.g., "buildhost") or system ID (e.g., 1000010000).
     Returns:
@@ -164,24 +164,41 @@ async def _resolve_system_id(system_identifier: Union[str, int]) -> Optional[str
     id_str = str(system_identifier)
     if id_str.isdigit():
         return id_str
-
+ 
     # If it's not a digit string, it must be a name.
     system_name = id_str
-    print(f"System identifier '{system_name}' is not numeric, treating as a name and looking up ID.")
-
-    active_systems = await get_list_of_active_systems()
-    if not active_systems:
-        print(f"Warning: Could not find system name '{system_name}' because the list of active systems is empty or could not be retrieved.")
+    logger.info(f"System identifier '{system_name}' is not numeric, treating as a name and looking up ID.")
+ 
+    async with httpx.AsyncClient(verify=False) as client:
+        # The result from system.getId is an array of system structs
+        systems_list = await _call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path="/rhn/manager/api/system/getId",
+            params={'name': system_name},
+            error_context=f"resolving system ID for name '{system_name}'",
+            default_on_error=[]  # Return an empty list on failure
+        )
+ 
+    if not isinstance(systems_list, list):
+        logger.warning(f"Expected a list of systems for name '{system_name}', but received: {type(systems_list)}")
         return None
-
-    for system in active_systems:
-        if system.get('system_name') == system_name:
-            resolved_id = str(system.get('system_id'))
-            print(f"Found ID {resolved_id} for system name '{system_name}'.")
-            return resolved_id
-
-    print(f"Warning: System with name '{system_name}' not found among active systems.")
-    return None
+ 
+    if not systems_list:
+        logger.warning(f"System with name '{system_name}' not found.")
+        return None
+ 
+    if len(systems_list) > 1:
+        logger.warning(f"Multiple systems found with name '{system_name}'. Using the first one.")
+ 
+    first_system = systems_list[0]
+    if isinstance(first_system, dict) and 'id' in first_system:
+        resolved_id = str(first_system['id'])
+        logger.info(f"Found ID {resolved_id} for system name '{system_name}'.")
+        return resolved_id
+    else:
+        logger.warning(f"System data for '{system_name}' is malformed. Expected a dict with 'id'. Got: {first_system}")
+        return None
 
 @mcp.tool()
 async def get_cpu_of_a_system(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
