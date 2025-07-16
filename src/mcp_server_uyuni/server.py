@@ -17,12 +17,16 @@ import sys
 from typing import Any, List, Dict, Optional, Union
 import httpx
 from datetime import datetime, timezone
+from pydantic import BaseModel
 
 from mcp.server.fastmcp import FastMCP, Context
-from mcp import LoggingLevel, ServerSession
+from mcp import LoggingLevel, ServerSession, types
 from mcp_server_uyuni.logging_config import get_logger, Transport
 
 mcp = FastMCP("mcp-server-uyuni")
+
+class ActivationKeySchema(BaseModel):
+    activation_key: str
 
 REQUIRED_VARS = [
     "UYUNI_SERVER",
@@ -657,8 +661,21 @@ async def add_system(
     logger.info(log_string)
     await ctx.info(log_string)
 
-    # Check for activation key
-    if not activation_key:
+    if ctx.session.check_client_capability(types.ClientCapabilities(elicitation=types.ElicitationCapability())):
+        # Check for activation key
+        if not activation_key:
+            logger.info("Activation key not provided, prompting user for input.")
+            result = await ctx.elicit(
+                "An activation key is required to add a new system.",
+                ActivationKeySchema,
+            )
+            if result.action == "accept":
+                activation_key = result.data.activation_key
+            elif result.action == "decline":
+                return "System addition declined because no activation key was provided."
+            else:  # 'cancel' or any other unhandled action
+                return "System addition cancelled."
+    elif not activation_key:  # Fallback if elicitation is not supported
         return "You need to provide an activation key."
 
     # Check if the system already exists
@@ -671,7 +688,7 @@ async def add_system(
             return message
 
     if not confirm:
-        return f"CONFIRMATION REQUIRED: This will add system {host} to Uyuni. Do you confirm?"
+        return f"CONFIRMATION REQUIRED: This will add system {host} with activation key {activation_key} to Uyuni. Do you confirm?"
 
     ssh_priv_key_raw = os.environ.get('UYUNI_SSH_PRIV_KEY')
     if not ssh_priv_key_raw:
