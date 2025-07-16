@@ -16,6 +16,7 @@ Model Context Protocol Server for Uyuni Server API.
 * schedule_system_reboot
 * cancel_action
 * list_all_scheduled_actions
+* list_activation_keys
 
 ## Usage
 

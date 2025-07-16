@@ -904,6 +904,41 @@ async def cancel_action(action_id: int, ctx: Context, confirm: bool = False) -> 
             # The _call_uyuni_api helper already prints detailed errors.
             return f"Failed to cancel action: {action_id}. The API did not return success (expected 1, got {api_result}). Check server logs for details."
 
+@mcp.tool()
+async def list_activation_keys() -> List[Dict[str, str]]:
+    """
+    Fetches a list of activation keys from the Uyuni server.
+
+    This tool retrieves all activation keys visible to the user and returns
+    a list containing only the key identifier and its description.
+
+    Returns:
+        List[Dict[str, str]]: A list of dictionaries, where each dictionary
+                              represents an activation key with 'key' and
+                              'description' fields. Returns an empty list
+                              if the API call fails, the response is not in
+                              the expected format, or no keys are found.
+    """
+    list_keys_path = '/rhn/manager/api/activationkey/listActivationKeys'
+
+    async with httpx.AsyncClient(verify=False) as client:
+        api_result = await _call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path=list_keys_path,
+            error_context="listing activation keys",
+            default_on_error=[]
+        )
+
+    filtered_keys = []
+    if isinstance(api_result, list):
+        for key_data in api_result:
+            if isinstance(key_data, dict):
+                filtered_keys.append({'key': key_data.get('key'), 'description': key_data.get('description')})
+            else:
+                print(f"Warning: Unexpected item format in activation key list: {key_data}")
+    return filtered_keys
+
 def main_cli():
 
     logger.info("Running Uyuni MCP server.")
