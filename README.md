@@ -11,6 +11,8 @@ Model Context Protocol Server for Uyuni Server API.
 * check_all_systems_for_updates
 * schedule_apply_pending_updates_to_system
 * schedule_apply_specific_update
+* add_system
+* remove_system
 * get_systems_needing_security_update_for_cve
 * get_systems_needing_reboot
 * schedule_system_reboot
@@ -31,9 +33,27 @@ Before running the server, you need to create a `credentials` file. You can plac
 UYUNI_SERVER=192.168.1.124:8443
 UYUNI_USER=admin
 UYUNI_PASS=admin
+UYUNI_SSH_PRIV_KEY="-----BEGIN OPENSSH PRIVATE KEY-----\n..."
+UYUNI_SSH_PRIV_KEY_PASS=""
 ```
 
 Replace the values with your Uyuni server details. **This file contains sensitive information and should not be committed to version control.**
+
+> [!NOTE]
+> **Formatting the SSH Private Key**
+>
+> The `UYUNI_SSH_PRIV_KEY` variable, used by the `add_system` tool, requires the entire private key as a single-line string. The newlines from the original key file must be replaced by the literal `\n` sequence.
+>
+> You can generate the correct format from your key file (e.g., `~/.ssh/id_rsa`) using the following command. You can then copy the output into your `credentials` file or environment variable.
+>
+> ```bash
+> awk 'NF {printf "%s\\n", $0}' ~/.ssh/id_rsa
+> ```
+>
+> To set it as an environment variable directly in your shell, run:
+> ```bash
+> export UYUNI_SSH_PRIV_KEY=$(awk 'NF {printf "%s\\n", $0}' ~/.ssh/id_rsa)
+> ```
 
 Alternatively, you can also set environment variables instead of using a file.
 

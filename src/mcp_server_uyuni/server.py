@@ -45,6 +45,9 @@ LOG_FILE_PATH = os.environ['LOG_FILE_PATH']
 
 logger = get_logger(log_file=LOG_FILE_PATH, transport=UYUNI_TRANSPORT)
 
+# Sentinel object to indicate an expected timeout for long-running actions
+TIMEOUT_HAPPENED = object()
+
 async def _call_uyuni_api(
     client: httpx.AsyncClient,
     method: str,
@@ -54,7 +57,8 @@ async def _call_uyuni_api(
     json_body: Dict[str, Any] = None,
     perform_login: bool = True,
     default_on_error: Any = None,
-    expected_result_key: str = 'result'
+    expected_result_key: str = 'result',
+    expect_timeout: bool = False
 ) -> Any:
     """
     Helper function to make authenticated API calls to Uyuni.
@@ -67,13 +71,13 @@ async def _call_uyuni_api(
             login_response = await client.post(UYUNI_SERVER + '/rhn/manager/api/login', json=login_data)
             login_response.raise_for_status()
         except httpx.HTTPStatusError as e:
-            print(f"HTTP error during login for {error_context}: {e.request.url} - {e.response.status_code} - {e.response.text}")
+            logger.error(f"HTTP error during login for {error_context}: {e.request.url} - {e.response.status_code} - {e.response.text}")
             return default_on_error
         except httpx.RequestError as e:
-            print(f"Request error during login for {error_context}: {e.request.url} - {e}")
+            logger.exception(f"Request error during login for {error_context}: {e.request.url} - {e}")
             return default_on_error
         except Exception as e:
-            print(f"An unexpected error occurred during login for {error_context}: {e}")
+            logger.exception(f"An unexpected error occurred during login for {error_context}: {e}")
             return default_on_error
 
     full_api_url = UYUNI_SERVER + api_path
@@ -81,11 +85,12 @@ async def _call_uyuni_api(
         if method.upper() == 'GET':
             response = await client.get(full_api_url, params=params)
         elif method.upper() == 'POST':
+            logger.info(f"POSTing to {full_api_url}")
             response = await client.post(full_api_url, json=json_body, params=params)
+            logger.info(f"POST response: {response.text}")
         else:
-            print(f"Unsupported HTTP method '{method}' for {error_context}.")
+            logger.info(f"Unsupported HTTP method '{method}' for {error_context}.")
             return default_on_error
-        
         response.raise_for_status()
         response_data = response.json()
 
@@ -93,20 +98,27 @@ async def _call_uyuni_api(
             if expected_result_key in response_data:
                 return response_data[expected_result_key]
             # If 'success' is true, but the expected_result_key is not there (e.g. 'result' is missing)
-            print(f"API call for {error_context} succeeded but '{expected_result_key}' not found in response. Response: {response_data}")
+            logger.info(f"API call for {error_context} succeeded but '{expected_result_key}' not found in response. Response: {response_data}")
             return default_on_error
         else:
             print(f"API call for {error_context} reported failure. Response: {response_data}")
             return default_on_error
 
     except httpx.HTTPStatusError as e:
-        print(f"HTTP error occurred while {error_context}: {e.request.url} - {e.response.status_code} - {e.response.text}")
+        logger.error(f"HTTP error occurred while {error_context}: {e.request.url} - {e.response.status_code} - {e.response.text}")
+        return default_on_error
+    except httpx.TimeoutException as e:
+        logger.info(f"timeout! timeout expected? {expect_timeout}")
+        if expect_timeout:
+            logger.info(f"A timeout occurred while {error_context} (expected for a long-running action): {e.request.url} - {e}")
+            return TIMEOUT_HAPPENED
+        logger.warning(f"A timeout occurred while {error_context}: {e.request.url} - {e}")
         return default_on_error
     except httpx.RequestError as e:
-        print(f"Request error occurred while {error_context}: {e.request.url} - {e}")
+        logger.exception(f"Request error occurred while {error_context}: {e.request.url} - {e}")
         return default_on_error
     except Exception as e: # Catch other potential errors like JSONDecodeError
-        print(f"An unexpected error occurred while {error_context}: {e}")
+        logger.exception(f"An unexpected error occurred while {error_context}: {e}")
         return default_on_error
 
 @mcp.tool()
@@ -604,6 +616,171 @@ async def schedule_apply_specific_update(system_identifier: Union[str, int], err
             if api_result is not None: # Log if not None but also not expected format
                 print(f"Failed to schedule specific update (errata ID: {errata_id}) for system {system_identifier} or unexpected API result format. Result: {api_result}")
             return ""
+
+@mcp.tool()
+async def add_system(
+    host: str,
+    ctx: Context,
+    activation_key: str = "",
+    ssh_port: int = 22,
+    ssh_user: str = "root",
+    proxy_id: int = None,
+    salt_ssh: bool = False,
+    confirm: bool = False,
+) -> str:
+    """
+    Adds a new system to be managed by Uyuni.
+
+    This tool remotely connects to the specified host using SSH to register it.
+    It requires an SSH private key to be configured in the UYUNI_SSH_PRIV_KEY
+    environment variable for authentication.
+
+    Args:
+        host: Hostname or IP address of the target system to add.
+        activation_key: The activation key for registering the system.
+        ssh_port: The SSH port on the target machine (default: 22).
+        ssh_user: The user to connect with via SSH (default: 'root').
+        proxy_id: The system ID of a Uyuni proxy to use (optional).
+        salt_ssh: Manage the system with Salt SSH (default: False).
+        confirm: User confirmation is required to execute this action. Set to False
+                 by default. If False, the tool returns a confirmation message. The
+                 model must present this message to the user and, if they agree, call
+                 the tool again with this parameter set to True.
+
+    Returns:
+        A confirmation message if 'confirm' is False.
+        An error message if the UYUNI_SSH_PRIV_KEY environment variable is not set.
+        A success message if the system is scheduled for addition successfully.
+        An error message if the operation fails.
+    """
+    log_string = f"Attempting to add system ID: {host}"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    # Check for activation key
+    if not activation_key:
+        return "You need to provide an activation key."
+
+    # Check if the system already exists
+    active_systems = await get_list_of_active_systems(ctx)
+    for system in active_systems:
+        if system.get('system_name') == host:
+            message = f"System '{host}' already exists in Uyuni. No action taken."
+            logger.info(message)
+            await ctx.info(message)
+            return message
+
+    if not confirm:
+        return f"CONFIRMATION REQUIRED: This will add system {host} to Uyuni. Do you confirm?"
+
+    ssh_priv_key_raw = os.environ.get('UYUNI_SSH_PRIV_KEY')
+    if not ssh_priv_key_raw:
+        return "Error: UYUNI_SSH_PRIV_KEY environment variable is not set. Please set it to your SSH private key."
+
+    # Unescape the raw string from the environment variable to convert literal '\n' to actual newlines for the JSON payload.
+    ssh_priv_key = ssh_priv_key_raw.replace('\\n', '\n')
+
+    print(f"Attempting to add system: {host}")
+
+    ssh_priv_key_pass = os.environ.get('UYUNI_SSH_PRIV_KEY_PASS')
+    if not ssh_priv_key_pass:
+        ssh_priv_key_pass = ""
+
+    payload = {
+        "host": host,
+        "sshPort": ssh_port,
+        "sshUser": ssh_user,
+        "sshPrivKey": ssh_priv_key,
+        "sshPrivKeyPass": ssh_priv_key_pass,
+        "activationKey": activation_key,
+        "saltSSH": salt_ssh,
+    }
+    if proxy_id is not None:
+        payload["proxyId"] = proxy_id
+    logger.info(f"adding system {host}")
+
+    async with httpx.AsyncClient(verify=False) as client:
+        api_result = await _call_uyuni_api(
+            client=client, method="POST",
+            api_path="/rhn/manager/api/system/bootstrapWithPrivateSshKey",
+            json_body=payload,
+            error_context=f"adding system {host}",
+            default_on_error=None,
+            expect_timeout=True,
+        )
+
+    if api_result is TIMEOUT_HAPPENED:
+        # The action was long-running and timed out, which is expected.
+        # The task is likely running in the background on Uyuni.
+        success_message = f"System {host} addition process started. It may take some time. Check the system list later for its status."
+        logger.info(success_message)
+        return success_message
+    elif api_result == 1:  # The API returns 1 on success
+        logger.info("api_result was 1")
+        success_message = f"System {host} successfully scheduled to be added."
+        print(success_message)
+        return success_message
+    else:
+        logger.info(f"api result was NOT 1 {api_result}")
+        return f"System {host} was NOT successfully scheduled to be added. Check server logs."
+
+
+@mcp.tool()
+async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanup: bool = True, confirm: bool = False) -> str:
+    """
+    Removes/deletes a system from being managed by Uyuni.
+
+    This is a destructive action and requires confirmation.
+
+    Args:
+        system_identifier: The unique identifier of the system to remove. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
+        cleanup: If True (default), Uyuni will attempt to run cleanup scripts on the client before deletion.
+                 If False, the system is deleted from Uyuni without attempting client-side cleanup.
+        confirm: User confirmation is required. If False, the tool returns a confirmation prompt. The
+                 model must ask the user and call the tool again with confirm=True if they agree.
+
+    Returns:
+        A confirmation message if 'confirm' is False.
+        A success or error message string detailing the outcome.
+    """
+    log_string = f"Attempting to remove system with id {system_identifier}"
+    logger.info(log_string)
+    await ctx.info(log_string)
+    system_id = await _resolve_system_id(system_identifier)
+    if not system_id:
+        return "" # Helper function already logged the reason for failure.
+
+    # Check if the system exists before proceeding
+    active_systems = await get_list_of_active_systems(ctx)
+    if not any(s.get('system_id') == int(system_id) for s in active_systems):
+        message = f"System with ID {system_id} not found."
+        logger.warning(message)
+        return message
+
+    if not confirm:
+        return (f"CONFIRMATION REQUIRED: This will permanently remove system {system_id} from Uyuni. "
+                f"Client-side cleanup is currently {'ENABLED' if cleanup else 'DISABLED'}. Do you confirm?")
+
+    cleanup_type = "FORCE_DELETE" if cleanup else "NO_CLEANUP"
+
+    async with httpx.AsyncClient(verify=False) as client:
+        api_result = await _call_uyuni_api(
+            client=client,
+            method="POST",
+            api_path="/rhn/manager/api/system/deleteSystem",
+            json_body={"sid": system_id, "cleanupType": cleanup_type},
+            error_context=f"removing system ID {system_id}",
+            default_on_error=None
+        )
+
+    if api_result == 1:
+        success_message = f"System {system_identifier} was successfully removed."
+        logger.info(success_message)
+        return success_message
+    else:
+        error_message = f"Failed to remove system {system_identifier}. The API did not return success. Result: {api_result}"
+        logger.error(error_message)
+        return error_message
 
 @mcp.tool()
 async def get_systems_needing_security_update_for_cve(cve_identifier: str, ctx: Context) -> List[Dict[str, Any]]:
