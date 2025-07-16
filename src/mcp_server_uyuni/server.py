@@ -620,8 +620,8 @@ async def schedule_apply_specific_update(system_identifier: Union[str, int], err
 @mcp.tool()
 async def add_system(
     host: str,
-    activation_key: str,
-    ctx: Context, 
+    ctx: Context,
+    activation_key: str = "",
     ssh_port: int = 22,
     ssh_user: str = "root",
     proxy_id: int = None,
@@ -656,6 +656,10 @@ async def add_system(
     log_string = f"Attempting to add system ID: {host}"
     logger.info(log_string)
     await ctx.info(log_string)
+
+    # Check for activation key
+    if not activation_key:
+        return "You need to provide an activation key."
 
     # Check if the system already exists
     active_systems = await get_list_of_active_systems(ctx)
