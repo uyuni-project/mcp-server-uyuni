@@ -179,6 +179,16 @@ Note the url should be http://localhost/mcp-server-uyuni as explained in https:/
 ![OpenWeb UI with MCP Support with GPT 4 model](docs/example_openwebui_gpt.png)
 ![OpenWeb UI with MCP Support with Gemini 2.0 flash model](docs/example_openwebui_gemini.png)
 
+### Testing Advanced Capabilities (Elicitation)
+
+> [!NOTE]
+> The Model Context Protocol (MCP) includes advanced features like **Elicitation**, which  allows tools to interactively prompt the user for missing information or confirmation.
+>
+> As of this writing, not all MCP clients support this capability. For example, **Open WebUI does not currently implement elicitation**.
+>
+> To test tools that leverage elicitation (like the `add_system` tool when an activation key is missing), you need a compatible client. The official **MCP extension for Visual Studio Code** is a reference client that fully supports elicitation and is recommended for developing  and testing these features.
+
+
 ## Local Development Build
 
 To build the Docker image locally for development or testing purposes:

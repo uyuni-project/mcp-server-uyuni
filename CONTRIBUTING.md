@@ -152,6 +152,26 @@ async def my_tool(some_input: str, ctx: Context) -> str:
     # ... tool logic ...
 
     return "Operation complete."
+
+### Handling Elicitation
+
+Elicitation is a powerful capability in the Model Context Protocol (MCP) that allows a server to interactively request information or confirmation from the client or the end-user during the execution of a tool. This is especially useful for tools that require user input, such as an activation key or confirmation before performing an action.
+
+However, elicitation is a relatively new addition to the MCP specification, and not all MCP clients may support it. Therefore, your tools should be designed to handle cases where elicitation is not available and provide fallback mechanisms.
+
+For more information on MCP elicitation, see the [MCP specification](https://modelcontextprotocol.io/specification).
+
+To implement elicitation, you can use the `ctx.elicit()` method within your tool's logic. However, before attempting to use elicitation, you should check if the client supports it using `ctx.session.check_client_capability(types.ClientCapabilities(elicitation=types.ElicitationCapability()))`.
+
+If elicitation is not supported, provide a fallback mechanism, such as returning a message to the user asking for the required information directly.
+
+**Example:**
+```python
+if ctx.session.check_client_capability(types.ClientCapabilities(elicitation=types.ElicitationCapability())):
+    # Use elicitation to prompt the user for information
+else:
+    # Provide a fallback mechanism
+```
 ```
 
 ### Handle Expected Timeouts for Long-Running Actions
@@ -184,4 +204,3 @@ Avoid Raising Exceptions: LLMs do not handle exceptions well. A tool that raises
 ### Design Simple and Unambiguous Tool Signatures
 
 Avoid too many required parameters: If a tool has multiple required parameters (e.g., add_system) the LLM won't execute it if the user's prompt is simple (e.g., "add system 10.10.10.10"). The LLM might not ask for the missing activation_key and will simply fail to use it. Instead, make the required parameters optional, by setting some default value, and then check if the parameters have been provided. If not, return a message to the user asking for them. This way, the LLM will execute the tool even if you have not provided with the parameters.
-
