@@ -14,7 +14,8 @@
 
 import os
 import sys
-from typing import Any, List, Dict, Optional, Union
+import asyncio
+from typing import Any, List, Dict, Optional, Union, Coroutine
 import httpx
 from datetime import datetime, timezone
 
@@ -81,6 +82,7 @@ async def _call_uyuni_api(
             return default_on_error
 
     full_api_url = UYUNI_SERVER + api_path
+
     try:
         if method.upper() == 'GET':
             response = await client.get(full_api_url, params=params)
@@ -383,7 +385,7 @@ async def check_system_updates(system_identifier: Union[str, int], ctx: Context)
     list_cves_api_path = '/rhn/manager/api/errata/listCves'
 
     async with httpx.AsyncClient(verify=False) as client:
-        updates_list_from_api = await _call_uyuni_api(
+        relevant_errata_call: Coroutine = _call_uyuni_api(
             client=client,
             method="GET",
             api_path="/rhn/manager/api/system/getRelevantErrata",
@@ -392,18 +394,36 @@ async def check_system_updates(system_identifier: Union[str, int], ctx: Context)
             default_on_error=None # Distinguish API error from empty list
         )
 
-        if updates_list_from_api is None: # API call failed or unexpected success format
-            return default_error_response
+        unscheduled_errata_call: Coroutine = _call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path="/rhn/manager/api/system/getUnscheduledErrata",
+            params={'sid': str(system_id)},
+            error_context=f"checking unscheduled errata for system ID {system_id}",
+            default_on_error=[] # Return empty list on failure
+        )
+
+        results = await asyncio.gather(
+            relevant_errata_call,
+            unscheduled_errata_call
+        )
+        relevant_updates_list, unscheduled_updates_list = results
         
-        if not isinstance(updates_list_from_api, list):
-            print(f"Warning: Expected a list of updates for system {system_identifier}, but received: {type(updates_list_from_api)}")
+        if not isinstance(relevant_updates_list, list) or not isinstance(unscheduled_updates_list, list):
+            logger.error(
+                f"API calls for system {system_id} did not return lists as expected. "
+                f"Type of relevant_updates: {type(relevant_updates_list).__name__}, "
+                f"Type of unscheduled_updates: {type(unscheduled_updates_list).__name__}"
+            )
             return default_error_response
+
+        unscheduled_advisory_names = {erratum.get('advisory_name') for erratum in unscheduled_updates_list}
 
         enriched_updates_list = []
+        cve_fetch_tasks = []
 
-        for erratum_api_data in updates_list_from_api:
-            # Create a new dictionary for the update, renaming 'id' to 'update_id'
-            update_details = dict(erratum_api_data) # Start with a copy
+        for erratum_api_data in relevant_updates_list:
+            update_details = dict(erratum_api_data)
 
             # Rename 'id' to 'update_id'
             if 'id' in update_details:
@@ -411,17 +431,35 @@ async def check_system_updates(system_identifier: Union[str, int], ctx: Context)
             else:
                 # This case is unlikely for errata from the API but good for robustness
                 update_details['update_id'] = None
-
             advisory_name = update_details.get('advisory_name')
+
+            if advisory_name in unscheduled_advisory_names:
+                update_details['application_status'] = 'Pending'
+            else:
+                update_details['application_status'] = 'Queued'
             
             # Initialize and fetch CVEs
             update_details['cves'] = []
             if advisory_name:
                 # Call the helper function to fetch CVEs
-                update_details['cves'] = await _fetch_cves_for_erratum(client, advisory_name, int(system_id), list_cves_api_path, ctx)
+                task = _fetch_cves_for_erratum(client, advisory_name, system_id, list_cves_api_path, ctx)
+                cve_fetch_tasks.append(task)
 
             enriched_updates_list.append(update_details)
 
+        all_cve_results = await asyncio.gather(*cve_fetch_tasks)
+
+        if cve_fetch_tasks:
+            cve_iterator = iter(all_cve_results)
+            for update in enriched_updates_list:
+                # If the update had an advisory name, it has a corresponding CVE result.
+                if update.get("advisory_name"):
+                    update['cves'] = next(cve_iterator)
+                else:
+                    update['cves'] = [] # Ensure the 'cves' key always exists
+
+        enriched_updates_list.append(update_details)
+        
         return {
             'system_identifier': system_identifier,
             'has_pending_updates': len(enriched_updates_list) > 0,
@@ -555,7 +593,7 @@ async def schedule_apply_pending_updates_to_system(system_identifier: Union[str,
         if isinstance(api_result, list) and api_result and isinstance(api_result[0], int):
             action_id = api_result[0]
             print(f"Successfully scheduled action {action_id} to apply {len(errata_ids)} errata to system {system_identifier}.")
-            return "Update successfully scheduled at " +url + "/rhn/schedule/ActionDetails.do?aid=" + str(action_id)
+            return "Update successfully scheduled at " + UYUNI_SERVER + "/rhn/schedule/ActionDetails.do?aid=" + str(action_id)
         else:
             # Error message already printed by _call_uyuni_api if it returned None
             if api_result is not None: # Log if result is not None but also not the expected format
@@ -1115,6 +1153,49 @@ async def list_activation_keys() -> List[Dict[str, str]]:
             else:
                 print(f"Warning: Unexpected item format in activation key list: {key_data}")
     return filtered_keys
+
+async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str, Any]]:
+    """
+    Provides a list of errata that are applicable to the system with the system_id
+    passed as parameter and have not ben scheduled yet. All elements in the result are patches that are applicable
+    for the system.
+
+    If the system ID is invalid then the operation will fail.
+
+    Args:
+        sid: The integer ID of the system for which we want to know the list of applicable errata.
+
+    Returns:
+        List[Dict[str, Any]]: A list of dictionaries with each dictionary defining a errata applicable
+                            to the system given as a parameter.
+                            Retruns an empty dictionary if no applicable errata for the system are found.
+    """
+    log_string = f"Getting list of unscheduled errata for system {system_id}"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    async with httpx.AsyncClient(verify=False) as client:
+        get_unscheduled_errata = "/rhn/manager/api/system/getUnscheduledErrata"
+        payload = {'sid': str(system_id)}
+        unscheduled_errata_result = await _call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path=get_unscheduled_errata,
+            params=payload,
+            error_context=f"fetching unscheduled errata for system ID {system_id}",
+            default_on_error=None
+        )
+
+        if isinstance(unscheduled_errata_result, list):
+            for item in unscheduled_errata_result:
+                item['system_id'] = system_id
+
+            return unscheduled_errata_result
+        else:
+            if unscheduled_errata_result is not None:
+                print(f"Failed to retrieve unscheduled errata for system ID {system_id} or \
+                      unexpected API result format. Result: {unscheduled_errata_result}")
+            return ""
 
 def main_cli():
 
