@@ -20,12 +20,6 @@ UYUNI_PASS=<your_uyuni_password>
 *   **Critical:** This `config` file **must not be shared or committed to version control**. It should be treated as highly confidential.
 *   **Usage:** The MCP server imports this file as an environment file to obtain the necessary credentials for interacting with the Uyuni server.
 
-## Network Communication
-
-*   **Current Protocol:** The connection to the Uyuni server is currently established using **HTTP** instead of HTTPS.
-*   **Security Risk:** This means that credentials (username and password) are transmitted in **plain text** over the network. This is a significant security vulnerability, as an attacker with access to the network traffic could intercept these credentials.
-*   **Recommendation:** This **must be changed to use HTTPS** as soon as possible to encrypt the communication channel and protect the credentials during transmission.
-
 ## MCP Server Authentication
 
 *   **No Authentication:** Currently, the MCP server itself does not implement any form of authentication or authorization.
