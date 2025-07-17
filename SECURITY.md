@@ -4,10 +4,10 @@ This document outlines the security considerations for the MCP Server for Uyuni.
 
 ## Credentials Management
 
-Access to the Uyuni server is managed via a credentials file.
+Access to the Uyuni server is managed via a config file.
 
-*   **File Name:** `credentials`
-*   **Typical Location:** `.venv/credentials`
+*   **File Name:** `config`
+*   **Typical Location:** `.venv/config`
 
 This file contains sensitive information required to authenticate with the Uyuni server API.
 
@@ -17,7 +17,7 @@ UYUNI_USER=<your_uyuni_username>
 UYUNI_PASS=<your_uyuni_password>
 ```
 
-*   **Critical:** This `credentials` file **must not be shared or committed to version control**. It should be treated as highly confidential.
+*   **Critical:** This `config` file **must not be shared or committed to version control**. It should be treated as highly confidential.
 *   **Usage:** The MCP server imports this file as an environment file to obtain the necessary credentials for interacting with the Uyuni server.
 
 ## Network Communication
@@ -33,9 +33,9 @@ UYUNI_PASS=<your_uyuni_password>
 
 ## Impact of Compromised Credentials
 
-If the `credentials` file is compromised:
+If the `config` file is compromised:
 
-*   An attacker would gain access to the Uyuni server API with the privileges of the user defined in the credentials file.
+*   An attacker would gain access to the Uyuni server API with the privileges of the user defined in the config file.
 *   An attacker could potentially also access the Uyuni server web UI using these credentials.
 
 *   **Mitigation:** To limit the potential damage from compromised credentials, it is strongly recommended to use a dedicated Uyuni user account for the MCP server that has the minimum necessary permissions (limited access control) required for its operations. Avoid using highly privileged accounts like `admin` if possible.
