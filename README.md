@@ -22,11 +22,11 @@ Model Context Protocol Server for Uyuni Server API.
 
 ## Usage
 
-There are two main ways to run the `mcp-server-uyuni`: using the pre-built Docker container or running it locally with `uv`. Both methods require a `credentials` file.
+There are two main ways to run the `mcp-server-uyuni`: using the pre-built Docker container or running it locally with `uv`. Both methods require a `config` file.
 
-### Credentials File
+### Config File
 
-Before running the server, you need to create a `credentials` file. You can place it anywhere, but you must provide the correct path to it when running the server.
+Before running the server, you need to create a `config` file. You can place it anywhere, but you must provide the correct path to it when running the server.
 
 
 ```
@@ -46,7 +46,7 @@ Replace the values with your Uyuni server details. **This file contains sensitiv
 >
 > The `UYUNI_SSH_PRIV_KEY` variable, used by the `add_system` tool, requires the entire private key as a single-line string. The newlines from the original key file must be replaced by the literal `\n` sequence.
 >
-> You can generate the correct format from your key file (e.g., `~/.ssh/id_rsa`) using the following command. You can then copy the output into your `credentials` file or environment variable.
+> You can generate the correct format from your key file (e.g., `~/.ssh/id_rsa`) using the following command. You can then copy the output into your `config` file or environment variable.
 >
 > ```bash
 > awk 'NF {printf "%s\\n", $0}' ~/.ssh/id_rsa
@@ -63,11 +63,11 @@ Alternatively, you can also set environment variables instead of using a file.
 
 You can run (docker option)
 
-`npx @modelcontextprotocol/inspector docker run -i --rm --env-file /path/to/your/credentials ghcr.io/uyuni-project/mcp-server-uyuni:latest`
+`npx @modelcontextprotocol/inspector docker run -i --rm --env-file /path/to/your/config ghcr.io/uyuni-project/mcp-server-uyuni:latest`
 
 or you can run (uv option)
 
-`npx @modelcontextprotocol/inspector uv run --env-file=.venv/credentials --directory . mcp-server-uyuni`
+`npx @modelcontextprotocol/inspector uv run --env-file=.venv/config --directory . mcp-server-uyuni`
 
 ## Use with Open WebUI
 
@@ -91,7 +91,7 @@ For gemini, use the URL https://generativelanguage.googleapis.com/v1beta/openai 
 
 ### Setup Open WebUI MCP Support
 
-First, ensure you have your `credentials` file ready as described in the Usage section.
+First, ensure you have your `config` file ready as described in the Usage section.
 
 Then, you need a `config.json` for the MCP to OpenAPI proxy server.
 
@@ -99,7 +99,7 @@ Then, you need a `config.json` for the MCP to OpenAPI proxy server.
 
 This is the easiest method for deployment. Pre-built container images are available on the GitHub Container Registry.
 
- Replace `/path/to/your/credentials` with the absolute path to your `credentials` file. Replace `VERSION` with the desired release tag (e.g., `v0.2.1`) or use `latest` for the most recent build from the `main` branch.
+ Replace `/path/to/your/config` with the absolute path to your `config` file. Replace `VERSION` with the desired release tag (e.g., `v0.2.1`) or use `latest` for the most recent build from the `main` branch.
 
 ```json
 {
@@ -108,7 +108,7 @@ This is the easiest method for deployment. Pre-built container images are availa
       "command": "docker",
       "args": [
         "run", "-i", "--rm",
-        "--env-file", "/path/to/your/credentials",
+        "--env-file", "/path/to/your/config",
         "ghcr.io/uyuni-project/mcp-server-uyuni:VERSION"
       ]
     }
@@ -144,7 +144,7 @@ This method is ideal for development.
     ```bash
     uv sync
     ```
-3.  Replace `/path/to/your/credentials` with the absolute path to your `credentials` file.
+3.  Replace `/path/to/your/config` with the absolute path to your `config` file.
 
 ```json
 {
@@ -153,7 +153,7 @@ This method is ideal for development.
       "command": "uv",
       "args": [
         "run",
-        "--env-file", "/path/to/your/credentials",
+        "--env-file", "/path/to/your/config",
         "--directory", ".",
         "mcp-server-uyuni"
       ]
@@ -188,7 +188,7 @@ To build the Docker image locally for development or testing purposes:
 docker build -t  mcp-server-uyuni .
 ```
 
-Then, you can use `docker run -i --rm  --env-file .venv/credentials mcp-server-uyuni` at any of the mcp-client configurations explained above.
+Then, you can use `docker run -i --rm  --env-file .venv/config mcp-server-uyuni` at any of the mcp-client configurations explained above.
 
 ## Release Process
 
@@ -217,7 +217,7 @@ To create a new release for `mcp-server-uyuni`, follow these steps:
 7.  **Push Changes and Tags:** Push your commits (including the changelog update) and the new tag to the repository (e.g., `git push && git push --tags`).
 8.  **Automated Build and Push:** Pushing the tag to GitHub will automatically trigger the "Docker Publish" GitHub Action. This action builds the Docker image and pushes it to the GitHub Container Registry (`ghcr.io`) with tags for the specific version (e.g., `v0.3.0`) and major.minor (e.g., `v0.3`). Pushing to `main` will update the `latest` tag.
 9.  **Test the container:** Pull the newly published image from `ghcr.io` and run the tests in `TEST_CASES.md` against it.
-    `docker run -i --rm --env-file .venv/credentials ghcr.io/uyuni-project/mcp-server-uyuni:VERSION` (replace VERSION with the new tag).
+    `docker run -i --rm --env-file .venv/config ghcr.io/uyuni-project/mcp-server-uyuni:VERSION` (replace VERSION with the new tag).
 
 
 ## License
