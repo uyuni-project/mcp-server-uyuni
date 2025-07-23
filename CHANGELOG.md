@@ -1,3 +1,21 @@
+## 0.4.0 (2025-07-23)
+
+### Features
+
+* **activation_key:** add tool to list activation keys
+* **schedule:**: add tool to get unscheduled errata
+* **all**: add Streamable HTTP transport
+* **all**: add support for server and client logging
+* **system:** improve check system updates tool by checking unscheduled updates
+* **system:** accept system name as well as ids in our tools
+* **system:** add tool to remove system
+* **system:** add elicitation into add system tool
+* **systems:** add tool to add system with activation key
+
+### Bug Fixes
+
+* **network:** use verified https by default
+
 ##  0.3.0 (2025-06-26)
 
 ### Features
