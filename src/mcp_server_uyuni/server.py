@@ -47,8 +47,8 @@ UYUNI_USER = os.environ.get('UYUNI_USER')
 UYUNI_PASS = os.environ.get('UYUNI_PASS')
 # UYUNI_MCP_SSL_VERIFY is optional and defaults to True. Set to 'false', '0', or 'no' to disable.
 UYUNI_MCP_SSL_VERIFY = os.environ.get('UYUNI_MCP_SSL_VERIFY', 'true').lower() not in ('false', '0', 'no')
-UYUNI_TRANSPORT = os.environ['TRANSPORT']
-LOG_FILE_PATH = os.environ['LOG_FILE_PATH']
+UYUNI_TRANSPORT = os.environ.get('UYUNI_TRANSPORT', 'stdio')
+LOG_FILE_PATH = os.environ.get('LOG_FILE_PATH') # Defaults to None if not set
 
 logger = get_logger(log_file=LOG_FILE_PATH, transport=UYUNI_TRANSPORT)
 
