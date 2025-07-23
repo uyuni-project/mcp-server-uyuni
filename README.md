@@ -85,6 +85,9 @@ or you can run (uv option)
 
 Open WebUI is an extensible, feature-rich, and user-friendly self-hosted AI platform designed to operate entirely offline. It supports various LLM runners like Ollama and OpenAI-compatible APIs, with built-in inference engine for RAG, making it a powerful AI deployment solution. More at https://docs.openwebui.com/
 
+> [!NOTE]
+> The following instructions describe how to set up Open WebUI and the MCP proxy for **local development and testing purposes**. For production deployments, please refer to the official [Open WebUI documentation](https://docs.openwebui.com/) for recommended setup procedures.
+
 ### Setup Open WebUI
 
 You need `uv` installed. See https://docs.astral.sh/uv
