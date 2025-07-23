@@ -41,6 +41,10 @@ UYUNI_PASS=admin
 # UYUNI_SSL_VERIFY=false
 # Optional: Set the transport protocol. Can be 'stdio' (default) or 'http'.
 # UYUNI_MCP_TRANSPORT=stdio
+
+> [!WARNING]
+> **Security Note on HTTP Transport:** When `UYUNI_MCP_TRANSPORT` is set to `http`, the server runs without authentication. This means any client with network access can execute commands. Only use this mode in a trusted, isolated network environment. For more details, see the Security Policy.
+
 # Optional: Set the path for the server log file. Defaults to logging to the console.
 # UYUNI_MCP_LOG_FILE_PATH=/var/log/mcp-server-uyuni.log
 UYUNI_SSH_PRIV_KEY="-----BEGIN OPENSSH PRIVATE KEY-----\n..."
