@@ -47,10 +47,10 @@ UYUNI_USER = os.environ.get('UYUNI_USER')
 UYUNI_PASS = os.environ.get('UYUNI_PASS')
 # UYUNI_MCP_SSL_VERIFY is optional and defaults to True. Set to 'false', '0', or 'no' to disable.
 UYUNI_MCP_SSL_VERIFY = os.environ.get('UYUNI_MCP_SSL_VERIFY', 'true').lower() not in ('false', '0', 'no')
-UYUNI_TRANSPORT = os.environ.get('UYUNI_TRANSPORT', 'stdio')
+UYUNI_MCP_TRANSPORT = os.environ.get('UYUNI_MCP_TRANSPORT', 'stdio')
 LOG_FILE_PATH = os.environ.get('LOG_FILE_PATH') # Defaults to None if not set
 
-logger = get_logger(log_file=LOG_FILE_PATH, transport=UYUNI_TRANSPORT)
+logger = get_logger(log_file=LOG_FILE_PATH, transport=UYUNI_MCP_TRANSPORT)
 
 # Sentinel object to indicate an expected timeout for long-running actions
 TIMEOUT_HAPPENED = object()
@@ -1220,9 +1220,9 @@ def main_cli():
 
     logger.info("Running Uyuni MCP server.")
 
-    if UYUNI_TRANSPORT == Transport.HTTP.value:
+    if UYUNI_MCP_TRANSPORT == Transport.HTTP.value:
         mcp.run(transport="streamable-http")
-    elif UYUNI_TRANSPORT == Transport.STDIO.value:
+    elif UYUNI_MCP_TRANSPORT == Transport.STDIO.value:
         mcp.run(transport="stdio")
     else:
         # Defaults to stdio transport anyway 

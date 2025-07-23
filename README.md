@@ -39,6 +39,8 @@ UYUNI_USER=admin
 UYUNI_PASS=admin
 # Optional: Set to 'false' to disable SSL certificate verification. Defaults to 'true'.
 # UYUNI_SSL_VERIFY=false
+# Optional: Set the transport protocol. Can be 'stdio' (default) or 'http'.
+# UYUNI_MCP_TRANSPORT=stdio
 UYUNI_SSH_PRIV_KEY="-----BEGIN OPENSSH PRIVATE KEY-----\n..."
 UYUNI_SSH_PRIV_KEY_PASS=""
 ```
