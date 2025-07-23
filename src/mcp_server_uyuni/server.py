@@ -45,12 +45,12 @@ if missing_vars:
 UYUNI_SERVER = 'https://' + os.environ.get('UYUNI_SERVER')
 UYUNI_USER = os.environ.get('UYUNI_USER')
 UYUNI_PASS = os.environ.get('UYUNI_PASS')
-# SSL_VERIFY is optional and defaults to True. Set to 'false', '0', or 'no' to disable.
-SSL_VERIFY = os.environ.get('SSL_VERIFY', 'true').lower() not in ('false', '0', 'no')
-UYUNI_TRANSPORT = os.environ['TRANSPORT']
-LOG_FILE_PATH = os.environ['LOG_FILE_PATH']
+# UYUNI_MCP_SSL_VERIFY is optional and defaults to True. Set to 'false', '0', or 'no' to disable.
+UYUNI_MCP_SSL_VERIFY = os.environ.get('UYUNI_MCP_SSL_VERIFY', 'true').lower() not in ('false', '0', 'no')
+UYUNI_MCP_TRANSPORT = os.environ.get('UYUNI_MCP_TRANSPORT', 'stdio')
+UYUNI_MCP_LOG_FILE_PATH = os.environ.get('UYUNI_MCP_LOG_FILE_PATH') # Defaults to None if not set
 
-logger = get_logger(log_file=LOG_FILE_PATH, transport=UYUNI_TRANSPORT)
+logger = get_logger(log_file=UYUNI_MCP_LOG_FILE_PATH, transport=UYUNI_MCP_TRANSPORT)
 
 # Sentinel object to indicate an expected timeout for long-running actions
 TIMEOUT_HAPPENED = object()
@@ -146,7 +146,7 @@ async def get_list_of_active_systems(ctx: Context) -> List[Dict[str, Any]]:
     logger.info(log_string)
     await ctx.info(log_string)
 
-    async with httpx.AsyncClient(verify=SSL_VERIFY) as client:
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         systems_data_result = await _call_uyuni_api(
             client=client,
             method="GET",
@@ -186,8 +186,8 @@ async def _resolve_system_id(system_identifier: Union[str, int]) -> Optional[str
     # If it's not a digit string, it must be a name.
     system_name = id_str
     logger.info(f"System identifier '{system_name}' is not numeric, treating as a name and looking up ID.")
- 
-    async with httpx.AsyncClient(verify=SSL_VERIFY) as client:
+
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         # The result from system.getId is an array of system structs
         systems_list = await _call_uyuni_api(
             client=client,
@@ -241,7 +241,7 @@ async def get_cpu_of_a_system(system_identifier: Union[str, int], ctx: Context) 
     if not system_id:
         return {} # Helper function already logged the reason for failure.
 
-    async with httpx.AsyncClient(verify=SSL_VERIFY) as client:
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         cpu_data_result = await _call_uyuni_api(
             client=client,
             method="GET",
@@ -390,7 +390,7 @@ async def check_system_updates(system_identifier: Union[str, int], ctx: Context)
 
     list_cves_api_path = '/rhn/manager/api/errata/listCves'
 
-    async with httpx.AsyncClient(verify=SSL_VERIFY) as client:
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         relevant_errata_call: Coroutine = _call_uyuni_api(
             client=client,
             method="GET",
@@ -464,8 +464,6 @@ async def check_system_updates(system_identifier: Union[str, int], ctx: Context)
                 else:
                     update['cves'] = [] # Ensure the 'cves' key always exists
 
-        enriched_updates_list.append(update_details)
-        
         return {
             'system_identifier': system_identifier,
             'has_pending_updates': len(enriched_updates_list) > 0,
@@ -585,7 +583,7 @@ async def schedule_apply_pending_updates_to_system(system_identifier: Union[str,
     print(f"Found {len(errata_ids)} errata to apply for system {system_identifier} (ID: {system_id}). IDs: {errata_ids}")
 
     # 2. Schedule apply errata using the API endpoint
-    async with httpx.AsyncClient(verify=SSL_VERIFY) as client:
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         payload = {"sid": int(system_id), "errataIds": errata_ids}
         api_result = await _call_uyuni_api(
             client=client,
@@ -633,7 +631,7 @@ async def schedule_apply_specific_update(system_identifier: Union[str, int], err
     if not confirm:
         return f"CONFIRMATION REQUIRED: This will apply specific update (errata ID: {errata_id}) to the system {system_identifier}. Do you confirm?"
 
-    async with httpx.AsyncClient(verify=SSL_VERIFY) as client:
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         # The API expects a list of errata IDs, even if it's just one.
         payload = {"sid": int(system_id), "errataIds": [errata_id]}
         api_result = await _call_uyuni_api(
@@ -647,13 +645,13 @@ async def schedule_apply_specific_update(system_identifier: Union[str, int], err
 
         if isinstance(api_result, list) and api_result and isinstance(api_result[0], int):
             action_id = api_result[0]
-            success_message = f"Update (errata ID: {errata_id}) successfully scheduled for system {system_identifier}. Action URL: {url}/rhn/schedule/ActionDetails.do?aid={action_id}"
+            success_message = f"Update (errata ID: {errata_id}) successfully scheduled for system {system_identifier}. Action URL: {UYUNI_SERVER}/rhn/schedule/ActionDetails.do?aid={action_id}"
             print(success_message)
             return success_message
         # Some schedule APIs might return int directly in result (though scheduleApplyErrata usually returns a list)
         elif isinstance(api_result, int): # Defensive check
             action_id = api_result
-            success_message = f"Update (errata ID: {errata_id}) successfully scheduled. Action URL: {url}/rhn/schedule/ActionDetails.do?aid={action_id}"
+            success_message = f"Update (errata ID: {errata_id}) successfully scheduled. Action URL: {UYUNI_SERVER}/rhn/schedule/ActionDetails.do?aid={action_id}"
             print(success_message)
             return success_message
         else:
@@ -871,7 +869,7 @@ async def get_systems_needing_security_update_for_cve(cve_identifier: str, ctx: 
     find_by_cve_path = '/rhn/manager/api/errata/findByCve'
     list_affected_systems_path = '/rhn/manager/api/errata/listAffectedSystems'
 
-    async with httpx.AsyncClient(verify=SSL_VERIFY) as client:
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         # 1. Call findByCve (login will be handled by the helper)
         print(f"Searching for errata related to CVE: {cve_identifier}")
         errata_list = await _call_uyuni_api(
@@ -962,7 +960,7 @@ async def get_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
     systems_needing_reboot_list = []
     list_reboot_path = '/rhn/manager/api/system/listSuggestedReboot'
 
-    async with httpx.AsyncClient(verify=SSL_VERIFY) as client:
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         reboot_data_result = await _call_uyuni_api(
             client=client,
             method="GET",
@@ -1020,7 +1018,7 @@ async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context
     # Generate current time in ISO 8601 format (UTC)
     now_iso = datetime.now(timezone.utc).isoformat()
 
-    async with httpx.AsyncClient(verify=SSL_VERIFY) as client:
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         payload = {"sid": int(system_id), "earliestOccurrence": now_iso}
         api_result = await _call_uyuni_api(
             client=client,
@@ -1034,7 +1032,7 @@ async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context
         # Uyuni's scheduleReboot API returns an integer action ID directly in 'result'
         if isinstance(api_result, int):
             action_id = api_result
-            action_detail_url = f"{url}/rhn/schedule/ActionDetails.do?aid={action_id}"
+            action_detail_url = f"{UYUNI_SERVER}/rhn/schedule/ActionDetails.do?aid={action_id}"
             success_message = f"System reboot successfully scheduled. Action URL: {action_detail_url}"
             print(success_message)
             return success_message
@@ -1068,7 +1066,7 @@ async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
     list_actions_path = '/rhn/manager/api/schedule/listAllActions'
     processed_actions_list = []
 
-    async with httpx.AsyncClient(verify=SSL_VERIFY) as client:
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         api_result = await _call_uyuni_api(
             client=client,
             method="GET",
@@ -1122,7 +1120,7 @@ async def cancel_action(action_id: int, ctx: Context, confirm: bool = False) -> 
     if not confirm:
         return f"CONFIRMATION REQUIRED: This will schedule action {action_id} to be canceled. Do you confirm?"
 
-    async with httpx.AsyncClient(verify=SSL_VERIFY) as client:
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         payload = {"actionIds": [action_id]} # API expects a list
         api_result = await _call_uyuni_api(
             client=client,
@@ -1220,9 +1218,9 @@ def main_cli():
 
     logger.info("Running Uyuni MCP server.")
 
-    if UYUNI_TRANSPORT == Transport.HTTP.value:
+    if UYUNI_MCP_TRANSPORT == Transport.HTTP.value:
         mcp.run(transport="streamable-http")
-    elif UYUNI_TRANSPORT == Transport.STDIO.value:
+    elif UYUNI_MCP_TRANSPORT == Transport.STDIO.value:
         mcp.run(transport="stdio")
     else:
         # Defaults to stdio transport anyway 

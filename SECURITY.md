@@ -24,6 +24,16 @@ UYUNI_PASS=<your_uyuni_password>
 
 *   **No Authentication:** Currently, the MCP server itself does not implement any form of authentication or authorization.
 *   **Access Implication:** Anyone who has access to the environment where the MCP server can be run, can execute any of the tools and actions provided by the MCP server.
+*
+### Transport Layer Implications
+
+The server can be run with two different transport layers, configured via the `UYUNI_MCP_TRANSPORT` environment variable:
+
+*   **`stdio` (default):** In this mode, the server communicates over standard input/output. Access is limited to processes that can execute the server binary directly on the host machine. This is the most secure mode of operation.
+*   **`http`:** In this mode, the server runs as an HTTP service. Because there is no authentication layer, **any client with network access to the server's host and port can execute any tool**. This includes destructive actions like removing systems or applying updates.
+
+> [!WARNING]
+> Running the server with the `http` transport in an untrusted network environment poses a significant security risk. It is recommended to use this mode only in isolated, trusted networks or to implement network-level controls (e.g., firewall rules) to restrict access to authorized clients only.
 
 ## Tool Execution and Confirmation
 
@@ -77,4 +87,4 @@ If the `config` file is compromised:
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability, please report it to us. (TODO: Add contact information or procedure for reporting vulnerabilities).
+If you discover a security vulnerability, please report it to us by creating a [security advisory[(https://github.com/uyuni-project/mcp-server-uyuni/security/advisories)].
