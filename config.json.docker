@@ -2,7 +2,7 @@
   "mcpServers": {
     "mcp-server-uyuni": {
       "command": "docker",
-      "args": ["run", "--env-file", "/home/jordi/work/galaxy/mcp-server-uyuni/.venv/credentials", "-i", "--rm", "mcp-server-uyuni"]
+      "args": ["run", "--env-file", "/home/jordi/work/galaxy/mcp-server-uyuni/.venv/config", "-i", "--rm", "mcp-server-uyuni"]
     }
   }
 }
