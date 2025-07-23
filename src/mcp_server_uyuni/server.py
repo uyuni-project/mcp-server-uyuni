@@ -464,8 +464,6 @@ async def check_system_updates(system_identifier: Union[str, int], ctx: Context)
                 else:
                     update['cves'] = [] # Ensure the 'cves' key always exists
 
-        enriched_updates_list.append(update_details)
-        
         return {
             'system_identifier': system_identifier,
             'has_pending_updates': len(enriched_updates_list) > 0,
