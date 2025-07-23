@@ -217,21 +217,22 @@ Then, you can use `docker run -i --rm  --env-file .venv/config mcp-server-uyuni`
 
 ## Release Process
 
-To create a new release for `mcp-server-uyuni`, follow these steps:
+To create a new release for `mcp-server-uyuni`, follow these steps.
 
-1.  **Update Documentation (`README.md`):**
+1. ** Create a release branch:** `git fetch upstream && git checkout upstream/main -b release-x.y.z`. Assuming upstream is the remote alias for the upstream git
+2.  **Update Documentation (`README.md`):**
     *   Ensure the list of available tools under the "## Tools" section is current and reflects all implemented tools in `srv/mcp-server-uyuni/server.py`.
     *   Review and update any screenshots in the `docs/` directory and their references in this `README.md` to reflect the latest UI or functionality, if necessary.
     *   Verify all usage instructions and examples are still accurate.
-2.  **Update Manual Test Cases (`TEST_CASES.md`):**
+3.  **Update Manual Test Cases (`TEST_CASES.md`):**
     *   Refer to the "How to Update for a New Tag/Release" section within `TEST_CASES.md`.
     *   Add a new status column for the upcoming release version (e.g., `Status (vX.Y.Z)`).
     *   Execute all relevant manual test cases against the code to be released.
     *   Record the `Pass`, `Fail`, `Blocked`, or `N/A` status for each test case in the new version column.
-3.  **Commit Changes:** Commit all the updates to `README.md`, `TEST_CASES.md`, and any other changed files.
-4.  **Update version in pyproject.toml:** Use semantic versioning to set the new version.
-5.  **Update uv.lock:** Run `uv lock` to update uv.lock file with the version set in pyproject.toml
-6.  **Update CHANGELOG.md:**
+4.  **Commit Changes:** Commit all the updates to `README.md`, `TEST_CASES.md`, and any other changed files.
+5.  **Update version in pyproject.toml:** Use semantic versioning to set the new version.
+6.  **Update uv.lock:** Run `uv lock` to update uv.lock file with the version set in pyproject.toml
+7.  **Update CHANGELOG.md:**
     *   Generate the changelog using `conventional-changelog-cli`. If you don't have it installed globally, you can use `npx`.
     *   The command to generate the changelog using the `conventionalcommits` preset and output it to `CHANGELOG.md` (prepending the new changes) is:
         ```bash
@@ -239,6 +240,7 @@ To create a new release for `mcp-server-uyuni`, follow these steps:
         ```
     *   Review the generated `CHANGELOG.md` for accuracy and formatting.
     *   Commit the updated `CHANGELOG.md`.
+8. Push the branch and create a new Pull Request: `git push origin release-x.y.z` . Assuming origin is the remote alias for your git fork.
 7.  **Create Git Tag:** Create a new Git tag for the release (e.g., `git tag vX.Y.Z`). Follow [semantic versioning rules](https://semver.org/).
 8.  **Push Changes and Tags:** Push your commits (including the changelog update) and the new tag to the repository (e.g., `git push && git push --tags`).
 9.  **Automated Build and Push:** Pushing the tag to GitHub will automatically trigger the "Docker Publish" GitHub Action. This action builds the Docker image and pushes it to the GitHub Container Registry (`ghcr.io`) with tags for the specific version (e.g., `v0.3.0`) and major.minor (e.g., `v0.3`). Pushing to `main` will update the `latest` tag.
