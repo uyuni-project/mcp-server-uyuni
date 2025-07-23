@@ -645,13 +645,13 @@ async def schedule_apply_specific_update(system_identifier: Union[str, int], err
 
         if isinstance(api_result, list) and api_result and isinstance(api_result[0], int):
             action_id = api_result[0]
-            success_message = f"Update (errata ID: {errata_id}) successfully scheduled for system {system_identifier}. Action URL: {url}/rhn/schedule/ActionDetails.do?aid={action_id}"
+            success_message = f"Update (errata ID: {errata_id}) successfully scheduled for system {system_identifier}. Action URL: {UYUNI_SERVER}/rhn/schedule/ActionDetails.do?aid={action_id}"
             print(success_message)
             return success_message
         # Some schedule APIs might return int directly in result (though scheduleApplyErrata usually returns a list)
         elif isinstance(api_result, int): # Defensive check
             action_id = api_result
-            success_message = f"Update (errata ID: {errata_id}) successfully scheduled. Action URL: {url}/rhn/schedule/ActionDetails.do?aid={action_id}"
+            success_message = f"Update (errata ID: {errata_id}) successfully scheduled. Action URL: {UYUNI_SERVER}/rhn/schedule/ActionDetails.do?aid={action_id}"
             print(success_message)
             return success_message
         else:
@@ -1032,7 +1032,7 @@ async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context
         # Uyuni's scheduleReboot API returns an integer action ID directly in 'result'
         if isinstance(api_result, int):
             action_id = api_result
-            action_detail_url = f"{url}/rhn/schedule/ActionDetails.do?aid={action_id}"
+            action_detail_url = f"{UYUNI_SERVER}/rhn/schedule/ActionDetails.do?aid={action_id}"
             success_message = f"System reboot successfully scheduled. Action URL: {action_detail_url}"
             print(success_message)
             return success_message
