@@ -38,7 +38,7 @@ UYUNI_SERVER=192.168.1.124:8443
 UYUNI_USER=admin
 UYUNI_PASS=admin
 # Optional: Set to 'false' to disable SSL certificate verification. Defaults to 'true'.
-# SSL_VERIFY=false
+# UYUNI_SSL_VERIFY=false
 UYUNI_SSH_PRIV_KEY="-----BEGIN OPENSSH PRIVATE KEY-----\n..."
 UYUNI_SSH_PRIV_KEY_PASS=""
 ```
