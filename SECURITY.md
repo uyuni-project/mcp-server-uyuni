@@ -20,20 +20,29 @@ UYUNI_PASS=<your_uyuni_password>
 *   **Critical:** This `config` file **must not be shared or committed to version control**. It should be treated as highly confidential.
 *   **Usage:** The MCP server imports this file as an environment file to obtain the necessary credentials for interacting with the Uyuni server.
 
-## MCP Server Authentication
+## MCP Server Authentication and Authorization
 
 *   **No Authentication:** Currently, the MCP server itself does not implement any form of authentication or authorization.
 *   **Access Implication:** Anyone who has access to the environment where the MCP server can be run, can execute any of the tools and actions provided by the MCP server.
-*
+
+### Write Tool Enablement (Default: Disabled)
+
+By default, the server runs in a **read-only** mode for safety. All tools that can change the state of the Uyuni server or the systems it manages (e.g., `remove_system`, `schedule_apply_pending_updates_to_system`) are disabled and not visible to the language model.
+
+To enable these "write tools", you must explicitly set the `UYUNI_MCP_WRITE_TOOLS_ENABLED` environment variable to `true`.
+
+> [!WARNING]
+> Enabling write tools is a significant security decision. It grants any client that can connect to the MCP server the ability to perform destructive actions. This risk is amplified when using the `http` transport.
+
 ### Transport Layer Implications
 
 The server can be run with two different transport layers, configured via the `UYUNI_MCP_TRANSPORT` environment variable:
 
 *   **`stdio` (default):** In this mode, the server communicates over standard input/output. Access is limited to processes that can execute the server binary directly on the host machine. This is the most secure mode of operation.
-*   **`http`:** In this mode, the server runs as an HTTP service. Because there is no authentication layer, **any client with network access to the server's host and port can execute any tool**. This includes destructive actions like removing systems or applying updates.
+*   **`http`:** In this mode, the server runs as an HTTP service. Because there is no authentication layer, **any client with network access to the server's host and port can execute any tool**.
 
 > [!WARNING]
-> Running the server with the `http` transport in an untrusted network environment poses a significant security risk. It is recommended to use this mode only in isolated, trusted networks or to implement network-level controls (e.g., firewall rules) to restrict access to authorized clients only.
+> Running the server with `UYUNI_MCP_TRANSPORT=http` and `UYUNI_MCP_WRITE_TOOLS_ENABLED=true` in an untrusted network environment poses a significant security risk. This combination allows any client with network access to perform destructive actions without authentication. It is strongly recommended to use this configuration only in isolated, trusted networks or to implement network-level controls (e.g., firewall rules) to restrict access to authorized clients only.
 
 ## Tool Execution and Confirmation
 

@@ -9,6 +9,8 @@ This document tracks the manual test cases executed for different versions/tags 
 
 This document tracks the manual test cases executed for different versions/tags of the `mcp-server-uyuni` project.
 
+To run any tests that perform write actions, the UYUNI_MCP_WRITE_TOOLS_ENABLED environment variable must be set to true.
+
 ## Test Case Table
 
 | Test Case ID | Tool / Feature Tested                      | Question / Prompt                                           | Expected Result                                                                                                                                                           | Status (v0.1.0) | Status (v0.2.0) | Status (v0.2.1) | Status (v0.3.0) | Status (v0.4.0) | Notes / Bug ID |
