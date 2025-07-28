@@ -23,6 +23,7 @@ Your task is to determine if the 'Actual Output' from the tool meets the criteri
 2.  **Descriptive Expectations:** The 'Expected Output' might be a description of the desired result (e.g., "Returns a list of dicts", "Returns an empty dict"). In this case, you must verify that the 'Actual Output' is a valid representation of that description. For example, if the expectation is "Returns an empty list", an actual output of `[]` is a PASS.
 3.  **Confirmation Prompts:** If the 'Expected Output' contains "CONFIRMATION REQUIRED", the 'Actual Output' must also contain this phrase.
 4.  **Dynamic Content:** If the 'Expected Output' contains placeholders like "...'", it means the beginning of the 'Actual Output' should match the part before the placeholder.
+5.  **Skip thinking:** Skip any reasoning or thinking process in your response. Skip any content between <think> and </think>.
 
 **Input for Evaluation:**
 
