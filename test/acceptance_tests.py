@@ -2,6 +2,7 @@ import argparse
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 # ANSI escape codes for colors
@@ -201,7 +202,10 @@ def main():
     total_tests = len(test_cases)
     print(f"Found {total_tests} test cases. Starting execution...")
 
+    total_start_time = time.monotonic()
+
     for i, tc in enumerate(test_cases, 1):
+        test_start_time = time.monotonic()
         print(f"--- [{i}/{total_tests}] RUNNING: {Colors.BOLD}{tc.get('id', 'N/A')}{Colors.ENDC} ---")
         prompt = tc.get("prompt")
         expected_output = tc.get("expected_output")
@@ -216,12 +220,16 @@ def main():
 
         if status == "PASS":
             passed_count += 1
-            print(f"  STATUS  : {Colors.OKGREEN}{status}{Colors.ENDC} ({reason})\n")
+            print(f"  STATUS  : {Colors.OKGREEN}{status}{Colors.ENDC} ({reason})")
         else:
             failed_count += 1
             print(f"  STATUS  : {Colors.FAIL}{status}{Colors.ENDC}")
-            print(f"  REASON  : {Colors.WARN}{reason}{Colors.ENDC}\n")
+            print(f"  REASON  : {Colors.WARN}{reason}{Colors.ENDC}")
 
+        test_end_time = time.monotonic()
+        test_duration = test_end_time - test_start_time
+        print(f"  TIME    : {test_duration:.2f}s\n")
+        
         results.append(
             {
                 "id": tc.get("id"),
@@ -233,10 +241,14 @@ def main():
             }
         )
 
+    total_end_time = time.monotonic()
+    total_duration = total_end_time - total_start_time
+
     print("--- TEST SUMMARY ---")
     print(f"Total Tests: {total_tests}")
     print(f"  {Colors.OKGREEN}Passed: {passed_count}{Colors.ENDC}")
     print(f"  {Colors.FAIL}Failed: {failed_count}{Colors.ENDC}")
+    print(f"Total Time : {total_duration:.2f}s")
     print("--------------------")
 
     print(
