@@ -9,6 +9,10 @@ Most test cases are now automated in `test/acceptance_tests.py`. The table below
 *   **MCP Client**: Open WebUI version 0.6.10 with MCP OpenAPI Proxy 1.0
 *   **LLM**: Google Gemini 2.0 Flash
 
+This document tracks the manual test cases executed for different versions/tags of the `mcp-server-uyuni` project.
+
+To run any tests that perform write actions, the UYUNI_MCP_WRITE_TOOLS_ENABLED environment variable must be set to true.
+
 ## Test Case Table
 
 | Test Case ID | Tool / Feature Tested | Prompt / Action                                        | Expected Result                                                                                                                                                           | Status (v0.4.0) | Notes                                                                                   |

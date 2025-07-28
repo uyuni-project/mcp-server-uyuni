@@ -47,6 +47,7 @@ UYUNI_USER = os.environ.get('UYUNI_USER')
 UYUNI_PASS = os.environ.get('UYUNI_PASS')
 # UYUNI_MCP_SSL_VERIFY is optional and defaults to True. Set to 'false', '0', or 'no' to disable.
 UYUNI_MCP_SSL_VERIFY = os.environ.get('UYUNI_MCP_SSL_VERIFY', 'true').lower() not in ('false', '0', 'no')
+UYUNI_MCP_WRITE_TOOLS_ENABLED = os.environ.get('UYUNI_MCP_WRITE_TOOLS_ENABLED', 'false').lower() in ('true', '1', 'yes')
 UYUNI_MCP_TRANSPORT = os.environ.get('UYUNI_MCP_TRANSPORT', 'stdio')
 UYUNI_MCP_LOG_FILE_PATH = os.environ.get('UYUNI_MCP_LOG_FILE_PATH') # Defaults to None if not set
 
@@ -54,6 +55,24 @@ logger = get_logger(log_file=UYUNI_MCP_LOG_FILE_PATH, transport=UYUNI_MCP_TRANSP
 
 # Sentinel object to indicate an expected timeout for long-running actions
 TIMEOUT_HAPPENED = object()
+
+def write_tool(*decorator_args, **decorator_kwargs):
+    """
+    A decorator that registers a function as an MCP tool only if write
+    tools are enabled via the UYUNI_MCP_WRITE_TOOLS_ENABLED environment variable.
+    """
+    # 2. This is the actual decorator that gets applied to the tool function.
+    def decorator(func):
+        if UYUNI_MCP_WRITE_TOOLS_ENABLED:
+            # 3a. If enabled, it applies the @mcp.tool() decorator, registering the function.
+            return mcp.tool(*decorator_args, **decorator_kwargs)(func)
+        
+        # 3b. If disabled, it does nothing and just returns the original,
+        #     un-decorated function. It is never registered.
+        return func
+    
+    # 1. The factory returns the decorator.
+    return decorator
 
 async def _call_uyuni_api(
     client: httpx.AsyncClient,
@@ -71,6 +90,14 @@ async def _call_uyuni_api(
     Helper function to make authenticated API calls to Uyuni.
     Handles login, request execution, error handling, and basic response parsing.
     """
+
+    # Safety check: Do not allow POST requests if write tools are disabled.
+    # This acts as a secondary guard after the @write_tool decorator.
+    if method.upper() == 'POST' and not UYUNI_MCP_WRITE_TOOLS_ENABLED:
+        error_msg = (f"Attempted to call a write API ({api_path}) while write tools are disabled. "
+                     "Please set UYUNI_MCP_WRITE_TOOLS_ENABLED to 'true' to enable them.")
+        logger.error(error_msg)
+        return error_msg
 
     if perform_login:
         login_data = {"login": UYUNI_USER, "password": UYUNI_PASS}
@@ -530,7 +557,7 @@ async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
     print(f"Finished checking systems. Found {len(systems_with_updates)} systems with updates.")
     return systems_with_updates
 
-@mcp.tool()
+@write_tool()
 async def schedule_apply_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context, confirm: bool = False) -> str:
 
     """
@@ -604,7 +631,7 @@ async def schedule_apply_pending_updates_to_system(system_identifier: Union[str,
                  print(f"Failed to schedule errata for system {system_identifier} or unexpected API response format. Result: {api_result}")
             return ""
 
-@mcp.tool()
+@write_tool()
 async def schedule_apply_specific_update(system_identifier: Union[str, int], errata_id: int, ctx: Context, confirm: bool = False) -> str:
 
     """
@@ -659,7 +686,7 @@ async def schedule_apply_specific_update(system_identifier: Union[str, int], err
                 print(f"Failed to schedule specific update (errata ID: {errata_id}) for system {system_identifier} or unexpected API result format. Result: {api_result}")
             return ""
 
-@mcp.tool()
+@write_tool()
 async def add_system(
     host: str,
     ctx: Context,
@@ -780,7 +807,7 @@ async def add_system(
         return f"System {host} was NOT successfully scheduled to be added. Check server logs."
 
 
-@mcp.tool()
+@write_tool()
 async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanup: bool = True, confirm: bool = False) -> str:
     """
     Removes/deletes a system from being managed by Uyuni.
@@ -987,7 +1014,7 @@ async def get_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
 
     return systems_needing_reboot_list
 
-@mcp.tool()
+@write_tool()
 async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context, confirm: bool = False) -> str:
 
     """
@@ -1089,7 +1116,7 @@ async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
             print(f"Warning: Expected a list for all scheduled actions, but received: {type(api_result)}")
     return processed_actions_list
 
-@mcp.tool()
+@write_tool()
 async def cancel_action(action_id: int, ctx: Context, confirm: bool = False) -> str:
     """
     Cancels a specified action on the Uyuni server.
