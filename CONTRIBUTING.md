@@ -67,6 +67,18 @@ chmod +x .git/hooks/prepare-commit-msg
 ```
 This hook will prepend a basic template to your commit message editor.
 
+## Secure Write Operations with a Feature Flag
+
+To enhance security, the server operates in a read-only mode by default. Any tool that performs a write operation (e.g., using a POST request to the Uyuni API) should be disabled unless explicitly enabled by the server operator.
+
+This is enforced using two layers of protection:
+
+Conditional Tool Registration with @write_tool: A custom decorator, @write_tool(), is provided. This decorator only registers the tool with the MCP server if the UYUNI_MCP_WRITE_TOOLS_ENABLED environment variable is set to 'true'. If the variable is false or not set, the tool is never registered and is completely invisible to the LLM. This is the primary mechanism for controlling access to write operations. Usage: Simply replace @mcp.tool() with @write_tool() for any function that modifies state.
+
+Example: @write_tool() async def remove_system(system_identifier: Union[str, int], confirm: bool = False) -> str: """ Removes a system. This is a write operation. """ # ... implementation ...
+
+API Helper Safety Check: As a second layer of defense, the _call_uyuni_api helper function contains a check that will block any request with the POST method if UYUNI_MCP_WRITE_TOOLS_ENABLED is not true. This prevents accidental exposure of a write action if a developer forgets to use the @write_tool decorator.
+
 ## Learnings and Patterns for MCP Tool Development
 
 When developing tools for an MCP server, the primary consumer is an LLM. This requires a slightly different approach than traditional API design where a human is reading documentation. The following are some best practices and patterns we've learned that help the LLM understand and use the tools more effectively.
