@@ -1,0 +1,32 @@
+[
+  {
+    "id": "TC-SYS-001",
+    "prompt": "Can you get the name and system id of of the systems in the uyuni server?",
+    "expected_output": "The systems in the uyuni server are build-host. deblike-minion. proxy. rhlike-minion. suse-minion. suse-sshminion., with system ids 1000010005 1000010004 1000010000 1000010003 1000010001 1000010002"
+  },
+  {
+    "id": "TC-SYS-002",
+    "prompt": "Get CPU details for system ID 1000010000.",
+    "expected_output": "Returns a message with CPU attributes with model name AMD EPYC-Milan Processor."
+  },
+  {
+    "id": "TC-SYS-003",
+    "prompt": "Get CPU details for system ID 999999999.",
+    "expected_output": "Returns a message that this system does not exist."
+  },
+  {
+    "id": "TC-SYS-004",
+    "prompt": "Show me the CPU information for all my systems.",
+    "expected_output": "Returns a message with the CPU information of each system. Except for the proxy., all the rest at QEMU Virtual CPU."
+  },
+  {
+    "id": "TC-SYS-005",
+    "prompt": "Do all active servers have the same CPU?",
+    "expected_output": "No. All have QEMU Virtual CPU except proxy."
+  },
+  {
+    "id": "TC-SYS-006",
+    "prompt": "Get CPU details for system 'build-host.'.",
+    "expected_output": "Returns a message with CPU attributes of model QEMU Virtual CPU."
+  }
+]

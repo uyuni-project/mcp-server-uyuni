@@ -1,0 +1,17 @@
+[
+  {
+    "id": "TC-SCH-001",
+    "prompt": "List all scheduled actions in Uyuni.",
+    "expected_output": "Returns a list of action dictionaries, or an empty list if none. Example fields: id, name, type, earliest."
+  },
+  {
+    "id": "TC-SCH-002_confirm_request",
+    "prompt": "Cancel action with ID 3.",
+    "expected_output": "Returns a message the requires confirmation"
+  },
+  {
+    "id": "TC-SCH-002_confirmed",
+    "prompt": "Cancel action with ID 3., confirmation set to true",
+    "expected_output": "Successfully canceled action"
+  }
+]
