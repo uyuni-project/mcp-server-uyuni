@@ -252,6 +252,13 @@ To create a new release for `mcp-server-uyuni`, follow these steps.
 10.  **Test the container:** Pull the newly published image from `ghcr.io` and run the tests in `TEST_CASES.md` against it.
     `docker run -i --rm --env-file .venv/config ghcr.io/uyuni-project/mcp-server-uyuni:VERSION` (replace VERSION with the new tag).
 
+## Feedback
+
+We would love to hear from you! Any idea you want to discuss or share, please do so at [https://github.com/uyuni-project/uyuni/discussions/10562](https://github.com/uyuni-project/uyuni/discussions/10562)
+
+If you encounter any bug, be so kind to open a new bug report at [https://github.com/uyuni-project/mcp-server-uyuni/issues/new?type=bug](https://github.com/uyuni-project/mcp-server-uyuni/issues/new?type=bug)
+
+Thanks in advance from the uyuni team!
 
 ## License
 
