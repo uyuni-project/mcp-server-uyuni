@@ -20,7 +20,7 @@ import httpx
 from datetime import datetime, timezone
 from pydantic import BaseModel
 
-from mcp.server.fastmcp import FastMCP, Context
+from fastmcp import FastMCP, Context
 from mcp import LoggingLevel, ServerSession, types
 from mcp_server_uyuni.logging_config import get_logger, Transport
 
