@@ -216,3 +216,4 @@ Avoid Raising Exceptions: LLMs do not handle exceptions well. A tool that raises
 ### Design Simple and Unambiguous Tool Signatures
 
 Avoid too many required parameters: If a tool has multiple required parameters (e.g., add_system) the LLM won't execute it if the user's prompt is simple (e.g., "add system 10.10.10.10"). The LLM might not ask for the missing activation_key and will simply fail to use it. Instead, make the required parameters optional, by setting some default value, and then check if the parameters have been provided. If not, return a message to the user asking for them. This way, the LLM will execute the tool even if you have not provided with the parameters.
+
