@@ -53,7 +53,7 @@ UYUNI_MCP_LOG_FILE_PATH = os.environ.get('UYUNI_MCP_LOG_FILE_PATH') # Defaults t
 
 AUTH_SERVER = os.environ.get("UYUNI_AUTH_SERVER")
 
-auth_provider = AuthProvider(AUTH_SERVER) if AUTH_SERVER else None
+auth_provider = AuthProvider(AUTH_SERVER, UYUNI_MCP_WRITE_TOOLS_ENABLED) if AUTH_SERVER else None
 mcp = FastMCP("mcp-server-uyuni", auth=auth_provider)
 
 logger = get_logger(log_file=UYUNI_MCP_LOG_FILE_PATH, transport=UYUNI_MCP_TRANSPORT)

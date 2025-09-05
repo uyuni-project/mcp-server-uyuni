@@ -4,12 +4,16 @@ from pydantic import AnyHttpUrl
 
 
 class AuthProvider(RemoteAuthProvider):
-    def __init__(self, auth_server):
+    def __init__(self, auth_server, write_enabled=False):
+        required_scopes = ["mcp:read"]
+        if write_enabled:
+            required_scopes.append("mcp:write")
+
         verifier = JWTVerifier(
             jwks_uri=auth_server + "/protocol/openid-connect/certs",
             issuer=auth_server,
             audience="mcp-server-uyuni",
-            required_scopes=[],
+            required_scopes=required_scopes,
         )
 
         super().__init__(
