@@ -20,7 +20,7 @@ import httpx
 from datetime import datetime, timezone
 from pydantic import BaseModel
 
-from mcp.server.fastmcp import FastMCP, Context
+from fastmcp import FastMCP, Context
 from mcp import LoggingLevel, ServerSession, types
 from mcp_server_uyuni.logging_config import get_logger, Transport
 
@@ -173,6 +173,10 @@ async def get_list_of_active_systems(ctx: Context) -> List[Dict[str, Any]]:
     logger.info(log_string)
     await ctx.info(log_string)
 
+    return await _get_list_of_active_systems()
+
+async def _get_list_of_active_systems() -> List[Dict[str, Union[str, int]]]:
+
     async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         systems_data_result = await _call_uyuni_api(
             client=client,
@@ -264,6 +268,9 @@ async def get_cpu_of_a_system(system_identifier: Union[str, int], ctx: Context) 
     log_string = f"Getting CPU information of system with id {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
+    return await _get_cpu_of_a_system(system_identifier)
+
+async def _get_cpu_of_a_system(system_identifier: Union[str, int]) -> Dict[str, Any]:
     system_id = await _resolve_system_id(system_identifier)
     if not system_id:
         return {} # Helper function already logged the reason for failure.
@@ -310,7 +317,7 @@ async def get_all_systems_cpu_info(ctx: Context) -> List[Dict[str, Any]]:
     await ctx.info(log_string)
 
     all_systems_cpu_data = []
-    active_systems = await get_list_of_active_systems(ctx) # Calls your existing tool
+    active_systems = await _get_list_of_active_systems() # Calls your existing tool
 
     if not active_systems:
         print("Warning: No active systems found or failed to retrieve system list.")
@@ -325,7 +332,7 @@ async def get_all_systems_cpu_info(ctx: Context) -> List[Dict[str, Any]]:
             continue
 
         print(f"Fetching CPU info for system: {system_name} (ID: {system_id})")
-        cpu_info = await get_cpu_of_a_system(str(system_id), ctx) # Calls your other existing tool
+        cpu_info = await _get_cpu_of_a_system(str(system_id)) # Calls your other existing tool
 
         all_systems_cpu_data.append({
             'system_name': system_name,
@@ -524,7 +531,7 @@ async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
     await ctx.info(log_string)
 
     systems_with_updates = []
-    active_systems = await get_list_of_active_systems(ctx) # Get the list of all systems
+    active_systems = await _get_list_of_active_systems() # Get the list of all systems
 
     if not active_systems:
         print("Warning: No active systems found or failed to retrieve system list.")
@@ -725,7 +732,6 @@ async def add_system(
     log_string = f"Attempting to add system ID: {host}"
     logger.info(log_string)
     await ctx.info(log_string)
-
     if ctx.session.check_client_capability(types.ClientCapabilities(elicitation=types.ElicitationCapability())):
         # Check for activation key
         if not activation_key:
@@ -744,7 +750,7 @@ async def add_system(
         return "You need to provide an activation key."
 
     # Check if the system already exists
-    active_systems = await get_list_of_active_systems(ctx)
+    active_systems = await _get_list_of_active_systems()
     for system in active_systems:
         if system.get('system_name') == host:
             message = f"System '{host}' already exists in Uyuni. No action taken."
@@ -833,7 +839,7 @@ async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanu
         return "" # Helper function already logged the reason for failure.
 
     # Check if the system exists before proceeding
-    active_systems = await get_list_of_active_systems(ctx)
+    active_systems = await _get_list_of_active_systems()
     if not any(s.get('system_id') == int(system_id) for s in active_systems):
         message = f"System with ID {system_id} not found."
         logger.warning(message)
