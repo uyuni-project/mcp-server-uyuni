@@ -5,7 +5,7 @@ description = "Model Context Protocol Server for Uyuni Server"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "fastmcp>=2.11.3",
+    "fastmcp==2.6.0",
     "httpx>=0.28.1",
 ]
 
