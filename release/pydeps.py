@@ -9,6 +9,6 @@ pyprefix = "python311"
 with open(pyproject_toml, "rb") as f:
     data = tomllib.load(f)
     for i in data['project']['dependencies']:
-        dep = i.replace("==", "=")
+        dep = i.replace("==", " = ")
         print(f"Requires:       {pyprefix}-{dep}")
 print("# End")
