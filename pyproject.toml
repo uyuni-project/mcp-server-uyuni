@@ -44,7 +44,7 @@ dependencies = [
     "typing-extensions==4.15.0",
     "typing-inspection==0.4.1",
     "uvicorn==0.36.0",
-    "websockets==15.0.1",
+    "websockets==14.2",
 ]
 
 [project.scripts]
