@@ -12,5 +12,8 @@ with open(pyproject_toml, "rb") as f:
         dep = i.replace("==", " = ")
         # the package is python-Authlib while the module is authlib
         dep = dep.replace("authlib", "Authlib")
+        dep = dep.replace("markupsafe", "MarkupSafe")
+        dep = dep.replace("pyyaml", "PyYAML")
+        dep = dep.replace("werkzeug", "Werkzeug")
         print(f"Requires:       {pyprefix}-{dep}")
 print("# End")
