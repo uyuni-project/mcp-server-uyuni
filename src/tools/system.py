@@ -1,0 +1,705 @@
+import os
+import asyncio
+from typing import Any, Dict, List, Optional, Union, Coroutine
+from fastmcp import Context
+from mcp_server_uyuni.config import CONFIG
+import httpx
+from datetime import datetime, timezone
+from pydantic import BaseModel
+from mcp import types
+
+from mcp_server_uyuni.logging_config import get_logger
+logger = get_logger(__name__)
+
+def attach_tools(mcp, call_uyuni_api_func, write_tool_decorator, timeout_sentinel) -> None:
+    """
+    Defines and attaches system-related tools to the MCP server.
+    Args:
+        mcp: The FastMCP server instance.
+        call_uyuni_api_func: The function to use for making API calls.
+    """
+
+    global _call_uyuni_api
+    global TIMEOUT_HAPPENED
+    global write_tool
+
+    _call_uyuni_api = call_uyuni_api_func
+    TIMEOUT_HAPPENED = timeout_sentinel
+    write_tool = write_tool_decorator
+
+    @mcp.tool()
+    async def get_cpu_of_a_system(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
+        """Retrieves detailed CPU information for a specific system in the Uyuni server.
+
+        Fetches CPU attributes such as model, core count, architecture, etc.
+
+        Args:
+            system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
+
+        Returns:
+            Dict[str, Any]: A dictionary containing the CPU attributes and the original system_identifier.
+                            Returns an empty dictionary if the API call fails,
+                            the response format is unexpected, or CPU data is not available.
+        """
+        log_string = f"Getting CPU information of system with id {system_identifier}"
+        logger.info(log_string)
+        await ctx.info(log_string)
+
+        system_id = await _resolve_system_id(system_identifier)
+        if not system_id:
+            return {} # Helper function already logged the reason for failure.
+
+        async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+            cpu_data_result = await _call_uyuni_api(
+                client=client,
+                method="GET",
+                api_path="/rhn/manager/api/system/getCpu",
+                params={'sid': system_id},
+                error_context=f"fetching CPU data for system {system_identifier}",
+                default_on_error={}
+            )
+
+        if isinstance(cpu_data_result, dict):
+            # Only add the identifier if the API returned actual data
+            if cpu_data_result:
+                cpu_data_result['system_identifier'] = system_identifier
+            return cpu_data_result
+        # If not a dict but not the default empty dict, log it
+        elif cpu_data_result:
+            print(f"Warning: Expected a dict for CPU data, but received: {type(cpu_data_result)}")
+        return {}
+
+    @mcp.tool()
+    async def check_system_updates(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
+
+        """
+        Checks if a specific system in the Uyuni server has pending updates (relevant errata),
+        including associated CVEs for each update.
+
+        Args:
+            system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
+
+        Returns:
+            Dict[str, Any]: A dictionary containing:
+                            - 'system_identifier' (Union[str, int]): The original system identifier used in the request.
+                            - 'has_pending_updates' (bool): True if there are pending updates, False otherwise.
+                            - 'update_count' (int): The number of pending updates.
+                            - 'updates' (List[Dict[str, Any]]): A list of pending update details.
+                              Each update dictionary will also include a 'cves' key
+                              containing a list of CVE identifiers associated with that update.
+                            Returns a dictionary with 'has_pending_updates': False and empty 'updates'
+                            if the API call fails or the format is unexpected.
+        """
+        log_string = f"Checking pending updates for system {system_identifier}"
+        logger.info(log_string)
+        await ctx.info(log_string)
+        system_id = await _resolve_system_id(system_identifier)
+        default_error_response = {
+            'system_identifier': system_identifier,
+            'has_pending_updates': False,
+            'update_count': 0,
+            'updates': []
+        }
+        if not system_id:
+            # Return a structure consistent with the success response, but indicating failure.
+            return default_error_response
+
+        list_cves_api_path = '/rhn/manager/api/errata/listCves'
+
+        async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+            relevant_errata_call: Coroutine = _call_uyuni_api(
+                client=client,
+                method="GET",
+                api_path="/rhn/manager/api/system/getRelevantErrata",
+                params={'sid': system_id},
+                error_context=f"checking updates for system {system_identifier}",
+                default_on_error=None # Distinguish API error from empty list
+            )
+
+            unscheduled_errata_call: Coroutine = get_unscheduled_errata(int(system_id), ctx, client)
+
+            results = await asyncio.gather(
+                relevant_errata_call,
+                unscheduled_errata_call
+            )
+            relevant_updates_list, unscheduled_updates_list = results
+
+            if not isinstance(relevant_updates_list, list) or not isinstance(unscheduled_updates_list, list):
+                logger.error(
+                    f"API calls for system {system_id} did not return lists as expected. "
+                    f"Type of relevant_updates: {type(relevant_updates_list).__name__}, "
+                    f"Type of unscheduled_updates: {type(unscheduled_updates_list).__name__}"
+                )
+                return default_error_response
+
+            unscheduled_advisory_names = {erratum.get('advisory_name') for erratum in unscheduled_updates_list}
+
+            enriched_updates_list = []
+            cve_fetch_tasks = []
+
+            for erratum_api_data in relevant_updates_list:
+                update_details = dict(erratum_api_data)
+
+                # Rename 'id' to 'update_id'
+                if 'id' in update_details:
+                    update_details['update_id'] = update_details.pop('id')
+                else:
+                    # This case is unlikely for errata from the API but good for robustness
+                    update_details['update_id'] = None
+                advisory_name = update_details.get('advisory_name')
+
+                if advisory_name in unscheduled_advisory_names:
+                    update_details['application_status'] = 'Pending'
+                else:
+                    update_details['application_status'] = 'Queued'
+
+                # Initialize and fetch CVEs
+                update_details['cves'] = []
+                if advisory_name:
+                    # Call the helper function to fetch CVEs
+                    task = _fetch_cves_for_erratum(client, advisory_name, int(system_id), list_cves_api_path, ctx)
+                    cve_fetch_tasks.append(task)
+
+                enriched_updates_list.append(update_details)
+
+            all_cve_results = await asyncio.gather(*cve_fetch_tasks)
+
+            if cve_fetch_tasks:
+                cve_iterator = iter(all_cve_results)
+                for update in enriched_updates_list:
+                    # If the update had an advisory name, it has a corresponding CVE result.
+                    if update.get("advisory_name"):
+                        update['cves'] = next(cve_iterator)
+                    else:
+                        update['cves'] = [] # Ensure the 'cves' key always exists
+
+            return {
+                'system_identifier': system_identifier,
+                'has_pending_updates': len(enriched_updates_list) > 0,
+                'update_count': len(enriched_updates_list),
+                'updates': enriched_updates_list
+            }
+
+    @write_tool()
+    async def schedule_apply_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context, *, confirm: bool = False) -> str:
+
+        """
+        Checks for pending updates on a system, schedules all of them to be applied,
+        and returns the action ID of the scheduled task.
+
+        This tool first calls 'check_system_updates' to determine relevant errata.
+        If updates are found, it then calls the 'system/scheduleApplyErrata' API
+        endpoint to apply all found errata.
+
+        Args:
+            system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
+            confirm: False by default. Only set confirm to True if the user has explicetely confirmed. Ask the user for confirmation.
+
+        Returns:
+            str: The action url if updates were successfully scheduled.
+                 Otherwise, returns an empty string.
+        """
+        log_string = f"Attempting to apply pending updates for system ID: {system_identifier}"
+        logger.info(log_string)
+        await ctx.info(log_string)
+
+        if not confirm:
+            return f"CONFIRMATION REQUIRED: This will apply pending updates to the system {system_identifier}.  Do you confirm?"
+
+        # 1. Use check_system_updates to get relevant errata
+        update_info = await mcp.tools["check_system_updates"].run(system_identifier=system_identifier, ctx=ctx)
+
+        if not update_info or not update_info.get('has_pending_updates'):
+            print(f"No pending updates found for system {system_identifier}, or an error occurred while fetching update information.")
+            return ""
+
+        errata_list = update_info.get('updates', [])
+        if not errata_list:
+            print(f"Update check for system {system_identifier} indicated updates, but the updates list is empty.")
+            return ""
+
+        errata_ids = [erratum.get('update_id') for erratum in errata_list if erratum.get('update_id') is not None]
+
+        if not errata_ids:
+            print(f"Could not extract any valid errata IDs for system {system_identifier} from the update information: {errata_list}")
+            return ""
+
+        system_id = await _resolve_system_id(system_identifier)
+        if not system_id:
+            return "" # Helper function already logged the reason for failure.
+
+        print(f"Found {len(errata_ids)} errata to apply for system {system_identifier} (ID: {system_id}). IDs: {errata_ids}")
+
+        # 2. Schedule apply errata using the API endpoint
+        async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+            payload = {"sid": int(system_id), "errataIds": errata_ids}
+            api_result = await _call_uyuni_api(
+                client=client,
+                method="POST",
+                api_path="/rhn/manager/api/system/scheduleApplyErrata",
+                json_body=payload,
+                error_context=f"scheduling errata application for system {system_identifier}",
+                default_on_error=None # Helper will return None on error
+            )
+
+            if isinstance(api_result, list) and api_result and isinstance(api_result[0], int):
+                action_id = api_result[0]
+                print(f"Successfully scheduled action {action_id} to apply {len(errata_ids)} errata to system {system_identifier}.")
+                return "Update successfully scheduled at " + CONFIG["UYUNI_SERVER"] + "/rhn/schedule/ActionDetails.do?aid=" + str(action_id)
+            else:
+                if api_result is not None: # Log if result is not None but also not the expected format
+                     print(f"Failed to schedule errata for system {system_identifier} or unexpected API response format. Result: {api_result}")
+                return ""
+
+    @write_tool()
+    async def schedule_apply_specific_update(system_identifier: Union[str, int], errata_id: int, ctx: Context, *, confirm: bool = False) -> str:
+
+        """
+        Schedules a specific update (erratum) to be applied to a system.
+
+        Args:
+            system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
+            errata_id: The unique identifier of the erratum (also referred to as update ID) to be applied.
+            confirm: False by default. Only set confirm to True if the user has explicetely confirmed. Ask the user for confirmation.
+
+        Returns:
+            str: The action URL if the update was successfully scheduled.
+                 Otherwise, returns an empty string.
+        """
+        log_string = f"Attempting to apply specific update (errata ID: {errata_id}) to system ID: {system_identifier}"
+        logger.info(log_string)
+        await ctx.info(log_string)
+        system_id = await _resolve_system_id(system_identifier)
+        if not system_id:
+            return "" # Helper function already logged the reason for failure.
+
+        print(f"Attempting to apply specific update (errata ID: {errata_id}) to system: {system_identifier}")
+
+        if not confirm:
+            return f"CONFIRMATION REQUIRED: This will apply specific update (errata ID: {errata_id}) to the system {system_identifier}. Do you confirm?"
+
+        async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+            # The API expects a list of errata IDs, even if it's just one.
+            payload = {"sid": int(system_id), "errataIds": [errata_id]}
+            api_result = await _call_uyuni_api(
+                client=client,
+                method="POST",
+                api_path="/rhn/manager/api/system/scheduleApplyErrata",
+                json_body=payload,
+                error_context=f"scheduling specific update (errata ID: {errata_id}) for system {system_identifier}",
+                default_on_error=None # Helper returns None on error
+            )
+
+            if isinstance(api_result, list) and api_result and isinstance(api_result[0], int):
+                action_id = api_result[0]
+                success_message = f"Update (errata ID: {errata_id}) successfully scheduled for system {system_identifier}. Action URL: {CONFIG['UYUNI_SERVER']}/rhn/schedule/ActionDetails.do?aid={action_id}"
+                print(success_message)
+                return success_message
+            elif isinstance(api_result, int): # Defensive check
+                action_id = api_result
+                success_message = f"Update (errata ID: {errata_id}) successfully scheduled. Action URL: {CONFIG['UYUNI_SERVER']}/rhn/schedule/ActionDetails.do?aid={action_id}"
+                print(success_message)
+                return success_message
+            else:
+                if api_result is not None: # Log if not None but also not expected format
+                    print(f"Failed to schedule specific update (errata ID: {errata_id}) for system {system_identifier} or unexpected API result format. Result: {api_result}")
+                return ""
+    
+    # Helper functions remain at the module level
+    async def _resolve_system_id(system_identifier: Union[str, int]) -> Optional[str]:
+        """
+        Resolves a system identifier, which can be a name or an ID, to a numeric system ID string.
+
+        If the identifier is numeric (or a string of digits), it's returned as a string.
+        If it's a non-numeric string, it's treated as a name and the ID is looked up via the system.getId API endpoint.
+
+        Args:
+            system_identifier: The system name (e.g., "buildhost") or system ID (e.g., 1000010000).
+        Returns:
+            Optional[str]: The numeric system ID as a string if found, otherwise None.
+        """
+        id_str = str(system_identifier)
+        if id_str.isdigit():
+            return id_str
+
+        # If it's not a digit string, it must be a name.
+        system_name = id_str
+        logger.info(f"System identifier '{system_name}' is not numeric, treating as a name and looking up ID.")
+
+        async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+            # The result from system.getId is an array of system structs
+            systems_list = await _call_uyuni_api(
+                client=client,
+                method="GET",
+                api_path="/rhn/manager/api/system/getId",
+                params={'name': system_name},
+                error_context=f"resolving system ID for name '{system_name}'",
+                default_on_error=[]  # Return an empty list on failure
+            )
+
+        if not isinstance(systems_list, list):
+            logger.error(f"Expected a list of systems for name '{system_name}', but received: {type(systems_list)}")
+            return None
+
+        if not systems_list:
+            logger.warning(f"System with name '{system_name}' not found.")
+            return None
+
+        if len(systems_list) > 1:
+            logger.error(f"Multiple systems found with name '{system_name}'.")
+            return None
+
+        first_system = systems_list[0]
+        if isinstance(first_system, dict) and 'id' in first_system:
+            resolved_id = str(first_system['id'])
+            logger.info(f"Found ID {resolved_id} for system name '{system_name}'.")
+            return resolved_id
+        else:
+            logger.error(f"System data for '{system_name}' is malformed. Expected a dict with 'id'. Got: {first_system}")
+            return None
+
+    async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str, system_id: int,
+                                    list_cves_path: str, ctx: Context) -> List[str]:
+        """
+        Internal helper to fetch CVEs for a given erratum advisory name.
+
+        Args:
+            client: The httpx.AsyncClient instance (must have active login session).
+            advisory_name: The advisory name of the erratum to fetch CVEs for.
+            system_id: The ID of the system (for logging purposes).
+            list_cves_path: The API path for listing CVEs.
+
+        Returns:
+            List[str]: A list of CVE identifier strings. Returns an empty list on failure or if no CVEs are found.
+        """
+
+        log_string = f"Fetching CVEs for advisory {advisory_name}"
+        logger.info(log_string)
+        await ctx.info(log_string)
+
+        if not advisory_name:
+            print(f"Warning: advisory_name is missing for system ID {system_id}, cannot fetch CVEs.")
+            return []
+
+        print(f"Fetching CVEs for advisory: {advisory_name} (system ID: {system_id})")
+        cve_list_from_api = await _call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path=list_cves_path,
+            error_context=f"fetching CVEs for advisory {advisory_name} (system ID: {system_id})",
+            params={'advisoryName': advisory_name},
+            perform_login=False, # Login is handled by the calling function
+            default_on_error=None # Distinguish API error (None) from empty list []
+        )
+
+        processed_cves = []
+        if isinstance(cve_list_from_api, list):
+            processed_cves = [str(cve) for cve in cve_list_from_api if cve]
+        elif cve_list_from_api is None:
+            pass
+
+        return processed_cves
+
+    async def get_unscheduled_errata(system_id: int, ctx: Context, client: httpx.AsyncClient) -> List[Dict[str, Any]]:
+        """
+        Provides a list of errata that are applicable to the system with the system_id
+        passed as parameter and have not ben scheduled yet. All elements in the result are patches that are applicable
+        for the system.
+
+        If the system ID is invalid then the operation will fail.
+
+        Args:
+            sid: The integer ID of the system for which we want to know the list of applicable errata.
+
+        Returns:
+            List[Dict[str, Any]]: A list of dictionaries with each dictionary defining a errata applicable
+                                to the system given as a parameter.
+                                Retruns an empty dictionary if no applicable errata for the system are found.
+        """
+        log_string = f"Getting list of unscheduled errata for system {system_id}"
+        logger.info(log_string)
+        await ctx.info(log_string)
+
+        get_unscheduled_errata_path = "/rhn/manager/api/system/getUnscheduledErrata"
+        payload = {'sid': str(system_id)}
+        unscheduled_errata_result = await _call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path=get_unscheduled_errata_path,
+            params=payload,
+            error_context=f"fetching unscheduled errata for system ID {system_id}",
+            default_on_error=[] # Return empty list on failure
+        )
+
+        if isinstance(unscheduled_errata_result, list):
+            for item in unscheduled_errata_result:
+                item['system_id'] = system_id
+            return unscheduled_errata_result
+        else:
+            if unscheduled_errata_result is not None:
+                print(f"Failed to retrieve unscheduled errata for system ID {system_id} or "
+                      f"unexpected API result format. Result: {unscheduled_errata_result}")
+            return []
+
+    class ActivationKeySchema(BaseModel):
+        activation_key: str
+
+    @write_tool()
+    async def add_system(
+        host: str,
+        ctx: Context,
+        *,
+        activation_key: str = "",
+        ssh_port: int = 22,
+        ssh_user: str = "root",
+        proxy_id: int = None,
+        salt_ssh: bool = False,
+        confirm: bool = False,
+    ) -> str:
+        """
+        Adds a new system to be managed by Uyuni.
+
+        This tool remotely connects to the specified host using SSH to register it.
+        It requires an SSH private key to be configured in the UYUNI_SSH_PRIV_KEY
+        environment variable for authentication.
+
+        Args:
+            host: Hostname or IP address of the target system to add.
+            activation_key: The activation key for registering the system.
+            ssh_port: The SSH port on the target machine (default: 22).
+            ssh_user: The user to connect with via SSH (default: 'root').
+            proxy_id: The system ID of a Uyuni proxy to use (optional).
+            salt_ssh: Manage the system with Salt SSH (default: False).
+            confirm: User confirmation is required to execute this action. Set to False
+                     by default. If False, the tool returns a confirmation message. The
+                     model must present this message to the user and, if they agree, call
+                     the tool again with this parameter set to True.
+
+        Returns:
+            A confirmation message if 'confirm' is False.
+            An error message if the UYUNI_SSH_PRIV_KEY environment variable is not set.
+            A success message if the system is scheduled for addition successfully.
+            An error message if the operation fails.
+        """
+        log_string = f"Attempting to add system ID: {host}"
+        logger.info(log_string)
+        await ctx.info(log_string)
+        if ctx.session.check_client_capability(types.ClientCapabilities(elicitation=types.ElicitationCapability())):
+            # Check for activation key
+            if not activation_key:
+                logger.info("Activation key not provided, prompting user for input.")
+                result = await ctx.elicit(
+                    "An activation key is required to add a new system.",
+                    ActivationKeySchema,
+                )
+                if result.action == "accept":
+                    activation_key = result.data.activation_key
+                elif result.action == "decline":
+                    return "System addition declined because no activation key was provided."
+                else:  # 'cancel' or any other unhandled action
+                    return "System addition cancelled."
+        elif not activation_key:  # Fallback if elicitation is not supported
+            return "You need to provide an activation key."
+
+        # Check if the system already exists
+        active_systems = await mcp.tools["get_list_of_active_systems"].run(ctx=ctx)
+        for system in active_systems:
+            if system.get('system_name') == host:
+                message = f"System '{host}' already exists in Uyuni. No action taken."
+                logger.info(message)
+                await ctx.info(message)
+                return message
+
+        if not confirm:
+            return f"CONFIRMATION REQUIRED: This will add system {host} with activation key {activation_key} to Uyuni. Do you confirm?"
+
+        ssh_priv_key_raw = os.environ.get('UYUNI_SSH_PRIV_KEY')
+        if not ssh_priv_key_raw:
+            return "Error: UYUNI_SSH_PRIV_KEY environment variable is not set. Please set it to your SSH private key."
+
+        ssh_priv_key = ssh_priv_key_raw.replace('\\n', '\n')
+
+        print(f"Attempting to add system: {host}")
+
+        ssh_priv_key_pass = os.environ.get('UYUNI_SSH_PRIV_KEY_PASS')
+        if not ssh_priv_key_pass:
+            ssh_priv_key_pass = ""
+
+        payload = {
+            "host": host,
+            "sshPort": ssh_port,
+            "sshUser": ssh_user,
+            "sshPrivKey": ssh_priv_key,
+            "sshPrivKeyPass": ssh_priv_key_pass,
+            "activationKey": activation_key,
+            "saltSSH": salt_ssh,
+        }
+        if proxy_id is not None:
+            payload["proxyId"] = proxy_id
+        logger.info(f"adding system {host}")
+
+        async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+            api_result = await _call_uyuni_api(
+                client=client, method="POST",
+                api_path="/rhn/manager/api/system/bootstrapWithPrivateSshKey",
+                json_body=payload,
+                error_context=f"adding system {host}",
+                default_on_error=None,
+                expect_timeout=True,
+            )
+
+        if api_result is TIMEOUT_HAPPENED:
+            success_message = f"System {host} addition process started. It may take some time. Check the system list later for its status."
+            logger.info(success_message)
+            return success_message
+        elif api_result == 1:
+            logger.info("api_result was 1")
+            success_message = f"System {host} successfully scheduled to be added."
+            print(success_message)
+            return success_message
+        else:
+            logger.info(f"api result was NOT 1 {api_result}")
+            return f"System {host} was NOT successfully scheduled to be added. Check server logs."
+
+    @write_tool()
+    async def remove_system(system_identifier: Union[str, int], ctx: Context, *, cleanup: bool = True, confirm: bool = False) -> str:
+        """
+        Removes/deletes a system from being managed by Uyuni.
+        This is a destructive action and requires confirmation.
+        Args:
+            system_identifier: The unique identifier of the system to remove. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
+            cleanup: If True (default), Uyuni will attempt to run cleanup scripts on the client before deletion.
+                     If False, the system is deleted from Uyuni without attempting client-side cleanup.
+            confirm: User confirmation is required. If False, the tool returns a confirmation prompt. The
+                     model must ask the user and call the tool again with confirm=True if they agree.
+        Returns:
+            A confirmation message if 'confirm' is False.
+            A success or error message string detailing the outcome.
+        """
+        log_string = f"Attempting to remove system with id {system_identifier}"
+        logger.info(log_string)
+        await ctx.info(log_string)
+        system_id = await _resolve_system_id(system_identifier)
+        if not system_id:
+            return "" # Helper function already logged the reason for failure.
+
+        active_systems = await mcp.tools["get_list_of_active_systems"].run(ctx=ctx)
+        if not any(s.get('system_id') == int(system_id) for s in active_systems):
+            message = f"System with ID {system_id} not found."
+            logger.warning(message)
+            return message
+
+        if not confirm:
+            return (f"CONFIRMATION REQUIRED: This will permanently remove system {system_id} from Uyuni. "
+                    f"Client-side cleanup is currently {'ENABLED' if cleanup else 'DISABLED'}. Do you confirm?")
+
+        cleanup_type = "FORCE_DELETE" if cleanup else "NO_CLEANUP"
+
+        async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+            api_result = await _call_uyuni_api(
+                client=client,
+                method="POST",
+                api_path="/rhn/manager/api/system/deleteSystem",
+                json_body={"sid": system_id, "cleanupType": cleanup_type},
+                error_context=f"removing system ID {system_id}",
+                default_on_error=None
+            )
+
+        if api_result == 1:
+            success_message = f"System {system_identifier} was successfully removed."
+            logger.info(success_message)
+            return success_message
+        else:
+            error_message = f"Failed to remove system {system_identifier}. The API did not return success. Result: {api_result}"
+            logger.error(error_message)
+            return error_message
+
+    @write_tool()
+    async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context, *, confirm: bool = False) -> str:
+        """
+        Schedules an immediate reboot for a specific system on the Uyuni server.
+        Args:
+            system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
+            confirm: False by default. Only set confirm to True if the user has explicetely confirmed. Ask the user for confirmation.
+        The reboot is scheduled to occur as soon as possible (effectively "now").
+        Returns:
+            str: A message indicating the action ID if the reboot was successfully scheduled,
+                 e.g., "System reboot successfully scheduled. Action URL: ...".
+                 Returns an empty string if scheduling fails or an error occurs.
+        """
+        log_string = f"Schedule system reboot for system {system_identifier}"
+        logger.info(log_string)
+        await ctx.info(log_string)
+        system_id = await _resolve_system_id(system_identifier)
+        if not system_id:
+            return "" # Helper function already logged the reason for failure.
+
+        if not confirm:
+            return f"CONFIRMATION REQUIRED: This will reboot system {system_identifier}. Do you confirm?"
+
+        schedule_reboot_path = '/rhn/manager/api/system/scheduleReboot'
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+            payload = {"sid": int(system_id), "earliestOccurrence": now_iso}
+            api_result = await _call_uyuni_api(
+                client=client,
+                method="POST",
+                api_path=schedule_reboot_path,
+                json_body=payload,
+                error_context=f"scheduling reboot for system {system_identifier}",
+                default_on_error=None # Helper returns None on error
+            )
+
+            if isinstance(api_result, int):
+                action_id = api_result
+                action_detail_url = f"{CONFIG['UYUNI_SERVER']}/rhn/schedule/ActionDetails.do?aid={action_id}"
+                success_message = f"System reboot successfully scheduled. Action URL: {action_detail_url}"
+                print(success_message)
+                return success_message
+            else:
+                if api_result is not None: # Log if result is not None but also not an int
+                    print(f"Failed to schedule reboot for system {system_identifier} or unexpected API result format. Result: {api_result}")
+                return ""
+
+    @write_tool()
+    async def cancel_action(action_id: int, ctx: Context, *, confirm: bool = False) -> str:
+        """
+        Cancels a specified action on the Uyuni server.
+        If the action ID is invalid or the action cannot be canceled,
+        the operation will fail.
+        Args:
+            action_id: The integer ID of the action to be canceled.
+            confirm: False by default. Only set confirm to True if the user has explicetely confirmed. Ask the user for confirmation.
+        Returns:
+            str: A success message if the action was canceled,
+                 e.g., "Successfully canceled action: 123".
+                 Returns an error message if the cancellation failed for any reason,
+                 e.g., "Failed to cancel action 123. Please check the action ID and server logs."
+        """
+        log_string = f"Cancel action {action_id}"
+        logger.info(log_string)
+        await ctx.info(log_string)
+
+        cancel_actions_path = '/rhn/manager/api/schedule/cancelActions'
+
+        if not isinstance(action_id, int): # Basic type check, though FastMCP might handle this
+            return "Invalid action ID provided. Must be an integer."
+
+        if not confirm:
+            return f"CONFIRMATION REQUIRED: This will schedule action {action_id} to be canceled. Do you confirm?"
+
+        async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+            payload = {"actionIds": [action_id]} # API expects a list
+            api_result = await _call_uyuni_api(
+                client=client,
+                method="POST",
+                api_path=cancel_actions_path,
+                json_body=payload,
+                error_context=f"canceling action {action_id}",
+                default_on_error=0 # API returns 1 on success, so 0 can signify an error or unexpected response from helper
+            )
+            if api_result == 1:
+                return f"Successfully canceled action: {action_id}"
+            else:
+                return f"Failed to cancel action: {action_id}. The API did not return success (expected 1, got {api_result}). Check server logs for details."
