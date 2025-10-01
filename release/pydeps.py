@@ -10,5 +10,7 @@ with open(pyproject_toml, "rb") as f:
     data = tomllib.load(f)
     for i in data['project']['dependencies']:
         dep = i.replace("==", " = ")
+        # the package is python-Authlib while the module is authlib
+        dep = dep.replace("authlib", "Authlib")
         print(f"Requires:       {pyprefix}-{dep}")
 print("# End")
