@@ -23,46 +23,19 @@ from pydantic import BaseModel
 from fastmcp import FastMCP, Context
 from mcp import LoggingLevel, ServerSession, types
 from mcp_server_uyuni.logging_config import get_logger, Transport
+from mcp_server_uyuni.uyuni_api import call as call_uyuni_api, TIMEOUT_HAPPENED
+from mcp_server_uyuni.config import CONFIG
 
 from .auth import AuthProvider
 
 class ActivationKeySchema(BaseModel):
     activation_key: str
 
-REQUIRED_VARS = [
-    "UYUNI_SERVER",
-    "UYUNI_USER",
-    "UYUNI_PASS",
-]
-
-missing_vars = [key for key in REQUIRED_VARS if key not in os.environ]
-
-if missing_vars:
-    raise ImportError(
-        f"Failed to import config: Missing required environment variables: {', '.join(missing_vars)}"
-    )
-
-UYUNI_SERVER = 'https://' + os.environ.get('UYUNI_SERVER')
-UYUNI_USER = os.environ.get('UYUNI_USER')
-UYUNI_PASS = os.environ.get('UYUNI_PASS')
-# UYUNI_MCP_SSL_VERIFY is optional and defaults to True. Set to 'false', '0', or 'no' to disable.
-UYUNI_MCP_SSL_VERIFY = os.environ.get('UYUNI_MCP_SSL_VERIFY', 'true').lower() not in ('false', '0', 'no')
-UYUNI_MCP_WRITE_TOOLS_ENABLED = os.environ.get('UYUNI_MCP_WRITE_TOOLS_ENABLED', 'false').lower() in ('true', '1', 'yes')
-UYUNI_MCP_TRANSPORT = os.environ.get('UYUNI_MCP_TRANSPORT', 'stdio')
-UYUNI_MCP_LOG_FILE_PATH = os.environ.get('UYUNI_MCP_LOG_FILE_PATH') # Defaults to None if not set
-UYUNI_MCP_HOST = os.environ.get('UYUNI_MCP_HOST', '127.0.0.1')
-UYUNI_MCP_PORT = int(os.environ.get('UYUNI_MCP_PORT', 8000))
-base_url = f"http://{UYUNI_MCP_HOST}:{UYUNI_MCP_PORT}"
-
-AUTH_SERVER = os.environ.get("UYUNI_AUTH_SERVER")
-
-auth_provider = AuthProvider(AUTH_SERVER, base_url, UYUNI_MCP_WRITE_TOOLS_ENABLED) if AUTH_SERVER else None
+base_url = f'http://{CONFIG["UYUNI_MCP_HOST"]}:{CONFIG["UYUNI_MCP_PORT"]}'
+auth_provider = AuthProvider(CONFIG["AUTH_SERVER"], base_url, CONFIG["UYUNI_MCP_WRITE_TOOLS_ENABLED"]) if CONFIG["AUTH_SERVER"] else None
 mcp = FastMCP("mcp-server-uyuni", auth=auth_provider)
 
-logger = get_logger(log_file=UYUNI_MCP_LOG_FILE_PATH, transport=UYUNI_MCP_TRANSPORT)
-
-# Sentinel object to indicate an expected timeout for long-running actions
-TIMEOUT_HAPPENED = object()
+logger = get_logger(log_file=CONFIG["UYUNI_MCP_LOG_FILE_PATH"], transport=CONFIG["UYUNI_MCP_TRANSPORT"])
 
 def write_tool(*decorator_args, **decorator_kwargs):
     """
@@ -71,98 +44,16 @@ def write_tool(*decorator_args, **decorator_kwargs):
     """
     # 2. This is the actual decorator that gets applied to the tool function.
     def decorator(func):
-        if UYUNI_MCP_WRITE_TOOLS_ENABLED:
+        if CONFIG["UYUNI_MCP_WRITE_TOOLS_ENABLED"]:
             # 3a. If enabled, it applies the @mcp.tool() decorator, registering the function.
             return mcp.tool(*decorator_args, **decorator_kwargs)(func)
-        
+
         # 3b. If disabled, it does nothing and just returns the original,
         #     un-decorated function. It is never registered.
         return func
-    
+
     # 1. The factory returns the decorator.
     return decorator
-
-async def _call_uyuni_api(
-    client: httpx.AsyncClient,
-    method: str,
-    api_path: str,
-    error_context: str,
-    params: Dict[str, Any] = None,
-    json_body: Dict[str, Any] = None,
-    perform_login: bool = True,
-    default_on_error: Any = None,
-    expected_result_key: str = 'result',
-    expect_timeout: bool = False
-) -> Any:
-    """
-    Helper function to make authenticated API calls to Uyuni.
-    Handles login, request execution, error handling, and basic response parsing.
-    """
-
-    # Safety check: Do not allow POST requests if write tools are disabled.
-    # This acts as a secondary guard after the @write_tool decorator.
-    if method.upper() == 'POST' and not UYUNI_MCP_WRITE_TOOLS_ENABLED:
-        error_msg = (f"Attempted to call a write API ({api_path}) while write tools are disabled. "
-                     "Please set UYUNI_MCP_WRITE_TOOLS_ENABLED to 'true' to enable them.")
-        logger.error(error_msg)
-        return error_msg
-
-    if perform_login:
-        login_data = {"login": UYUNI_USER, "password": UYUNI_PASS}
-        try:
-            login_response = await client.post(UYUNI_SERVER + '/rhn/manager/api/login', json=login_data)
-            login_response.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error during login for {error_context}: {e.request.url} - {e.response.status_code} - {e.response.text}")
-            return default_on_error
-        except httpx.RequestError as e:
-            logger.exception(f"Request error during login for {error_context}: {e.request.url} - {e}")
-            return default_on_error
-        except Exception as e:
-            logger.exception(f"An unexpected error occurred during login for {error_context}: {e}")
-            return default_on_error
-
-    full_api_url = UYUNI_SERVER + api_path
-
-    try:
-        if method.upper() == 'GET':
-            response = await client.get(full_api_url, params=params)
-        elif method.upper() == 'POST':
-            logger.info(f"POSTing to {full_api_url}")
-            response = await client.post(full_api_url, json=json_body, params=params)
-            logger.info(f"POST response: {response.text}")
-        else:
-            logger.info(f"Unsupported HTTP method '{method}' for {error_context}.")
-            return default_on_error
-        response.raise_for_status()
-        response_data = response.json()
-
-        if response_data.get('success'):
-            if expected_result_key in response_data:
-                return response_data[expected_result_key]
-            # If 'success' is true, but the expected_result_key is not there (e.g. 'result' is missing)
-            logger.info(f"API call for {error_context} succeeded but '{expected_result_key}' not found in response. Response: {response_data}")
-            return default_on_error
-        else:
-            print(f"API call for {error_context} reported failure. Response: {response_data}")
-            return default_on_error
-
-    except httpx.HTTPStatusError as e:
-        logger.error(f"HTTP error occurred while {error_context}: {e.request.url} - {e.response.status_code} - {e.response.text}")
-        return default_on_error
-    except httpx.TimeoutException as e:
-        logger.info(f"timeout! timeout expected? {expect_timeout}")
-        if expect_timeout:
-            logger.info(f"A timeout occurred while {error_context} (expected for a long-running action): {e.request.url} - {e}")
-            return TIMEOUT_HAPPENED
-        logger.warning(f"A timeout occurred while {error_context}: {e.request.url} - {e}")
-        return default_on_error
-    except httpx.RequestError as e:
-        logger.exception(f"Request error occurred while {error_context}: {e.request.url} - {e}")
-        return default_on_error
-    except Exception as e: # Catch other potential errors like JSONDecodeError
-        logger.exception(f"An unexpected error occurred while {error_context}: {e}")
-        return default_on_error
 
 def _to_bool(value) -> bool:
     """
@@ -192,8 +83,8 @@ async def get_list_of_active_systems(ctx: Context) -> List[Dict[str, Any]]:
 
 async def _get_list_of_active_systems() -> List[Dict[str, Union[str, int]]]:
 
-    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
-        systems_data_result = await _call_uyuni_api(
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+        systems_data_result = await call_uyuni_api(
             client=client,
             method="GET",
             api_path="/rhn/manager/api/system/listSystems",
@@ -233,9 +124,9 @@ async def _resolve_system_id(system_identifier: Union[str, int]) -> Optional[str
     system_name = id_str
     logger.info(f"System identifier '{system_name}' is not numeric, treating as a name and looking up ID.")
 
-    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
         # The result from system.getId is an array of system structs
-        systems_list = await _call_uyuni_api(
+        systems_list = await call_uyuni_api(
             client=client,
             method="GET",
             api_path="/rhn/manager/api/system/getId",
@@ -290,8 +181,8 @@ async def _get_cpu_of_a_system(system_identifier: Union[str, int]) -> Dict[str, 
     if not system_id:
         return {} # Helper function already logged the reason for failure.
 
-    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
-        cpu_data_result = await _call_uyuni_api(
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+        cpu_data_result = await call_uyuni_api(
             client=client,
             method="GET",
             api_path="/rhn/manager/api/system/getCpu",
@@ -381,7 +272,7 @@ async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str,
         return []
 
     print(f"Fetching CVEs for advisory: {advisory_name} (system ID: {system_id})")
-    cve_list_from_api = await _call_uyuni_api(
+    cve_list_from_api = await call_uyuni_api(
         client=client,
         method="GET",
         api_path=list_cves_path,
@@ -442,8 +333,8 @@ async def _check_system_updates(system_identifier: Union[str, int], ctx: Context
 
     list_cves_api_path = '/rhn/manager/api/errata/listCves'
 
-    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
-        relevant_errata_call: Coroutine = _call_uyuni_api(
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+        relevant_errata_call: Coroutine = call_uyuni_api(
             client=client,
             method="GET",
             api_path="/rhn/manager/api/system/getRelevantErrata",
@@ -452,7 +343,7 @@ async def _check_system_updates(system_identifier: Union[str, int], ctx: Context
             default_on_error=None # Distinguish API error from empty list
         )
 
-        unscheduled_errata_call: Coroutine = _call_uyuni_api(
+        unscheduled_errata_call: Coroutine = call_uyuni_api(
             client=client,
             method="GET",
             api_path="/rhn/manager/api/system/getUnscheduledErrata",
@@ -641,9 +532,9 @@ async def schedule_apply_pending_updates_to_system(system_identifier: Union[str,
     print(f"Found {len(errata_ids)} errata to apply for system {system_identifier} (ID: {system_id}). IDs: {errata_ids}")
 
     # 2. Schedule apply errata using the API endpoint
-    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
         payload = {"sid": int(system_id), "errataIds": errata_ids}
-        api_result = await _call_uyuni_api(
+        api_result = await call_uyuni_api(
             client=client,
             method="POST",
             api_path="/rhn/manager/api/system/scheduleApplyErrata",
@@ -655,7 +546,7 @@ async def schedule_apply_pending_updates_to_system(system_identifier: Union[str,
         if isinstance(api_result, list) and api_result and isinstance(api_result[0], int):
             action_id = api_result[0]
             print(f"Successfully scheduled action {action_id} to apply {len(errata_ids)} errata to system {system_identifier}.")
-            return "Update successfully scheduled at " + UYUNI_SERVER + "/rhn/schedule/ActionDetails.do?aid=" + str(action_id)
+            return "Update successfully scheduled at " + CONFIG["UYUNI_SERVER"] + "/rhn/schedule/ActionDetails.do?aid=" + str(action_id)
         else:
             # Error message already printed by _call_uyuni_api if it returned None
             if api_result is not None: # Log if result is not None but also not the expected format
@@ -702,7 +593,7 @@ async def schedule_apply_specific_update(system_identifier: Union[str, int], err
     if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will apply specific update (errata ID: {errata_id}) to the system {system_identifier}. Do you confirm?"
 
-    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
         # The API expects a list of errata IDs, even if it's just one.
         payload = {"sid": int(system_id), "errataIds": [errata_id_int]}
         api_result = await _call_uyuni_api(
@@ -829,7 +720,7 @@ async def add_system(
     logger.info(f"adding system {host}")
 
     async with httpx.AsyncClient(verify=False) as client:
-        api_result = await _call_uyuni_api(
+        api_result = await call_uyuni_api(
             client=client, method="POST",
             api_path="/rhn/manager/api/system/bootstrapWithPrivateSshKey",
             json_body=payload,
@@ -899,7 +790,7 @@ async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanu
     cleanup_type = "FORCE_DELETE" if cleanup else "NO_CLEANUP"
 
     async with httpx.AsyncClient(verify=False) as client:
-        api_result = await _call_uyuni_api(
+        api_result = await call_uyuni_api(
             client=client,
             method="POST",
             api_path="/rhn/manager/api/system/deleteSystem",
@@ -949,10 +840,10 @@ async def get_systems_needing_security_update_for_cve(cve_identifier: str, ctx: 
     find_by_cve_path = '/rhn/manager/api/errata/findByCve'
     list_affected_systems_path = '/rhn/manager/api/errata/listAffectedSystems'
 
-    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
         # 1. Call findByCve (login will be handled by the helper)
         print(f"Searching for errata related to CVE: {cve_identifier}")
-        errata_list = await _call_uyuni_api(
+        errata_list = await call_uyuni_api(
             client=client,
             method="GET",
             api_path=find_by_cve_path,
@@ -978,7 +869,7 @@ async def get_systems_needing_security_update_for_cve(cve_identifier: str, ctx: 
                 continue
 
             print(f"Fetching systems affected by advisory: {advisory_name} (related to CVE: {cve_identifier})")
-            systems_data_result = await _call_uyuni_api(
+            systems_data_result = await call_uyuni_api(
                 client=client,
                 method="GET",
                 api_path=list_affected_systems_path,
@@ -1040,8 +931,8 @@ async def get_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]: # No
     systems_needing_reboot_list = []
     list_reboot_path = '/rhn/manager/api/system/listSuggestedReboot'
 
-    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
-        reboot_data_result = await _call_uyuni_api(
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+        reboot_data_result = await call_uyuni_api(
             client=client,
             method="GET",
             api_path=list_reboot_path,
@@ -1105,9 +996,9 @@ async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context
     # Generate current time in ISO 8601 format (UTC)
     now_iso = datetime.now(timezone.utc).isoformat()
 
-    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
         payload = {"sid": int(system_id), "earliestOccurrence": now_iso}
-        api_result = await _call_uyuni_api(
+        api_result = await call_uyuni_api(
             client=client,
             method="POST",
             api_path=schedule_reboot_path,
@@ -1119,7 +1010,7 @@ async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context
         # Uyuni's scheduleReboot API returns an integer action ID directly in 'result'
         if isinstance(api_result, int):
             action_id = api_result
-            action_detail_url = f"{UYUNI_SERVER}/rhn/schedule/ActionDetails.do?aid={action_id}"
+            action_detail_url = f"{CONFIG['UYUNI_SERVER']}/rhn/schedule/ActionDetails.do?aid={action_id}"
             success_message = f"System reboot successfully scheduled. Action URL: {action_detail_url}"
             print(success_message)
             return success_message
@@ -1153,8 +1044,8 @@ async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
     list_actions_path = '/rhn/manager/api/schedule/listAllActions'
     processed_actions_list = []
 
-    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
-        api_result = await _call_uyuni_api(
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+        api_result = await call_uyuni_api(
             client=client,
             method="GET",
             api_path=list_actions_path,
@@ -1213,9 +1104,9 @@ async def cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] 
     if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will schedule action {action_id} to be canceled. Do you confirm?"
 
-    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
         payload = {"actionIds": [action_id]} # API expects a list
-        api_result = await _call_uyuni_api(
+        api_result = await call_uyuni_api(
             client=client,
             method="POST",
             api_path=cancel_actions_path,
@@ -1247,7 +1138,7 @@ async def list_activation_keys() -> List[Dict[str, str]]:
     list_keys_path = '/rhn/manager/api/activationkey/listActivationKeys'
 
     async with httpx.AsyncClient(verify=False) as client:
-        api_result = await _call_uyuni_api(
+        api_result = await call_uyuni_api(
             client=client,
             method="GET",
             api_path=list_keys_path,
@@ -1287,7 +1178,7 @@ async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str,
     async with httpx.AsyncClient(verify=False) as client:
         get_unscheduled_errata = "/rhn/manager/api/system/getUnscheduledErrata"
         payload = {'sid': str(system_id)}
-        unscheduled_errata_result = await _call_uyuni_api(
+        unscheduled_errata_result = await call_uyuni_api(
             client=client,
             method="GET",
             api_path=get_unscheduled_errata,
@@ -1311,9 +1202,9 @@ def main_cli():
 
     logger.info("Running Uyuni MCP server.")
 
-    if UYUNI_MCP_TRANSPORT == Transport.HTTP.value:
-        mcp.run(transport="streamable-http", host=UYUNI_MCP_HOST, port=UYUNI_MCP_PORT)
-    elif UYUNI_MCP_TRANSPORT == Transport.STDIO.value:
+    if CONFIG["UYUNI_MCP_TRANSPORT"] == Transport.HTTP.value:
+        mcp.run(transport="streamable-http")
+    elif CONFIG["UYUNI_MCP_TRANSPORT"] == Transport.STDIO.value:
         mcp.run(transport="stdio")
     else:
         # Defaults to stdio transport anyway
