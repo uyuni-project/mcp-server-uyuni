@@ -29,6 +29,20 @@
       "id": "1000010002",
       "name": "mlm-ref-head-suse-sshminion.mgr.suse.de",
       "cpu_model": "QEMU Virtual CPU"
+    },
+    "new_system": {
+      "host": "10.145.211.203",
+      "activation_key": "1-DEBLIKE-KEY"
     }
+  },
+  "activation_keys": {
+    "suse": "1-SUSE-KEY-x86_64",
+    "rhlike": "1-RH-LIKE-KEY",
+    "deblike": "1-DEBLIKE-KEY",
+    "suse_ssh": "1-SUSE-SSH-KEY-x86_64",
+    "suse_ssh_tunnel": "1-SUSE-SSH-TUNNEL-KEY-x86_64",
+    "proxy": "1-PROXY-KEY-x86_64",
+    "build_host": "1-BUILD-HOST-KEY-x86_64",
+    "terminal": "1-TERMINAL-KEY-x86_64"
   }
 }
