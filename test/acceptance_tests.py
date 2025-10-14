@@ -232,6 +232,9 @@ def main():
                 for sys_key, sys_values in config_data["systems"].items():
                     for attr_key, attr_value in sys_values.items():
                         placeholders[f"{sys_key}_{attr_key}"] = attr_value
+            if "activation_keys" in config_data:
+                for key_name, key_value in config_data["activation_keys"].items():
+                    placeholders[f"key_{key_name}"] = key_value
         print(f"Loaded {len(placeholders)} placeholders from '{args.test_config}'")
 
     judge_model = args.judge_model if args.judge_model else args.model
