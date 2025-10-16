@@ -4,7 +4,7 @@ from pydantic import AnyHttpUrl
 
 
 class AuthProvider(RemoteAuthProvider):
-    def __init__(self, auth_server, write_enabled=False):
+    def __init__(self, auth_server, base_url, write_enabled=False):
         required_scopes = ["mcp:read"]
         if write_enabled:
             required_scopes.append("mcp:write")
@@ -19,5 +19,5 @@ class AuthProvider(RemoteAuthProvider):
         super().__init__(
             token_verifier=verifier,
             authorization_servers=[AnyHttpUrl(auth_server)],
-            base_url="http://localhost:8000", #TODO: Get URL dynamically?
+            base_url=base_url,
         )
