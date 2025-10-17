@@ -24,7 +24,7 @@ from fastmcp import FastMCP, Context
 from mcp import LoggingLevel, ServerSession, types
 from mcp_server_uyuni.logging_config import get_logger, Transport
 
-mcp = FastMCP("mcp-server-uyuni")
+from .auth import AuthProvider
 
 class ActivationKeySchema(BaseModel):
     activation_key: str
@@ -50,6 +50,14 @@ UYUNI_MCP_SSL_VERIFY = os.environ.get('UYUNI_MCP_SSL_VERIFY', 'true').lower() no
 UYUNI_MCP_WRITE_TOOLS_ENABLED = os.environ.get('UYUNI_MCP_WRITE_TOOLS_ENABLED', 'false').lower() in ('true', '1', 'yes')
 UYUNI_MCP_TRANSPORT = os.environ.get('UYUNI_MCP_TRANSPORT', 'stdio')
 UYUNI_MCP_LOG_FILE_PATH = os.environ.get('UYUNI_MCP_LOG_FILE_PATH') # Defaults to None if not set
+UYUNI_MCP_HOST = os.environ.get('UYUNI_MCP_HOST', '127.0.0.1')
+UYUNI_MCP_PORT = int(os.environ.get('UYUNI_MCP_PORT', 8000))
+base_url = f"http://{UYUNI_MCP_HOST}:{UYUNI_MCP_PORT}"
+
+AUTH_SERVER = os.environ.get("UYUNI_AUTH_SERVER")
+
+auth_provider = AuthProvider(AUTH_SERVER, base_url, UYUNI_MCP_WRITE_TOOLS_ENABLED) if AUTH_SERVER else None
+mcp = FastMCP("mcp-server-uyuni", auth=auth_provider)
 
 logger = get_logger(log_file=UYUNI_MCP_LOG_FILE_PATH, transport=UYUNI_MCP_TRANSPORT)
 
@@ -1252,10 +1260,10 @@ def main_cli():
     logger.info("Running Uyuni MCP server.")
 
     if UYUNI_MCP_TRANSPORT == Transport.HTTP.value:
-        mcp.run(transport="streamable-http")
+        mcp.run(transport="streamable-http", host=UYUNI_MCP_HOST, port=UYUNI_MCP_PORT)
     elif UYUNI_MCP_TRANSPORT == Transport.STDIO.value:
         mcp.run(transport="stdio")
     else:
-        # Defaults to stdio transport anyway 
+        # Defaults to stdio transport anyway
         # But I explicitety state it here for clarity
         mcp.run(transport="stdio")
