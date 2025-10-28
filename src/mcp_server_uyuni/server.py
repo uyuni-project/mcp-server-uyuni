@@ -31,9 +31,7 @@ class ActivationKeySchema(BaseModel):
     activation_key: str
 
 REQUIRED_VARS = [
-    "UYUNI_SERVER",
-    "UYUNI_USER",
-    "UYUNI_PASS",
+    "UYUNI_SERVER"
 ]
 
 missing_vars = [key for key in REQUIRED_VARS if key not in os.environ]
@@ -136,8 +134,8 @@ async def _call_uyuni_api(
     if perform_login:
         try:
             if token:
-                login_response = await client.post(
-                    UYUNI_SERVER + '/rhn/manager/api/oidcLogin',
+                login_response = await client.get(
+                    UYUNI_SERVER + '/rhn/manager/api/auth/oidcLogin',
                     headers={"Authorization": f"Bearer {token}"})
             elif UYUNI_USER and UYUNI_PASS:
                 login_response = await client.post(
