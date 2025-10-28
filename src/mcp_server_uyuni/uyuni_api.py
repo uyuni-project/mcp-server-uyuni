@@ -19,6 +19,7 @@ async def call(
     method: str,
     api_path: str,
     error_context: str,
+    token: Optional[str] = None,
     params: Dict[str, Any] = None,
     json_body: Dict[str, Any] = None,
     perform_login: bool = True,
@@ -40,9 +41,17 @@ async def call(
         return error_msg
 
     if perform_login:
-        login_data = {"login": CONFIG["UYUNI_USER"], "password": CONFIG["UYUNI_PASS"]}
         try:
-            login_response = await client.post(CONFIG["UYUNI_SERVER"] + '/rhn/manager/api/login', json=login_data)
+            if token:
+                login_response = await client.post(
+                    CONFIG["UYUNI_SERVER"] + '/rhn/manager/api/oidcLogin',
+                    headers={"Authorization": f"Bearer {token}"}
+                )
+            elif CONFIG["UYUNI_USER"] and CONFIG["UYUNI_PASS"]:
+                login_response = await client.post(
+                    CONFIG["UYUNI_SERVER"] + '/rhn/manager/api/login',
+                    json={"login": CONFIG["UYUNI_USER"], "password": CONFIG["UYUNI_PASS"]}
+                )
             login_response.raise_for_status()
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error during login for {error_context}: {e.request.url} - {e.response.status_code} - {e.response.text}")

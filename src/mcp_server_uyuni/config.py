@@ -1,9 +1,7 @@
 import os
 
 REQUIRED_VARS = [
-    "UYUNI_SERVER",
-    "UYUNI_USER",
-    "UYUNI_PASS",
+    "UYUNI_SERVER"
 ]
 
 missing_vars = [key for key in REQUIRED_VARS if key not in os.environ]
