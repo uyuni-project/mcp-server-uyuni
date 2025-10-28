@@ -31,9 +31,7 @@ class ActivationKeySchema(BaseModel):
     activation_key: str
 
 REQUIRED_VARS = [
-    "UYUNI_SERVER",
-    "UYUNI_USER",
-    "UYUNI_PASS",
+    "UYUNI_SERVER"
 ]
 
 missing_vars = [key for key in REQUIRED_VARS if key not in os.environ]
@@ -135,9 +133,14 @@ async def _call_uyuni_api(
 
     if perform_login:
         try:
-            login_response = await client.get(
-                UYUNI_SERVER + '/rhn/manager/api/auth/oidcLogin',
-                headers={"Authorization": f"Bearer {token}"})
+            if token:
+                login_response = await client.get(
+                    UYUNI_SERVER + '/rhn/manager/api/auth/oidcLogin',
+                    headers={"Authorization": f"Bearer {token}"})
+            elif UYUNI_USER and UYUNI_PASS:
+                login_response = await client.get(
+                    UYUNI_SERVER + '/rhn/manager/api/auth/login',
+                    json={"login": UYUNI_USER, "password": UYUNI_PASS})
             login_response.raise_for_status()
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error during login for {error_context}: {e.request.url} - {e.response.status_code} - {e.response.text}")
