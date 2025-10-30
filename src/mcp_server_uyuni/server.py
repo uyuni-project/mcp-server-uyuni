@@ -68,11 +68,11 @@ def write_tool(*decorator_args, **decorator_kwargs):
         if UYUNI_MCP_WRITE_TOOLS_ENABLED:
             # 3a. If enabled, it applies the @mcp.tool() decorator, registering the function.
             return mcp.tool(*decorator_args, **decorator_kwargs)(func)
-        
+
         # 3b. If disabled, it does nothing and just returns the original,
         #     un-decorated function. It is never registered.
         return func
-    
+
     # 1. The factory returns the decorator.
     return decorator
 
@@ -178,7 +178,6 @@ async def get_list_of_active_systems(ctx: Context) -> List[Dict[str, Any]]:
     return await _get_list_of_active_systems()
 
 async def _get_list_of_active_systems() -> List[Dict[str, Union[str, int]]]:
-
     async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         systems_data_result = await _call_uyuni_api(
             client=client,
@@ -413,6 +412,9 @@ async def check_system_updates(system_identifier: Union[str, int], ctx: Context)
     log_string = f"Checking pending updates for system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
+    return await _check_system_updates(system_identifier, ctx)
+
+async def _check_system_updates(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
     system_id = await _resolve_system_id(system_identifier)
     default_error_response = {
         'system_identifier': system_identifier,
@@ -450,7 +452,7 @@ async def check_system_updates(system_identifier: Union[str, int], ctx: Context)
             unscheduled_errata_call
         )
         relevant_updates_list, unscheduled_updates_list = results
-        
+
         if not isinstance(relevant_updates_list, list) or not isinstance(unscheduled_updates_list, list):
             logger.error(
                 f"API calls for system {system_id} did not return lists as expected. "
@@ -479,7 +481,7 @@ async def check_system_updates(system_identifier: Union[str, int], ctx: Context)
                 update_details['application_status'] = 'Pending'
             else:
                 update_details['application_status'] = 'Queued'
-            
+
             # Initialize and fetch CVEs
             update_details['cves'] = []
             if advisory_name:
@@ -551,7 +553,7 @@ async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
 
         print(f"Checking updates for system: {system_name} (ID: {system_id})")
         # Use the existing check_system_updates tool
-        update_check_result = await check_system_updates(system_id, ctx)
+        update_check_result = await _check_system_updates(system_id, ctx)
 
         if update_check_result.get('has_pending_updates', False):
             # If the system has updates, add its info and update details to the result list
@@ -593,7 +595,7 @@ async def schedule_apply_pending_updates_to_system(system_identifier: Union[str,
         return f"CONFIRMATION REQUIRED: This will apply pending updates to the system {system_identifier}.  Do you confirm?"
 
     # 1. Use check_system_updates to get relevant errata
-    update_info = await check_system_updates(system_identifier, ctx)
+    update_info = await _check_system_updates(system_identifier, ctx)
 
     if not update_info or not update_info.get('has_pending_updates'):
         print(f"No pending updates found for system {system_identifier}, or an error occurred while fetching update information.")
