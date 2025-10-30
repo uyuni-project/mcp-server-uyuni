@@ -135,7 +135,7 @@ async def _call_uyuni_api(
         try:
             if token:
                 login_response = await client.get(
-                    UYUNI_SERVER + '/rhn/manager/api/auth/oidcLogin',
+                    UYUNI_SERVER + '/rhn/manager/api/oidcLogin',
                     headers={"Authorization": f"Bearer {token}"})
             elif UYUNI_USER and UYUNI_PASS:
                 login_response = await client.post(
