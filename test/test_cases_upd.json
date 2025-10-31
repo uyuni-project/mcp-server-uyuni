@@ -1,52 +1,52 @@
 [
   {
     "id": "TC-UPD-001",
-    "prompt": "Are there any updates for system ID 1000010003? Can you list them?",
+    "prompt": "Are there any updates for system ID {rhlike_minion_id}? Can you list them?",
     "expected_output": "Returns a message stating that has pending updates and lists them."
   },
   {
     "id": "TC-UPD-002",
-    "prompt": "Are there any updates for 'rhlike-minion.'?",
+    "prompt": "Are there any updates for '{rhlike_minion_name}'?",
     "expected_output": "Returns a message stating that has pending updates and lists them."
   },
   {
     "id": "TC-UPD-003",
     "prompt": "Are all my servers up-to-date?",
-    "expected_output": "No, not all your servers are up-to-date."
+    "expected_output": "Returns a message stating that not all servers are up-to-date."
   },
   {
     "id": "TC-UPD-004_confirm_request",
-    "prompt": "Update my server with id 1000010003?",
+    "prompt": "Update my server with id {rhlike_minion_id}?",
     "expected_output": "Return a message asking for confirmation?"
   },
   {
     "id": "TC-UPD-005_confirm_request",
-    "prompt": "Update rhlike-minion.",
+    "prompt": "Update {rhlike_minion_name}.",
     "expected_output": "Return a message asking for confirmation?"
   },
   {
     "id": "TC-UPD-006_confirmed",
-    "prompt": "Update my server with id 1000010003?, confirmation set to true",
+    "prompt": "Update my server with id {rhlike_minion_id}?, confirmation set to true",
     "expected_output": "Return a message stating that the update has been successfully scheduled and the url of the action"
   },
   {
     "id": "TC-UPD-007",
     "prompt": "Are there any security updates for my systems?",
-    "expected_output": "Yes, there is a security update available for your systems."
+    "expected_output": "Returns a message stating that there are security updates available."
   },
   {
     "id": "TC-UPD-008_confirm_request",
-    "prompt": "can you schedule applying the update with update id 2764 for system id 1000010000",
+    "prompt": "can you schedule applying the update with update id 2764 for system id {proxy_id}",
     "expected_output": "Return a message asking for confirmation?"
   },
   {
     "id": "TC-UPD-009_confirm_request",
-    "prompt": "can you schedule applying the update with update id 2764 for system proxy.",
+    "prompt": "can you schedule applying the update with update id 2764 for system {proxy_name}.",
     "expected_output": "Return a message asking for confirmation?"
   },
   {
     "id": "TC-UPD-010_confirmed",
-    "prompt": "can you schedule applying the update with update id 2764 for system id 1000010000, confirmation set to true",
-    "expected_output": "Update (errata ID: 2764) successfully scheduled for system ID 1000010000. Action URL: https://192.168.1.124:8443/rhn/schedule/ActionDetails.do?aid=32"
+    "prompt": "can you schedule applying the update with update id 2764 for system id {proxy_id}, confirmation set to true",
+    "expected_output": "Update (errata ID: 2764) successfully scheduled for system {proxy_id}. Action URL: ...'"
   }
 ]
