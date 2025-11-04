@@ -20,10 +20,18 @@ Your task is to determine if the 'Actual Output' from the tool meets the criteri
 
 **Evaluation Rules:**
 1.  **Semantic Equivalence:** Do not perform a simple string comparison. The 'Actual Output' must be semantically equivalent to the 'Expected Output'. Minor differences in wording, whitespace, or formatting are acceptable if the core meaning is the same.
-2.  **Descriptive Expectations:** The 'Expected Output' might be a description of the desired result (e.g., "Returns a list of dicts", "Returns an empty dict"). In this case, you must verify that the 'Actual Output' is a valid representation of that description. For example, if the expectation is "Returns an empty list", an actual output of `[]` is a PASS.
-3.  **Confirmation Prompts:** If the 'Expected Output' contains "CONFIRMATION REQUIRED", the 'Actual Output' must also contain this phrase.
-4.  **Dynamic Content:** If the 'Expected Output' contains placeholders like "...'", it means the beginning of the 'Actual Output' should match the part before the placeholder.
-5.  **Skip thinking:** Skip any reasoning or thinking process in your response. Skip any content between <think> and </think>.
+
+2.  **Fact-Checking (Checklist):** If the 'Expected Output' begins with "The response must contain..." and is followed by a list, treat this as a **checklist of facts**. Your sole task is to verify that *every fact* from this list (e.g., every "system: id" pair) is present in the 'Actual Output'. The 'Actual Output' PASSES if all facts are present, **regardless of its formatting** (e.g., numbered lists, bold text, sentences, or tables are all acceptable).
+
+3.  **No Implementation Details:** Base your judgment *only* on the provided text. Do not fail a test by inferring requirements from internal code or parameter names (like 'system_identifier') that are not explicitly mentioned in the 'Expected Output'.
+
+4.  **Descriptive Expectations:** The 'Expected Output' might be a description of the desired result (e.g., "Returns a list of dicts", "Returns an empty dict"). In this case, you must verify that the 'Actual Output' is a valid representation of that description. For example, if the expectation is "Returns an empty list", an actual output of `[]` is a PASS.
+
+5.  **Confirmation Prompts:** If the 'Expected Output' contains "CONFIRMATION REQUIRED", the 'Actual Output' must also contain this phrase.
+
+6.  **Dynamic Content:** If the 'Expected Output' contains placeholders like "...'", it means the beginning of the 'Actual Output' should match the part before the placeholder.
+
+7.  **Skip thinking:** Skip any reasoning or thinking process in your response. Skip any content between <think> and </think>.
 
 **Input for Evaluation:**
 
@@ -156,7 +164,17 @@ def evaluate_test_case(expected, actual, config_path, judge_model):
             return "FAIL", f"LLM judge returned an invalid status: '{status}'"
         return status, reason
     except json.JSONDecodeError as e:
-        return "FAIL", f"LLM judge returned non-JSON output: '{judge_response_str}' (Error: {e})"
+        # Fallback for when the LLM fails to produce valid JSON but might have
+        # produced a string containing the status.
+        response_upper = judge_response_str.upper()
+        if "PASS" in response_upper:
+            return "PASS", f"LLM judge returned non-JSON output but contained 'PASS': '{judge_response_str}'"
+        if "FAIL" in response_upper:
+            return "FAIL", f"LLM judge returned non-JSON output but contained 'FAIL': '{judge_response_str}'"
+
+        return "FAIL", (
+            f"LLM judge returned non-JSON output: '{judge_response_str}' (Error: {e})"
+        )
     except (AttributeError, KeyError):
         return "FAIL", f"LLM judge returned malformed JSON: '{judge_response_str}'"
 
