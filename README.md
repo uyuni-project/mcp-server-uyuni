@@ -38,7 +38,7 @@ UYUNI_SERVER=192.168.1.124:8443
 UYUNI_USER=admin
 UYUNI_PASS=admin
 # Optional: Set to 'false' to disable SSL certificate verification. Defaults to 'true'.
-# UYUNI_SSL_VERIFY=false
+# UYUNI_MCP_SSL_VERIFY=false
 # Optional: Set to 'true' to enable tools that perform write actions (e.g., POST requests). Defaults to 'false'.
 # UYUNI_MCP_WRITE_TOOLS_ENABLED=false
 # Optional: Set the transport protocol. Can be 'stdio' (default) or 'http'.
