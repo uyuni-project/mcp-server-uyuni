@@ -576,7 +576,7 @@ async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
     return systems_with_updates
 
 @write_tool()
-async def schedule_apply_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context, confirm: bool = False) -> str:
+async def schedule_apply_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
 
     """
     Checks for pending updates on a system, schedules all of them to be applied,
@@ -588,7 +588,11 @@ async def schedule_apply_pending_updates_to_system(system_identifier: Union[str,
 
     Args:
         system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
-        confirm: False by default. Only set confirm to True if the user has explicetely confirmed. Ask the user for confirmation.
+        confirm: User confirmation is required to execute this action. This parameter
+                 is `False` by default. To obtain the confirmation message that must
+                 be presented to the user, the model must first call the tool with
+                 `confirm=False`. If the user agrees, the model should call the tool
+                 a second time with `confirm=True`.
 
     Returns:
         str: The action url if updates were successfully scheduled.
@@ -598,7 +602,9 @@ async def schedule_apply_pending_updates_to_system(system_identifier: Union[str,
     logger.info(log_string)
     await ctx.info(log_string)
 
-    if not confirm:
+    is_confirmed = str(confirm).lower() in ('true', 'yes', '1')
+
+    if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will apply pending updates to the system {system_identifier}.  Do you confirm?"
 
     # 1. Use check_system_updates to get relevant errata
@@ -650,15 +656,19 @@ async def schedule_apply_pending_updates_to_system(system_identifier: Union[str,
             return ""
 
 @write_tool()
-async def schedule_apply_specific_update(system_identifier: Union[str, int], errata_id: int, ctx: Context, confirm: bool = False) -> str:
+async def schedule_apply_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
 
     """
     Schedules a specific update (erratum) to be applied to a system.
 
     Args:
         system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
-        errata_id: The unique identifier of the erratum (also referred to as update ID) to be applied.
-        confirm: False by default. Only set confirm to True if the user has explicetely confirmed. Ask the user for confirmation.
+        errata_id: The unique identifier of the erratum (also referred to as update ID) to be applied. It must be an integer.
+        confirm: User confirmation is required to execute this action. This parameter
+                 is `False` by default. To obtain the confirmation message that must
+                 be presented to the user, the model must first call the tool with
+                 `confirm=False`. If the user agrees, the model should call the tool
+                 a second time with `confirm=True`.
 
     Returns:
         str: The action URL if the update was successfully scheduled.
@@ -667,41 +677,50 @@ async def schedule_apply_specific_update(system_identifier: Union[str, int], err
     log_string = f"Attempting to apply specific update (errata ID: {errata_id}) to system ID: {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
+
+    is_confirmed = str(confirm).lower() == 'true'
+
+    try:
+        errata_id_int = int(errata_id)
+    except (ValueError, TypeError):
+        return f"Invalid errata ID '{errata_id}'. The ID must be an integer."
+
+
     system_id = await _resolve_system_id(system_identifier)
     if not system_id:
         return "" # Helper function already logged the reason for failure.
 
     print(f"Attempting to apply specific update (errata ID: {errata_id}) to system: {system_identifier}")
 
-    if not confirm:
+    if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will apply specific update (errata ID: {errata_id}) to the system {system_identifier}. Do you confirm?"
 
     async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         # The API expects a list of errata IDs, even if it's just one.
-        payload = {"sid": int(system_id), "errataIds": [errata_id]}
+        payload = {"sid": int(system_id), "errataIds": [errata_id_int]}
         api_result = await _call_uyuni_api(
             client=client,
             method="POST",
             api_path="/rhn/manager/api/system/scheduleApplyErrata",
             json_body=payload,
-            error_context=f"scheduling specific update (errata ID: {errata_id}) for system {system_identifier}",
+            error_context=f"scheduling specific update (errata ID: {errata_id_int}) for system {system_identifier}",
             default_on_error=None # Helper returns None on error
         )
 
         if isinstance(api_result, list) and api_result and isinstance(api_result[0], int):
             action_id = api_result[0]
-            success_message = f"Update (errata ID: {errata_id}) successfully scheduled for system {system_identifier}. Action URL: {UYUNI_SERVER}/rhn/schedule/ActionDetails.do?aid={action_id}"
+            success_message = f"Update (errata ID: {errata_id_int}) successfully scheduled for system {system_identifier}. Action URL: {UYUNI_SERVER}/rhn/schedule/ActionDetails.do?aid={action_id}"
             print(success_message)
             return success_message
         # Some schedule APIs might return int directly in result (though scheduleApplyErrata usually returns a list)
         elif isinstance(api_result, int): # Defensive check
             action_id = api_result
-            success_message = f"Update (errata ID: {errata_id}) successfully scheduled. Action URL: {UYUNI_SERVER}/rhn/schedule/ActionDetails.do?aid={action_id}"
+            success_message = f"Update (errata ID: {errata_id_int}) successfully scheduled. Action URL: {UYUNI_SERVER}/rhn/schedule/ActionDetails.do?aid={action_id}"
             print(success_message)
             return success_message
         else:
             if api_result is not None: # Log if not None but also not expected format
-                print(f"Failed to schedule specific update (errata ID: {errata_id}) for system {system_identifier} or unexpected API result format. Result: {api_result}")
+                print(f"Failed to schedule specific update (errata ID: {errata_id_int}) for system {system_identifier} or unexpected API result format. Result: {api_result}")
             return ""
 
 @write_tool()
@@ -713,7 +732,7 @@ async def add_system(
     ssh_user: str = "root",
     proxy_id: int = None,
     salt_ssh: bool = False,
-    confirm: bool = False,
+    confirm: Union[bool, str] = False,
 ) -> str:
     """
     Adds a new system to be managed by Uyuni.
@@ -729,10 +748,11 @@ async def add_system(
         ssh_user: The user to connect with via SSH (default: 'root').
         proxy_id: The system ID of a Uyuni proxy to use (optional).
         salt_ssh: Manage the system with Salt SSH (default: False).
-        confirm: User confirmation is required to execute this action. Set to False
-                 by default. If False, the tool returns a confirmation message. The
-                 model must present this message to the user and, if they agree, call
-                 the tool again with this parameter set to True.
+        confirm: User confirmation is required to execute this action. This parameter
+                 is `False` by default. To obtain the confirmation message that must
+                 be presented to the user, the model must first call the tool with
+                 `confirm=False`. If the user agrees, the model should call the tool
+                 a second time with `confirm=True`.
 
     Returns:
         A confirmation message if 'confirm' is False.
@@ -743,6 +763,9 @@ async def add_system(
     log_string = f"Attempting to add system ID: {host}"
     logger.info(log_string)
     await ctx.info(log_string)
+
+    is_confirmed = str(confirm).lower() in ('true', 'yes', '1')
+
     if ctx.session.check_client_capability(types.ClientCapabilities(elicitation=types.ElicitationCapability())):
         # Check for activation key
         if not activation_key:
@@ -769,7 +792,7 @@ async def add_system(
             await ctx.info(message)
             return message
 
-    if not confirm:
+    if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will add system {host} with activation key {activation_key} to Uyuni. Do you confirm?"
 
     ssh_priv_key_raw = os.environ.get('UYUNI_SSH_PRIV_KEY')
@@ -825,7 +848,7 @@ async def add_system(
 
 
 @write_tool()
-async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanup: bool = True, confirm: bool = False) -> str:
+async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanup: bool = True, confirm: Union[bool, str] = False) -> str:
     """
     Removes/deletes a system from being managed by Uyuni.
 
@@ -835,8 +858,11 @@ async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanu
         system_identifier: The unique identifier of the system to remove. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
         cleanup: If True (default), Uyuni will attempt to run cleanup scripts on the client before deletion.
                  If False, the system is deleted from Uyuni without attempting client-side cleanup.
-        confirm: User confirmation is required. If False, the tool returns a confirmation prompt. The
-                 model must ask the user and call the tool again with confirm=True if they agree.
+        confirm: User confirmation is required to execute this action. This parameter
+                 is `False` by default. To obtain the confirmation message that must
+                 be presented to the user, the model must first call the tool with
+                 `confirm=False`. If the user agrees, the model should call the tool
+                 a second time with `confirm=True`.
 
     Returns:
         A confirmation message if 'confirm' is False.
@@ -845,6 +871,9 @@ async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanu
     log_string = f"Attempting to remove system with id {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
+
+    is_confirmed = str(confirm).lower() in ('true', 'yes', '1')
+
     system_id = await _resolve_system_id(system_identifier)
     if not system_id:
         return "" # Helper function already logged the reason for failure.
@@ -856,7 +885,7 @@ async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanu
         logger.warning(message)
         return message
 
-    if not confirm:
+    if not is_confirmed:
         return (f"CONFIRMATION REQUIRED: This will permanently remove system {system_id} from Uyuni. "
                 f"Client-side cleanup is currently {'ENABLED' if cleanup else 'DISABLED'}. Do you confirm?")
 
@@ -982,7 +1011,7 @@ async def get_systems_needing_security_update_for_cve(cve_identifier: str, ctx: 
     return list(affected_systems_map.values())
 
 @mcp.tool()
-async def get_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
+async def get_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]: # No change needed here
     """
     Fetches a list of systems from the Uyuni server that require a reboot.
 
@@ -1032,14 +1061,18 @@ async def get_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
     return systems_needing_reboot_list
 
 @write_tool()
-async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context, confirm: bool = False) -> str:
+async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context, confirm: Union[bool, str] = False) -> str:
 
     """
     Schedules an immediate reboot for a specific system on the Uyuni server.
 
     Args:
         system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
-        confirm: False by default. Only set confirm to True if the user has explicetely confirmed. Ask the user for confirmation.
+        confirm: User confirmation is required to execute this action. This parameter
+                 is `False` by default. To obtain the confirmation message that must
+                 be presented to the user, the model must first call the tool with
+                 `confirm=False`. If the user agrees, the model should call the tool
+                 a second time with `confirm=True`.
 
     The reboot is scheduled to occur as soon as possible (effectively "now").
     Returns:
@@ -1050,11 +1083,14 @@ async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context
     log_string = f"Schedule system reboot for system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
+
+    is_confirmed = str(confirm).lower() in ('true', 'yes', '1')
+
     system_id = await _resolve_system_id(system_identifier)
     if not system_id:
         return "" # Helper function already logged the reason for failure.
 
-    if not confirm:
+    if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will reboot system {system_identifier}. Do you confirm?"
 
     schedule_reboot_path = '/rhn/manager/api/system/scheduleReboot'
@@ -1134,7 +1170,7 @@ async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
     return processed_actions_list
 
 @write_tool()
-async def cancel_action(action_id: int, ctx: Context, confirm: bool = False) -> str:
+async def cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] = False) -> str:
     """
     Cancels a specified action on the Uyuni server.
 
@@ -1143,7 +1179,11 @@ async def cancel_action(action_id: int, ctx: Context, confirm: bool = False) -> 
 
     Args:
         action_id: The integer ID of the action to be canceled.
-        confirm: False by default. Only set confirm to True if the user has explicetely confirmed. Ask the user for confirmation.
+        confirm: User confirmation is required to execute this action. This parameter
+                 is `False` by default. To obtain the confirmation message that must
+                 be presented to the user, the model must first call the tool with
+                 `confirm=False`. If the user agrees, the model should call the tool
+                 a second time with `confirm=True`.
 
     Returns:
         str: A success message if the action was canceled,
@@ -1156,12 +1196,14 @@ async def cancel_action(action_id: int, ctx: Context, confirm: bool = False) -> 
     logger.info(log_string)
     await ctx.info(log_string)
 
+    is_confirmed = str(confirm).lower() in ('true', 'yes', '1')
+
     cancel_actions_path = '/rhn/manager/api/schedule/cancelActions'
  
     if not isinstance(action_id, int): # Basic type check, though FastMCP might handle this
         return "Invalid action ID provided. Must be an integer."
 
-    if not confirm:
+    if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will schedule action {action_id} to be canceled. Do you confirm?"
 
     async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:

@@ -6,7 +6,7 @@
   },
   {
     "id": "TC-SCH-002_confirm_request",
-    "prompt": "Cancel an action with a valid ID.",
+    "prompt": "Can you cancel an action with a valid ID?",
     "expected_output": "Returns a message the requires confirmation"
   },
   {

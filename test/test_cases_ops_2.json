@@ -5,7 +5,7 @@
   },
   {
     "id": "TC-OPS-002_confirm_request",
-    "prompt": "Remove system {new_system_host}",
+    "prompt": "Can you remove system {new_system_host}?",
     "expected_output": "Return a message requiring confirmation."
   },
   {

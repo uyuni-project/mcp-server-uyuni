@@ -5,7 +5,7 @@
   },
   {
     "id": "TC-OPS-001_confirm_request",
-    "prompt": "Add a new system at host {new_system_host} with activation key '{key_deblike}'",
+    "prompt": "Can you add a new system at host {new_system_host} with activation key '{key_deblike}'?",
     "expected_output": "Return a message requiring confirmation."
   },
   {
