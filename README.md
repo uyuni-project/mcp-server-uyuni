@@ -32,26 +32,31 @@ There are two main ways to run the `mcp-server-uyuni`: using the pre-built Docke
 
 Before running the server, you need to create a `config` file. You can place it anywhere, but you must provide the correct path to it when running the server.
 
-
 ```
+# Required: Basic server parameters.
 UYUNI_SERVER=192.168.1.124:8443
 UYUNI_USER=admin
 UYUNI_PASS=admin
+
 # Optional: Set to 'false' to disable SSL certificate verification. Defaults to 'true'.
 # UYUNI_MCP_SSL_VERIFY=false
+
 # Optional: Set to 'true' to enable tools that perform write actions (e.g., POST requests). Defaults to 'false'.
 # UYUNI_MCP_WRITE_TOOLS_ENABLED=false
+
+> [!WARNING]
+> **Security Note on Write Tools:** Enabling `UYUNI_MCP_WRITE_TOOLS_ENABLED` allows the execution of state-changing and potentially destructive actions (e.g., removing systems, applying updates). When combined with `UYUNI_MCP_TRANSPORT=http`, this risk is amplified, as any client with network access can perform these actions. Only enable write tools in a trusted environment.
+
 # Optional: Set the transport protocol. Can be 'stdio' (default) or 'http'.
 # UYUNI_MCP_TRANSPORT=stdio
 
 > [!WARNING]
 > **Security Note on HTTP Transport:** When `UYUNI_MCP_TRANSPORT` is set to `http`, the server runs without authentication. This means any client with network access can execute commands. Only use this mode in a trusted, isolated network environment. For more details, see the Security Policy.
 
-> [!WARNING]
-> **Security Note on Write Tools:** Enabling `UYUNI_MCP_WRITE_TOOLS_ENABLED` allows the execution of state-changing and potentially destructive actions (e.g., removing systems, applying updates). When combined with `UYUNI_MCP_TRANSPORT=http`, this risk is amplified, as any client with network access can perform these actions. Only enable write tools in a trusted environment.
-
 # Optional: Set the path for the server log file. Defaults to logging to the console.
 # UYUNI_MCP_LOG_FILE_PATH=/var/log/mcp-server-uyuni.log
+
+# Required to bootstrap new systems into Uyuni via the `add_system` tool.
 UYUNI_SSH_PRIV_KEY="-----BEGIN OPENSSH PRIVATE KEY-----\n..."
 UYUNI_SSH_PRIV_KEY_PASS=""
 ```
