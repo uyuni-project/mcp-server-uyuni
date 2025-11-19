@@ -1,21 +1,21 @@
 [
   { "id": "TC-OPS-2-Pre",
-    "prompt": "Is system with name 10.145.211.203 in uyuni?",
+    "prompt": "Is system with name {new_system_host} in uyuni?",
     "expected_output": "Return a message stating it is"
   },
   {
     "id": "TC-OPS-002_confirm_request",
-    "prompt": "Remove system 10.145.211.203",
+    "prompt": "Can you remove system {new_system_host}?",
     "expected_output": "Return a message requiring confirmation."
   },
   {
     "id": "TC-OPS-002_confirmed",
-    "prompt": "Remove system 10.145.211.203, confirmation set to true",
+    "prompt": "Remove system {new_system_host}, confirmation set to true",
     "expected_output": "Return a message stating that that system was successfully removed."
   },
   {
     "id": "TC-OPS-003",
-    "prompt": "Add system build-host. with key 1-DEBLIKE-KEY with confirmation set to true",
+    "prompt": "Add system {build_host_name} with key {key_deblike} with confirmation set to true",
     "expected_output": "Return a message stating that system already exists."
   },
   {

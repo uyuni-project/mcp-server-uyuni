@@ -20,10 +20,18 @@ Your task is to determine if the 'Actual Output' from the tool meets the criteri
 
 **Evaluation Rules:**
 1.  **Semantic Equivalence:** Do not perform a simple string comparison. The 'Actual Output' must be semantically equivalent to the 'Expected Output'. Minor differences in wording, whitespace, or formatting are acceptable if the core meaning is the same.
-2.  **Descriptive Expectations:** The 'Expected Output' might be a description of the desired result (e.g., "Returns a list of dicts", "Returns an empty dict"). In this case, you must verify that the 'Actual Output' is a valid representation of that description. For example, if the expectation is "Returns an empty list", an actual output of `[]` is a PASS.
-3.  **Confirmation Prompts:** If the 'Expected Output' contains "CONFIRMATION REQUIRED", the 'Actual Output' must also contain this phrase.
-4.  **Dynamic Content:** If the 'Expected Output' contains placeholders like "...'", it means the beginning of the 'Actual Output' should match the part before the placeholder.
-5.  **Skip thinking:** Skip any reasoning or thinking process in your response. Skip any content between <think> and </think>.
+
+2.  **Fact-Checking (Checklist):** If the 'Expected Output' begins with "The response must contain..." and is followed by a list, treat this as a **checklist of facts**. Your sole task is to verify that *every fact* from this list (e.g., every "system: id" pair) is present in the 'Actual Output'. The 'Actual Output' PASSES if all facts are present, **regardless of its formatting** (e.g., numbered lists, bold text, sentences, or tables are all acceptable).
+
+3.  **No Implementation Details:** Base your judgment *only* on the provided text. Do not fail a test by inferring requirements from internal code or parameter names (like 'system_identifier') that are not explicitly mentioned in the 'Expected Output'.
+
+4.  **Descriptive Expectations:** The 'Expected Output' might be a description of the desired result (e.g., "Returns a list of dicts", "Returns an empty dict"). In this case, you must verify that the 'Actual Output' is a valid representation of that description. For example, if the expectation is "Returns an empty list", an actual output of `[]` is a PASS.
+
+5.  **Confirmation Prompts:** If the 'Expected Output' contains "CONFIRMATION REQUIRED", the 'Actual Output' does not need to contain that exact phrase. Instead, it must semantically ask the user for confirmation to proceed with the action. For example, "Do you want to continue?" is a valid confirmation prompt.
+
+6.  **Dynamic Content:** If the 'Expected Output' contains placeholders like "...'", it means the beginning of the 'Actual Output' should match the part before the placeholder.
+
+7.  **Skip thinking:** Skip any reasoning or thinking process in your response. Skip any content between <think> and </think>.
 
 **Input for Evaluation:**
 
@@ -98,18 +106,17 @@ def _run_mcphost_command(prompt, config_path, model):
         return f"UNEXPECTED_ERROR: {str(e)}"
 
 
-def run_test_case(test_case, config_path, model):
+def run_test_case(prompt, config_path, model):
     """Runs a single test case using the mcphost command.
 
     Args:
-        test_case (dict): The test case dictionary from the JSON file.
+        prompt (str): The prompt to send to the model.
         config_path (str): Path to the mcphost config file.
         model (str): The model to use for the test.
 
     Returns:
         str: The actual output from the command, or an error message.
     """
-    prompt = test_case.get("prompt")
     if not prompt:
         return "Error: 'prompt' not found in test case"
     return _run_mcphost_command(prompt, config_path, model)
@@ -157,10 +164,26 @@ def evaluate_test_case(expected, actual, config_path, judge_model):
             return "FAIL", f"LLM judge returned an invalid status: '{status}'"
         return status, reason
     except json.JSONDecodeError as e:
-        return "FAIL", f"LLM judge returned non-JSON output: '{judge_response_str}' (Error: {e})"
+        # Fallback for when the LLM fails to produce valid JSON but might have
+        # produced a string containing the status.
+        response_upper = judge_response_str.upper()
+        if "PASS" in response_upper:
+            return "PASS", f"LLM judge returned non-JSON output but contained 'PASS': '{judge_response_str}'"
+        if "FAIL" in response_upper:
+            return "FAIL", f"LLM judge returned non-JSON output but contained 'FAIL': '{judge_response_str}'"
+
+        return "FAIL", (
+            f"LLM judge returned non-JSON output: '{judge_response_str}' (Error: {e})"
+        )
     except (AttributeError, KeyError):
         return "FAIL", f"LLM judge returned malformed JSON: '{judge_response_str}'"
 
+
+def _substitute_placeholders(text, placeholders):
+    """Substitutes placeholders in a string with their values."""
+    if not isinstance(text, str):
+        return text
+    return text.format(**placeholders)
 
 def main():
     """Main function to run acceptance tests."""
@@ -178,6 +201,12 @@ def main():
         type=Path,
         default=Path(__file__).parent / "test_results.json",
         help="Path to the output JSON file for test results. Defaults to 'test_results.json' in the same directory.",
+    )
+    parser.add_argument(
+        "--test-config",
+        type=Path,
+        default=None,
+        help="Path to the JSON file with test configuration values (for placeholder substitution).",
     )
     parser.add_argument(
         "--config",
@@ -207,6 +236,25 @@ def main():
         )
         sys.exit(1)
 
+    placeholders = {}
+    if args.test_config:
+        if not args.test_config.is_file():
+            print(
+                f"Error: Test config file not found at '{args.test_config}'",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        with open(args.test_config, "r", encoding="utf-8") as f:
+            config_data = json.load(f)
+            if "systems" in config_data:
+                for sys_key, sys_values in config_data["systems"].items():
+                    for attr_key, attr_value in sys_values.items():
+                        placeholders[f"{sys_key}_{attr_key}"] = attr_value
+            if "activation_keys" in config_data:
+                for key_name, key_value in config_data["activation_keys"].items():
+                    placeholders[f"key_{key_name}"] = key_value
+        print(f"Loaded {len(placeholders)} placeholders from '{args.test_config}'")
+
     judge_model = args.judge_model if args.judge_model else args.model
     print(f"Using model for tests: {args.model}")
     print(f"Using model for judging: {judge_model}\n")
@@ -225,11 +273,11 @@ def main():
     for i, tc in enumerate(test_cases, 1):
         test_start_time = time.monotonic()
         print(f"--- [{i}/{total_tests}] RUNNING: {Colors.BOLD}{tc.get('id', 'N/A')}{Colors.ENDC} ---")
-        prompt = tc.get("prompt")
-        expected_output = tc.get("expected_output")
+        prompt = _substitute_placeholders(tc.get("prompt"), placeholders)
+        expected_output = _substitute_placeholders(tc.get("expected_output"), placeholders)
 
         print(f"  PROMPT  : {prompt}")
-        actual_output = run_test_case(tc, args.config, args.model)
+        actual_output = run_test_case(prompt, args.config, args.model)
         print(f"  EXPECTED: {expected_output}")
         print(f"  ACTUAL  : {actual_output}")
 

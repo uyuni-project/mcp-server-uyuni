@@ -2,7 +2,7 @@
   {
     "id": "TC-SEC-001",
     "prompt": "list systems affected by CVE-1999-9999",
-    "expected_output": "Return a message stating that the systems affected by CVE-1999-9999 are rhlike-minion. and suse-minion."
+    "expected_output": "Return a message stating that the systems affected by CVE-1999-9999 are {rhlike_minion_name} and {suse_minion_name}."
   },
   {
     "id": "TC-SEC-002",
