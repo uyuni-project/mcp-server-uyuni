@@ -1,38 +1,44 @@
-# mcp-server-uyuni
+# Uyuni MCP Server
 
-Model Context Protocol Server for Uyuni Server API.
 
-## Disclaimer
+The Uyuni MCP Server is a Model Context Protocol (MCP) server implementation that bridges the gap between Large Language Models (LLMs) and the Uyuni systems management solution.
 
-This is an open-source project provided "AS IS" without any warranty, express or implied. Use at your own risk. For full details, please refer to the [License](#license) section.
+This project allows AI agents (such as Gemini CLI, Claude Desktop or other MCP-compliant clients) to securely interact with your Uyuni server. By exposing Uyuni's API as standardized MCP tools, it enables users to manage their Linux infrastructure using natural language commands. Instead of navigating the web UI or writing complex API scripts, you can simply ask your AI assistant to perform tasks like auditing systems, checking for updates, or scheduling maintenance.
 
-## Tools
+Key Capabilities
+This server exposes a suite of tools that allow LLMs to:
 
-* get_list_of_active_systems
-* get_cpu_of_a_system
-* get_all_systems_cpu_info
-* check_system_updates
-* check_all_systems_for_updates
-* schedule_apply_pending_updates_to_system
-* schedule_apply_specific_update
-* add_system
-* remove_system
-* get_systems_needing_security_update_for_cve
-* get_systems_needing_reboot
-* schedule_system_reboot
-* cancel_action
-* list_all_scheduled_actions
-* list_activation_keys
+- Inspect Infrastructure: Retrieve lists of active systems and view system details.
+- Manage Updates: Identify systems with pending security updates or CVEs and schedule patch applications.
+- Execute Actions: Schedule reboots.
+
+It is designed to be run as a container or locally, offering a streamlined way to integrate AI-driven automation into your system administration workflows.
+
+## Table of Contents
+
+- [Tool List](#tool-list)
+- [Usage](#usage)
+  - [1. Configuration](#1-configuration)
+  - [2. Running as a Container (Recommended)](#2-running-as-a-container-recommended)
+  - [3. Running Locally with uv](#3-running-locally-with-uv)
+  - [4. Client Configuration Examples](#4-client-configuration-examples)
+- [Feedback](#feedback)
+- [License](#license)
+- [Disclaimer](#disclaimer)
+
+
 
 ## Usage
 
-There are two main ways to run the `mcp-server-uyuni`: using the pre-built Docker container or running it locally with `uv`. Both methods require a `config` file.
+There are two main ways to run the Uyuni MCP Server: using the pre-built container or running it locally with `uv`. Both methods require a `config` file.
 
-### Config File
+To use the Uyuni MCP Server, you must first create a configuration file. Once configured, you can run the server using a container engine (i.e. docker) (recommended) or locally with uv.
 
-Before running the server, you need to create a `config` file. You can place it anywhere, but you must provide the correct path to it when running the server.
+### 1\. Configuration
 
-```
+Create a file (e.g., `uyuni-config.env`) to store your environment variables. You can place this file anywhere, but you must reference its path when running the server.
+
+```bash
 # Required: Basic server parameters.
 UYUNI_SERVER=192.168.1.124:8443
 UYUNI_USER=admin
@@ -81,46 +87,12 @@ Replace the values with your Uyuni server details. **This file contains sensitiv
 
 Alternatively, you can also set environment variables instead of using a file.
 
-## Debug with mcp inspect
 
-You can run (docker option)
 
-`npx @modelcontextprotocol/inspector docker run -i --rm --env-file /path/to/your/config ghcr.io/uyuni-project/mcp-server-uyuni:latest`
+### 2\. Running as a Container (Recommended)
 
-or you can run (uv option)
+The easiest way to run the server is using the pre-built container image. This method isolates the environment and requires no local dependencies other than the container engine (i.e. docker).
 
-`npx @modelcontextprotocol/inspector uv run --env-file=.venv/config --directory . mcp-server-uyuni`
-
-## Use with Open WebUI
-
-Open WebUI is an extensible, feature-rich, and user-friendly self-hosted AI platform designed to operate entirely offline. It supports various LLM runners like Ollama and OpenAI-compatible APIs, with built-in inference engine for RAG, making it a powerful AI deployment solution. More at https://docs.openwebui.com/
-
-> [!NOTE]
-> The following instructions describe how to set up Open WebUI and the MCP proxy for **local development and testing purposes**. For production deployments, please refer to the official [Open WebUI documentation](https://docs.openwebui.com/) for recommended setup procedures.
-
-### Setup Open WebUI
-
-You need `uv` installed. See https://docs.astral.sh/uv
-
-Start v0.6.10 (for MCP support we need a version >= 0.6.7)
-
-```
- uv tool run open-webui@0.6.10 serve
-```
-
-Configure the OpenAI API URL by following these instructions:
-
-https://docs.openwebui.com/getting-started/quick-start/starting-with-openai
-
-For gemini, use the URL https://generativelanguage.googleapis.com/v1beta/openai and get the token API from the Google AI Studio https://aistudio.google.com/
-
-### Setup Open WebUI MCP Support
-
-First, ensure you have your `config` file ready as described in the Usage section.
-
-Then, you need a `config.json` for the MCP to OpenAPI proxy server.
-
-### Option 1: Running with Docker (Recommended)
 
 This is the easiest method for deployment. Pre-built container images are available on the GitHub Container Registry.
 
@@ -139,6 +111,7 @@ This is the easiest method for deployment. Pre-built container images are availa
     }
   }
 }
+
 ```
 
 Alternatively, you can use environment variables instead of a file.
@@ -160,26 +133,85 @@ Alternatively, you can use environment variables instead of a file.
 }
 ```
 
-### Option 2: Running Locally with `uv`
+**Command:**
 
-This method is ideal for development.
+```bash
+docker run -i --rm --env-file /path/to/uyuni-config.env ghcr.io/uyuni-project/mcp-server-uyuni:latest
+```
 
-1.  **Install `uv`:** See https://docs.astral.sh/uv
-2.  **Install dependencies:**
+  * **`-i`**: Keeps STDIN open (required for MCP communication).
+  * **`--rm`**: Removes the container after it exits.
+  * **`--env-file`**: Points to the configuration file you created in step 1.
+
+### 3\. Running Locally with `uv`
+
+If you are developing or prefer running Python directly, you can use `uv`.
+
+**Prerequisites:**
+
+  * Install `uv`: [https://docs.astral.sh/uv](https://docs.astral.sh/uv)
+  * Clone this repository.
+
+**Setup and Run:**
+
+1.  Sync dependencies:
     ```bash
     uv sync
     ```
-3.  Replace `/path/to/your/config` with the absolute path to your `config` file.
+2.  Run the server:
+    ```bash
+    uv run --env-file /path/to/uyuni-config.env --directory /path/to/sources/ mcp-server-uyuni
+
+
+### 4\. Client Configuration Examples
+
+MCP servers are rarely run manually; they are usually configured within an MCP Client (like Gemini CLI). Below are examples of how to configure your client to use `mcp-server-uyuni`.
+
+#### Gemini CLI Configuration
+
+Add the following to your `config.gemini.json`:
+
+**Container Method:**
 
 ```json
 {
   "mcpServers": {
     "mcp-server-uyuni": {
-      "command": "uv",
+      "command": "docker",
       "args": [
         "run",
-        "--env-file", "/path/to/your/config",
-        "--directory", ".",
+        "-i",
+        "--rm",
+        "-v",
+        "/path/to/mcp-server-uyuni.log:/tmp/mcp-server-uyuni.log",
+	"--name",
+	"mcp-server-uyuni",
+        "--env-file",
+        "/path/to/uyuni-connection-config-stdio.env",
+        "registry.opensuse.org/systemsmanagement/uyuni/ai/devel_bci_16.0_containerfile/uyuni-ai/mcp-uyuni-server",
+        "/usr/bin/mcp-server-uyuni"
+      ]
+    }
+  },
+  "security": {
+    "auth": {
+      "selectedType": "gemini-api-key"
+    }
+  }
+}
+```
+
+**Local `uv` Method:**
+
+```json
+{
+  "mcpServers": {
+    "uyuni": {
+      "command": "/path/to/uv",
+      "args": [
+        "run",
+        "--env-file", "/path/to/uyuni-config.env",
+        "--directory", "/path/to/mcp-server-uyuni-repo",
         "mcp-server-uyuni"
       ]
     }
@@ -187,72 +219,24 @@ This method is ideal for development.
 }
 ```
 
-### Start the MCP to OpenAPI proxy server
+## Tool List
 
+* get_list_of_active_systems
+* get_cpu_of_a_system
+* get_all_systems_cpu_info
+* check_system_updates
+* check_all_systems_for_updates
+* schedule_apply_pending_updates_to_system
+* schedule_apply_specific_update
+* add_system
+* remove_system
+* get_systems_needing_security_update_for_cve
+* get_systems_needing_reboot
+* schedule_system_reboot
+* cancel_action
+* list_all_scheduled_actions
+* list_activation_keys
 
-Then, you can start the Model Context Protocol to Open API proxy server:
-
-```
-uvx mcpo --port 9000  --config ./config.json
-```
-
-### Add the tool
-
-And then you can add the tool to the Open Web UI. See https://docs.openwebui.com/openapi-servers/open-webui#step-2-connect-tool-server-in-open-webui .  
-
-Note the url should be http://localhost/mcp-server-uyuni as explained in https://docs.openwebui.com/openapi-servers/open-webui#-optional-using-a-config-file-with-mcpo
-
-
-![OpenWeb UI with MCP Support with GPT 4 model](docs/example_openwebui_gpt.png)
-![OpenWeb UI with MCP Support with Gemini 2.0 flash model](docs/example_openwebui_gemini.png)
-
-### Testing Advanced Capabilities (Elicitation)
-
-> [!NOTE]
-> The Model Context Protocol (MCP) includes advanced features like **Elicitation**, which  allows tools to interactively prompt the user for missing information or confirmation.
->
-> As of this writing, not all MCP clients support this capability. For example, **Open WebUI does not currently implement elicitation**.
->
-> To test tools that leverage elicitation (like the `add_system` tool when an activation key is missing), you need a compatible client. The official **MCP extension for Visual Studio Code** is a reference client that fully supports elicitation and is recommended for developing  and testing these features.
-
-
-## Local Development Build
-
-To build the Docker image locally for development or testing purposes:
-```bash
-docker build -t  mcp-server-uyuni .
-```
-
-Then, you can use `docker run -i --rm  --env-file .venv/config mcp-server-uyuni` at any of the mcp-client configurations explained above.
-
-## Release Process
-
-To create a new release for `mcp-server-uyuni`, follow these steps.
-
-1. ** Create a release branch:** `git fetch upstream && git checkout upstream/main -b release-x.y.z`. Assuming upstream is the remote alias for the upstream git
-2.  **Update Documentation (`README.md`):**
-    *   Ensure the list of available tools under the "## Tools" section is current and reflects all implemented tools in `srv/mcp-server-uyuni/server.py`.
-    *   Review and update any screenshots in the `docs/` directory and their references in this `README.md` to reflect the latest UI or functionality, if necessary.
-    *   Verify all usage instructions and examples are still accurate.
-3.  **Update Test Cases (`TEST_CASES.md`):**
-    *   Refer to the "How to Update for a New Tag/Release" section within `TEST_CASES.md`.
-4.  **Commit Changes:** Commit all the updates to `README.md`, `TEST_CASES.md`, and any other changed files.
-5.  **Update version in pyproject.toml:** Use semantic versioning to set the new version.
-6.  **Update uv.lock:** Run `uv lock` to update uv.lock file with the version set in pyproject.toml
-7.  **Update CHANGELOG.md:**
-    *   Generate the changelog using `conventional-changelog-cli`. If you don't have it installed globally, you can use `npx`.
-    *   The command to generate the changelog using the `conventionalcommits` preset and output it to `CHANGELOG.md` (prepending the new changes) is:
-        ```bash
-        npx conventional-changelog-cli -p conventionalcommits -i CHANGELOG.md -s
-        ```
-    *   Review the generated `CHANGELOG.md` for accuracy and formatting.
-    *   Commit the updated `CHANGELOG.md`.
-8. Push the branch and create a new Pull Request: `git push origin release-x.y.z` . Assuming origin is the remote alias for your git fork.
-7.  **Create Git Tag:** Create a new Git tag for the release (e.g., `git tag vX.Y.Z`). Follow [semantic versioning rules](https://semver.org/).
-8.  **Push Changes and Tags:** Push your commits (including the changelog update) and the new tag to the repository (e.g., `git push && git push --tags`).
-9.  **Automated Build and Push:** Pushing the tag to GitHub will automatically trigger the "Docker Publish" GitHub Action. This action builds the Docker image and pushes it to the GitHub Container Registry (`ghcr.io`) with tags for the specific version (e.g., `v0.3.0`) and major.minor (e.g., `v0.3`). Pushing to `main` will update the `latest` tag.
-10.  **Test the container:** Pull the newly published image from `ghcr.io` and run the tests in `TEST_CASES.md` against it.
-    `docker run -i --rm --env-file .venv/config ghcr.io/uyuni-project/mcp-server-uyuni:VERSION` (replace VERSION with the new tag).
 
 ## Feedback
 
@@ -265,3 +249,9 @@ Thanks in advance from the uyuni team!
 ## License
 
 This project is licensed under the Apache License, Version 2.0. See the [LICENSE](LICENSE) file for details.
+
+
+## Disclaimer
+
+This is an open-source project provided "AS IS" without any warranty, express or implied. Use at your own risk. For full details, please refer to the [License](#license) section.
+
