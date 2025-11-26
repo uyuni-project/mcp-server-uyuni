@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "mcp-server-uyuni": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "/path/to/mcp-server-uyuni.log:/tmp/mcp-server-uyuni.log",
+	"--name",
+	"mcp-server-uyuni",
+        "--env-file",
+        "./uyuni-connection-config-stdio.env",
+        "registry.opensuse.org/systemsmanagement/uyuni/ai/devel_bci_16.0_containerfile/uyuni-ai/mcp-uyuni-server",
+        "/usr/bin/mcp-server-uyuni"
+      ]
+    }
+  },
+  "security": {
+    "auth": {
+      "selectedType": "gemini-api-key"
+    }
+  }
+}
