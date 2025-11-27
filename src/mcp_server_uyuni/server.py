@@ -164,6 +164,13 @@ async def _call_uyuni_api(
         logger.exception(f"An unexpected error occurred while {error_context}: {e}")
         return default_on_error
 
+def _to_bool(value) -> bool:
+    """
+    Convert truthy string/boolean/integer values to a boolean.
+    Accepts: True, 'true', 'yes', '1', 1, etc.
+    """
+    return str(value).lower() in ("true", "yes", "1")
+
 @mcp.tool()
 async def get_list_of_active_systems(ctx: Context) -> List[Dict[str, Any]]:
     """
@@ -602,7 +609,7 @@ async def schedule_apply_pending_updates_to_system(system_identifier: Union[str,
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = str(confirm).lower() in ('true', 'yes', '1')
+    is_confirmed = _to_bool(confirm)
 
     if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will apply pending updates to the system {system_identifier}.  Do you confirm?"
@@ -678,7 +685,7 @@ async def schedule_apply_specific_update(system_identifier: Union[str, int], err
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = str(confirm).lower() == 'true'
+    is_confirmed = _to_bool(confirm)
 
     try:
         errata_id_int = int(errata_id)
@@ -764,7 +771,7 @@ async def add_system(
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = str(confirm).lower() in ('true', 'yes', '1')
+    is_confirmed = _to_bool(confirm)
 
     if ctx.session.check_client_capability(types.ClientCapabilities(elicitation=types.ElicitationCapability())):
         # Check for activation key
@@ -872,7 +879,7 @@ async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanu
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = str(confirm).lower() in ('true', 'yes', '1')
+    is_confirmed = _to_bool(confirm)
 
     system_id = await _resolve_system_id(system_identifier)
     if not system_id:
@@ -1084,7 +1091,7 @@ async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = str(confirm).lower() in ('true', 'yes', '1')
+    is_confirmed = _to_bool(confirm)
 
     system_id = await _resolve_system_id(system_identifier)
     if not system_id:
@@ -1196,7 +1203,7 @@ async def cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] 
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = str(confirm).lower() in ('true', 'yes', '1')
+    is_confirmed = _to_bool(confirm)
 
     cancel_actions_path = '/rhn/manager/api/schedule/cancelActions'
  
