@@ -1,0 +1,48 @@
+{
+  "systems": {
+    "proxy": {
+      "id": "1000010000",
+      "name": "suma-test-ai-proxy.mgr.suse.de",
+      "cpu_model": "AMD EPYC-Milan Processor"
+    },
+    "build_host": {
+      "id": "1000010005",
+      "name": "suma-test-ai-build-host.mgr.suse.de",
+      "cpu_model": "QEMU Virtual CPU"
+    },
+    "deblike_minion": {
+      "id": "1000010004",
+      "name": "suma-test-ai-deblike-minion.mgr.suse.de",
+      "cpu_model": "QEMU Virtual CPU"
+    },
+    "rhlike_minion": {
+      "id": "1000010003",
+      "name": "suma-test-ai-rhlike-minion.mgr.suse.de",
+      "cpu_model": "QEMU Virtual CPU"
+    },
+    "suse_minion": {
+      "id": "1000010001",
+      "name": "suma-test-ai-suse-minion.mgr.suse.de",
+      "cpu_model": "QEMU Virtual CPU"
+    },
+    "suse_ssh_minion": {
+      "id": "1000010002",
+      "name": "suma-test-ai-suse-sshminion.mgr.suse.de",
+      "cpu_model": "QEMU Virtual CPU"
+    },
+    "new_system": {
+      "host": "10.145.211.203",
+      "activation_key": "1-DEBLIKE-KEY"
+    }
+  },
+  "activation_keys": {
+    "suse": "1-SUSE-KEY-x86_64",
+    "rhlike": "1-RH-LIKE-KEY",
+    "deblike": "1-DEBLIKE-KEY",
+    "suse_ssh": "1-SUSE-SSH-KEY-x86_64",
+    "suse_ssh_tunnel": "1-SUSE-SSH-TUNNEL-KEY-x86_64",
+    "proxy": "1-PROXY-KEY-x86_64",
+    "build_host": "1-BUILD-HOST-KEY-x86_64",
+    "terminal": "1-TERMINAL-KEY-x86_64"
+  }
+}

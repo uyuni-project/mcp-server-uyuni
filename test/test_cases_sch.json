@@ -6,12 +6,12 @@
   },
   {
     "id": "TC-SCH-002_confirm_request",
-    "prompt": "Cancel action with ID 3.",
+    "prompt": "Can you cancel an action with a valid ID?",
     "expected_output": "Returns a message the requires confirmation"
   },
   {
     "id": "TC-SCH-002_confirmed",
-    "prompt": "Cancel action with ID 3., confirmation set to true",
-    "expected_output": "Successfully canceled action"
+    "prompt": "Cancel an action with a valid ID, confirmation set to true",
+    "expected_output": "A message stating that the action was successfully canceled."
   }
 ]

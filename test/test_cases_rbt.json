@@ -2,16 +2,16 @@
   {
     "id": "TC-RBT-001",
     "prompt": "Do any of my systems require reboot?",
-    "expected_output": "Return a message that build-host. require a reboot."
+    "expected_output": "Return a message that {build_host_name} require a reboot."
   },
   {
     "id": "TC-RBT-002_confirm_request",
-    "prompt": "Can you schedule a reboot for system build-host.?",
+    "prompt": "Can you schedule a reboot for system {build_host_name}?",
     "expected_output": "Return a message requiring confirmation"
   },
   {
     "id": "TC-RBT-003_confirmed",
-    "prompt": "Can you schedule a reboot for system build-host.?, confirmation set to true",
+    "prompt": "Can you schedule a reboot for system {build_host_name}?, confirmation set to true",
     "expected_output": "Return a message that system reboot has been successfully scheduled and give the URL of the action details."
   },
   {
