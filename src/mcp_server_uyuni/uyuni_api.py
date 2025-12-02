@@ -43,6 +43,7 @@ async def call(
     if perform_login:
         try:
             if token:
+                # Try OIDC login with provided token
                 login_response = await client.post(
                     CONFIG["UYUNI_SERVER"] + '/rhn/manager/api/oidcLogin',
                     headers={"Authorization": f"Bearer {token}"}
