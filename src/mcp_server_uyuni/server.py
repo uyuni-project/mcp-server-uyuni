@@ -133,7 +133,7 @@ async def _call_uyuni_api(
 
     if perform_login:
         try:
-            if token:
+            if False:
                 login_response = await client.get(
                     UYUNI_SERVER + '/rhn/manager/api/auth/oidcLogin',
                     headers={"Authorization": f"Bearer {token}"})
@@ -202,25 +202,33 @@ def _to_bool(value) -> bool:
     return str(value).lower() in ("true", "yes", "1")
 
 @mcp.tool()
-async def get_list_of_active_systems(ctx: Context) -> List[Dict[str, Any]]:
+async def list_systems(ctx: Context) -> List[Dict[str, Any]]:
     """
     Fetches a list of active systems from the Uyuni server, returning their names and IDs.
 
-    The returned list contains dictionaries, each with a 'system_name' (str) and
-    a 'system_id' (int) for an active system.
+    The returned list contains system objects, each of which consists of a 'system_name'
+    and a numerical 'system_id' field for an active system.
+
+    You SHOULD use the 'system_id' to call other system related tools.
 
     Returns:
-        List[Dict[str, Any]]: A list of system dictionaries (system_name and system_id).
-                              Returns an empty list if the API call fails,
-                              the response format is unexpected, or no systems are found.
+        A list of system objects (system_name and system_id).
+        Returns an empty list if the API call fails,
+        the response format is unexpected, or no systems are found.
+
+    Example:
+        [
+            { "system_name": "ubuntu.example.com", "system_id": 100010000 },
+            { "system_name": "opensuseleap15.example.com", "system_id": 100010001 }
+        ]
     """
     log_string = "Getting list of active systems"
     logger.info(log_string)
     await ctx.info(log_string)
 
-    return await _get_list_of_active_systems(ctx.get_state('token'))
+    return await _list_systems(ctx.get_state('token'))
 
-async def _get_list_of_active_systems(token: str) -> List[Dict[str, Union[str, int]]]:
+async def _list_systems(token: str) -> List[Dict[str, Union[str, int]]]:
 
     async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         systems_data_result = await _call_uyuni_api(
@@ -244,6 +252,294 @@ async def _get_list_of_active_systems(token: str) -> List[Dict[str, Union[str, i
 
     return filtered_systems
 
+@mcp.tool()
+async def get_system_details(system_identifier: Union[str, int], ctx: Context):
+    """Gets details of the specified system.
+
+    Args:
+        system_identifier: The system name (e.g., "buildhost.example.com") or system ID (e.g., 1000010000).
+            Prefer using numerical system IDs instead of system names when possible.
+
+    Returns:
+        An object that contains the following attributes of the system:
+            - system_id: The numerical ID of the system within Uyuni server
+            - system_name: The registered system name, usually its main FQDN
+            - last_boot: The last boot time of the system known to Uyuni server
+            - uuid: UUID of the system if it is a virtual instance, null otherwise.
+            - cpu: An object with the following CPU attributes of the system:
+                - family: The CPU family
+                - mhz: The CPU clock speed
+                - model: The CPU model
+                - vendor: The CPU vendor
+                - arch: The CPU architecture
+            - installed_product: List of installed products on the system.
+                You can use this field to identify what OS the system is running.
+
+        Example:
+            {
+              "system_id": "100010001",
+              "system_name": "opensuse.example.local",
+              "last_boot": "2025-04-01T15:21:56Z",
+              "uuid": "a8c3f40d-c1ae-406e-9f9b-96e7d5fdf5a3",
+              "cpu": {
+                "family": "15",
+                "mhz": "1896.436",
+                "model": "QEMU Virtual CPU",
+                "vendor": "AuthenticAMD",
+                "arch": "x86_64"
+              }
+            }
+        """
+    log_string = f"Getting details of system {system_identifier}"
+    logger.info(log_string)
+    await ctx.info(log_string)
+    return await _get_system_details(system_identifier, ctx.get_state('token'))
+
+async def _get_system_details(system_identifier: Union[str, int], token: str) -> Dict[str, Any]:
+    system_id = await _resolve_system_id(system_identifier, token)
+    if not system_id:
+        return {} # Helper function already logged the reason for failure.
+
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
+        details_call: Coroutine = _call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path="/rhn/manager/api/system/getDetails",
+            params={'sid': system_id},
+            error_context=f"Fetching details for system {system_id}",
+            token=token,
+            default_on_error={}
+        )
+        uuid_call: Coroutine = _call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path="/rhn/manager/api/system/getUuid",
+            params={'sid': system_id},
+            error_context=f"Fetching UUID for system {system_id}",
+            token=token,
+            default_on_error=""
+        )
+        cpu_call: Coroutine = _call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path="/rhn/manager/api/system/getCpu",
+            params={'sid': system_id},
+            error_context=f"Fetching CPU information for system {system_id}",
+            token=token,
+            default_on_error={}
+        )
+        products_call: Coroutine = _call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path="/rhn/manager/api/system/getInstalledProducts",
+            params={'sid': system_id},
+            error_context=f"Fetching installed product information for system {system_id}",
+            token=token,
+            default_on_error=[]
+        )
+
+        results = await asyncio.gather(
+            details_call,
+            uuid_call,
+            cpu_call,
+            products_call
+        )
+
+        details_result, uuid_result, cpu_result, products_result = results
+
+    if isinstance(details_result, dict):
+        # Only add the identifier if the API returned actual data
+        system_details = {
+            "system_id": details_result["id"],
+            "system_name": details_result["profile_name"],
+            "last_boot": details_result["last_boot"],
+            "uuid": uuid_result
+        }
+
+        if isinstance(cpu_result, dict):
+            cpu_details = {
+                "family": cpu_result["family"],
+                "mhz": cpu_result["mhz"],
+                "model": cpu_result["model"],
+                "vendor": cpu_result["vendor"],
+                "arch": cpu_result["arch"]
+            }
+            system_details["cpu"] = cpu_details
+        else:
+            logger.error(f"Unexpected API response when getting CPU information for system {system_id}")
+            logger.error(cpu_result)
+
+        if isinstance(products_result, list):
+            base_product = [p["friendlyName"] for p in products_result if p["isBaseProduct"]]
+            system_details["installed_products"] = base_product
+        else:
+            logger.error(f"Unexpected API response when getting installed products for system {system_id}")
+            logger.error(products_result)
+
+
+
+        return system_details
+    else:
+        logger.error(f"Unexpected API response when getting details for system {system_id}")
+        logger.error(details_result)
+    return {}
+
+@mcp.tool()
+async def get_system_event_history(system_identifier: Union[str, int], ctx: Context, offset: int = 0, limit: int = 10, earliest_date: str = None):
+    """Gets the event/action history of the specified system.
+
+    The output of this tool is paginated and can be controlled via 'offset' and 'limit' parameters.
+
+    Optionally, the 'earliest_date' parameter can be set to an ISO-8601 date to specify the earliest date
+    for the events to be returned.
+
+    You SHOULD use 'get_system_event_details' tool with an event ID to get the details of an event.
+
+    You SHOULD use this tool to check the status of a reboot. A reboot is finished when
+    its related action is completed.
+
+    Args:
+        system_identifier: The system name (e.g., "buildhost.example.com") or system ID (e.g., 1000010000).
+            Prefer using numerical system IDs instead of system names when possible.
+        offset: Number of reults to skip
+        limit: Maximum number of results
+        earliest_date: The earliest ISO-8601 date-time string to filter the events (optional)
+
+    Returns:
+        A list of event/action status, newest to oldest.
+
+        A single event object contains the following attributes:
+
+            - id: The ID of the event
+            - history_type: The type of the event
+            - status: Event's status (completed, failed, etc.)
+            - summary: A short summary of the event
+            - completed: ISO-8601 date & time of the event's completion timestamp
+
+        Example:
+            [
+              {
+                "id": 12,
+                "history_type": "System reboot",
+                "status": "Completed",
+                "summary": "System reboot scheduled by admin",
+                "completed": "2025-11-27T15:37:28Z"
+              },
+              {
+                "id": 357,
+                "history_type": "Patch Update",
+                "status": "Failed"
+                "summary": "Patch Update: Security update for the Linux Kernel",
+                "completed": "2025-11-28T13:11:49Z"
+              }
+            ]
+        """
+    log_string = f"Getting event history of system {system_identifier}"
+    logger.info(log_string)
+    await ctx.info(log_string)
+    return await _get_system_event_history(system_identifier, limit, offset, earliest_date, ctx.get_state('token'))
+
+async def _get_system_event_history(system_identifier: Union[str, int], limit: int, offset: int, earliest_date: str, token: str) -> list[Any]:
+    system_id = await _resolve_system_id(system_identifier, token)
+    if not system_id:
+        return {} # Helper function already logged the reason for failure.
+
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
+        params = {'sid': system_id, 'limit': limit, 'offset': offset}
+        if earliest_date:
+            params['earliestDate'] = earliest_date
+
+        result = await _call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path="/rhn/manager/api/system/getEventHistory",
+            params=params,
+            error_context=f"Fetching event history for system {system_id}",
+            token=token,
+            default_on_error={}
+        )
+
+    if isinstance(result, list):
+        return result
+    else:
+        logger.error(f"Unexpected API response when getting event history for system {system_id}")
+        logger.error(result)
+    return {}
+
+@mcp.tool()
+async def get_system_event_details(system_identifier: Union[str, int], event_id: int, ctx: Context):
+    """Gets the details of the event associated with the especified server and event ID.
+
+    The event ID must be a value returned by the 'get_system_event_history' tool.
+
+    Args:
+        system_identifier: The system name (e.g., "buildhost.example.com") or system ID (e.g., 1000010000).
+            Prefer using numerical system IDs instead of system names when possible.
+        event_id: The ID of the event
+
+    Returns:
+        An object that contains the details of the associated event.
+
+        The event object contains the following attributes:
+
+            - id: The ID of the event
+            - history_type: The type of the event
+            - status: Event's status (completed, failed, etc.)
+            - summary: A short summary of the event
+            - created: ISO-8601 date & time of the event's creation timestamp
+            - picked_up: ISO-8601 date & time when the event was picked up by the system
+            - completed: ISO-8601 date & time of the event's completion timestamp
+            - earliest_action: The earliest ISO-8601 date & time this action should occur
+            - result_msg: The result string of the action executed on the system
+            - result_code: The result code of the action executed on the system
+            - additional_info: Additional information on the event, if available
+
+        Example:
+            [
+              {
+                "id": 12,
+                "history_type": "System reboot",
+                "status": "Completed",
+                "summary": "System reboot scheduled by admin",
+                "completed": "2025-11-27T15:37:28Z"
+              },
+              {
+                "id": 357,
+                "history_type": "Patch Update",
+                "status": "Failed"
+                "summary": "Patch Update: Security update for the Linux Kernel",
+                "completed": "2025-11-28T13:11:49Z"
+              }
+            ]
+        """
+    log_string = f"Getting event history of system {system_identifier}"
+    logger.info(log_string)
+    await ctx.info(log_string)
+    return await _get_system_event_details(system_identifier, event_id, ctx.get_state('token'))
+
+async def _get_system_event_details(system_identifier: Union[str, int], event_id: int, token: str) -> Dict[str, Any]:
+    system_id = await _resolve_system_id(system_identifier, token)
+    if not system_id:
+        return {} # Helper function already logged the reason for failure.
+
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
+        result = await _call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path="/rhn/manager/api/system/getEventDetails",
+            params={'sid': system_id, 'eid': event_id},
+            error_context=f"Fetching event details for event {event_id}, system {system_id}",
+            token=token,
+            default_on_error={}
+        )
+
+    if isinstance(result, dict):
+        return result
+    else:
+        logger.error(f"Unexpected API response when getting event details for event {event_id}, system {system_id}")
+        logger.error(result)
+    return {}
+
 async def _resolve_system_id(system_identifier: Union[str, int], token: str) -> Optional[str]:
     """
     Resolves a system identifier, which can be a name or an ID, to a numeric system ID string.
@@ -252,7 +548,8 @@ async def _resolve_system_id(system_identifier: Union[str, int], token: str) -> 
     If it's a non-numeric string, it's treated as a name and the ID is looked up via the system.getId API endpoint.
  
     Args:
-        system_identifier: The system name (e.g., "buildhost") or system ID (e.g., 1000010000).
+        system_identifier: The system name (e.g., "buildhost.example.com") or system ID (e.g., 1000010000).
+
     Returns:
         Optional[str]: The numeric system ID as a string if found, otherwise None.
     """
@@ -296,99 +593,6 @@ async def _resolve_system_id(system_identifier: Union[str, int], token: str) -> 
     else:
         logger.error(f"System data for '{system_name}' is malformed. Expected a dict with 'id'. Got: {first_system}")
         return None
-
-@mcp.tool()
-async def get_cpu_of_a_system(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
-
-    """Retrieves detailed CPU information for a specific system in the Uyuni server.
-
-    Fetches CPU attributes such as model, core count, architecture, etc.
-
-    Args:
-        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
-
-    Returns:
-        Dict[str, Any]: A dictionary containing the CPU attributes and the original system_identifier.
-                        Returns an empty dictionary if the API call fails,
-                        the response format is unexpected, or CPU data is not available.
-    """
-    log_string = f"Getting CPU information of system with id {system_identifier}"
-    logger.info(log_string)
-    await ctx.info(log_string)
-    return await _get_cpu_of_a_system(system_identifier, ctx.get_state('token'))
-
-async def _get_cpu_of_a_system(system_identifier: Union[str, int], token: str) -> Dict[str, Any]:
-    system_id = await _resolve_system_id(system_identifier, token)
-    if not system_id:
-        return {} # Helper function already logged the reason for failure.
-
-    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
-        cpu_data_result = await _call_uyuni_api(
-            client=client,
-            method="GET",
-            api_path="/rhn/manager/api/system/getCpu",
-            params={'sid': system_id},
-            error_context=f"fetching CPU data for system {system_identifier}",
-            token=token,
-            default_on_error={}
-        )
-
-    if isinstance(cpu_data_result, dict):
-        # Only add the identifier if the API returned actual data
-        if cpu_data_result:
-            cpu_data_result['system_identifier'] = system_identifier
-        return cpu_data_result
-    # If not a dict but not the default empty dict, log it
-    elif cpu_data_result:
-         print(f"Warning: Expected a dict for CPU data, but received: {type(cpu_data_result)}")
-    return {}
-
-@mcp.tool()
-async def get_all_systems_cpu_info(ctx: Context) -> List[Dict[str, Any]]:
-    """
-    Retrieves CPU information for all active systems in the Uyuni server.
-
-    For each active system, this tool fetches its name, ID, and detailed CPU attributes.
-
-    Returns:
-        List[Dict[str, Any]]: A list of dictionaries. Each dictionary contains:
-                              - 'system_name' (str): The name of the system.
-                              - 'system_id' (int): The unique ID of the system.
-                              - 'cpu_info' (Dict[str, Any]): CPU attributes for the system.
-                              Returns an empty list if no systems are found or if
-                              fetching system list fails. Individual system CPU fetch
-                              failures will result in empty 'cpu_info' for that system.
-    """
-
-    log_string = "Get CPU info for all systems"
-    logger.info(log_string)
-    await ctx.info(log_string)
-
-    all_systems_cpu_data = []
-    active_systems = await _get_list_of_active_systems(ctx.get_state('token'))
-
-    if not active_systems:
-        print("Warning: No active systems found or failed to retrieve system list.")
-        return []
-
-    for system_summary in active_systems:
-        system_id = system_summary.get('system_id')
-        system_name = system_summary.get('system_name')
-
-        if system_id is None:
-            print(f"Warning: Skipping system due to missing ID: {system_summary}")
-            continue
-
-        print(f"Fetching CPU info for system: {system_name} (ID: {system_id})")
-        cpu_info = await _get_cpu_of_a_system(str(system_id), ctx.get_state('token'))
-
-        all_systems_cpu_data.append({
-            'system_name': system_name,
-            'system_id': system_id,
-            'cpu_info': cpu_info
-        })
-
-    return all_systems_cpu_data
 
 async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str, system_id: int, 
                                   list_cves_path: str, ctx: Context) -> List[str]:
@@ -585,7 +789,7 @@ async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
     await ctx.info(log_string)
 
     systems_with_updates = []
-    active_systems = await get_list_of_active_systems(ctx) # Get the list of all systems
+    active_systems = await _list_systems(ctx.get_state('token')) # Get the list of all systems
 
     if not active_systems:
         print("Warning: No active systems found or failed to retrieve system list.")
@@ -834,7 +1038,7 @@ async def add_system(
     token = ctx.get_state('token')
 
     # Check if the system already exists
-    active_systems = await _get_list_of_active_systems(token)
+    active_systems = await _list_systems(token)
     for system in active_systems:
         if system.get('system_name') == host:
             message = f"System '{host}' already exists in Uyuni. No action taken."
@@ -931,7 +1135,7 @@ async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanu
         return "" # Helper function already logged the reason for failure.
 
     # Check if the system exists before proceeding
-    active_systems = await _get_list_of_active_systems(token)
+    active_systems = await _list_systems(token)
     if not any(s.get('system_id') == int(system_id) for s in active_systems):
         message = f"System with ID {system_id} not found."
         logger.warning(message)
@@ -1132,6 +1336,7 @@ async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context
                  a second time with `confirm=True`.
 
     The reboot is scheduled to occur as soon as possible (effectively "now").
+
     Returns:
         str: A message indicating the action ID if the reboot was successfully scheduled,
              e.g., "System reboot successfully scheduled. Action URL: ...".
@@ -1186,6 +1391,9 @@ async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
     """
     Fetches a list of all scheduled actions from the Uyuni server.
 
+    You can use this tool to check the status of a reboot. A reboot is finished when
+    its related action is completed.
+
     This includes completed, in-progress, failed, and archived actions.
     Each action in the list is a dictionary containing details such as
     action_id, name, type, scheduler, earliest execution time,
@@ -1233,9 +1441,6 @@ async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
 async def cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] = False) -> str:
     """
     Cancels a specified action on the Uyuni server.
-
-    If the action ID is invalid or the action cannot be canceled,
-    the operation will fail.
 
     Args:
         action_id: The integer ID of the action to be canceled.
@@ -1324,8 +1529,6 @@ async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str,
     Provides a list of errata that are applicable to the system with the system_id
     passed as parameter and have not ben scheduled yet. All elements in the result are patches that are applicable
     for the system.
-
-    If the system ID is invalid then the operation will fail.
 
     Args:
         sid: The integer ID of the system for which we want to know the list of applicable errata.
