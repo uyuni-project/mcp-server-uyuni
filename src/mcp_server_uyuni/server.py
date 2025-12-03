@@ -1070,7 +1070,7 @@ async def add_system(
         payload["proxyId"] = proxy_id
     logger.info(f"adding system {host}")
 
-    async with httpx.AsyncClient(verify=False) as client:
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
         api_result = await call_uyuni_api(
             client=client, method="POST",
             api_path="/rhn/manager/api/system/bootstrapWithPrivateSshKey",
@@ -1139,7 +1139,7 @@ async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanu
 
     cleanup_type = "FORCE_DELETE" if cleanup else "NO_CLEANUP"
 
-    async with httpx.AsyncClient(verify=False) as client:
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
         api_result = await call_uyuni_api(
             client=client,
             method="POST",
@@ -1486,7 +1486,7 @@ async def list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
     """
     list_keys_path = '/rhn/manager/api/activationkey/listActivationKeys'
 
-    async with httpx.AsyncClient(verify=False) as client:
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
         api_result = await call_uyuni_api(
             client=client,
             method="GET",
@@ -1524,7 +1524,7 @@ async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str,
     logger.info(log_string)
     await ctx.info(log_string)
 
-    async with httpx.AsyncClient(verify=False) as client:
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
         get_unscheduled_errata = "/rhn/manager/api/system/getUnscheduledErrata"
         payload = {'sid': str(system_id)}
         unscheduled_errata_result = await call_uyuni_api(
