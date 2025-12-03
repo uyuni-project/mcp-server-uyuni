@@ -1547,6 +1547,43 @@ async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str,
             logger.error(msg)
             return msg
 
+@mcp.tool()
+async def list_system_groups(ctx: Context) -> List[Dict[str, str]]:
+    """
+    Fetches a list of system groups from the Uyuni server.
+
+    This tool retrieves all system groups visible to the user and returns a list containing for
+    each group the identifier, name, description and system count.
+
+    Returns:
+        List[Dict[str, str]]: A list of dictionaries, where each dictionary represents a system group with 'id',
+                              'name', 'description' and 'system_count' fields. The 'system_count' refers to the
+                              number of systems assigned to each group. Returns an empty list if the API call
+                              fails, the response is not in the expected format, or no groups are found.
+    """
+    list_groups_path = '/rhn/manager/api/systemgroup/listAllGroups'
+
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+        api_result = await call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path=list_groups_path,
+            error_context="listing system groups",
+            token=ctx.get_state('token')
+        )
+
+    filtered_groups = []
+    if isinstance(api_result, list):
+        for group_data in api_result:
+            if isinstance(group_data, dict):
+                filtered_groups.append({'id': str(group_data.get('id')), 'name': group_data.get('name'),
+                    'description': group_data.get('description'), 'system_count': str(group_data.get('system_count'))})
+            else:
+                msg = f"Unexpected item format in system group list: {group_data}")
+                logger.warning(msg)
+                await ctx.warning(msg)
+    return filtered_groups
+
 def main_cli():
 
     logger.info("Running Uyuni MCP server.")
