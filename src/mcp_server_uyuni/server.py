@@ -828,7 +828,7 @@ async def add_system(
         payload["proxyId"] = proxy_id
     logger.info(f"adding system {host}")
 
-    async with httpx.AsyncClient(verify=False) as client:
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         api_result = await _call_uyuni_api(
             client=client, method="POST",
             api_path="/rhn/manager/api/system/bootstrapWithPrivateSshKey",
@@ -898,7 +898,7 @@ async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanu
 
     cleanup_type = "FORCE_DELETE" if cleanup else "NO_CLEANUP"
 
-    async with httpx.AsyncClient(verify=False) as client:
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         api_result = await _call_uyuni_api(
             client=client,
             method="POST",
@@ -1246,7 +1246,7 @@ async def list_activation_keys() -> List[Dict[str, str]]:
     """
     list_keys_path = '/rhn/manager/api/activationkey/listActivationKeys'
 
-    async with httpx.AsyncClient(verify=False) as client:
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         api_result = await _call_uyuni_api(
             client=client,
             method="GET",
@@ -1264,27 +1264,28 @@ async def list_activation_keys() -> List[Dict[str, str]]:
                 print(f"Warning: Unexpected item format in activation key list: {key_data}")
     return filtered_keys
 
+@mcp.tool()
 async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str, Any]]:
     """
     Provides a list of errata that are applicable to the system with the system_id
-    passed as parameter and have not ben scheduled yet. All elements in the result are patches that are applicable
+    passed as parameter and have not been scheduled yet. All elements in the result are patches that are applicable
     for the system.
 
     If the system ID is invalid then the operation will fail.
 
     Args:
-        sid: The integer ID of the system for which we want to know the list of applicable errata.
+        system_id: The integer ID of the system for which we want to know the list of applicable errata.
 
     Returns:
         List[Dict[str, Any]]: A list of dictionaries with each dictionary defining a errata applicable
                             to the system given as a parameter.
-                            Retruns an empty dictionary if no applicable errata for the system are found.
+                            Returns an empty dictionary if no applicable errata for the system are found.
     """
     log_string = f"Getting list of unscheduled errata for system {system_id}"
     logger.info(log_string)
     await ctx.info(log_string)
 
-    async with httpx.AsyncClient(verify=False) as client:
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         get_unscheduled_errata = "/rhn/manager/api/system/getUnscheduledErrata"
         payload = {'sid': str(system_id)}
         unscheduled_errata_result = await _call_uyuni_api(
@@ -1305,7 +1306,7 @@ async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str,
             if unscheduled_errata_result is not None:
                 print(f"Failed to retrieve unscheduled errata for system ID {system_id} or \
                       unexpected API result format. Result: {unscheduled_errata_result}")
-            return ""
+            return []
 
 def main_cli():
 
@@ -1317,5 +1318,5 @@ def main_cli():
         mcp.run(transport="stdio")
     else:
         # Defaults to stdio transport anyway
-        # But I explicitety state it here for clarity
+        # But I explicitly state it here for clarity
         mcp.run(transport="stdio")
