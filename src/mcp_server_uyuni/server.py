@@ -1509,16 +1509,16 @@ async def list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
 async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str, Any]]:
     """
     Provides a list of errata that are applicable to the system with the system_id
-    passed as parameter and have not ben scheduled yet. All elements in the result are patches that are applicable
+    passed as parameter and have not been scheduled yet. All elements in the result are patches that are applicable
     for the system.
 
     Args:
-        sid: The integer ID of the system for which we want to know the list of applicable errata.
+        system_id: The integer ID of the system for which we want to know the list of applicable errata.
 
     Returns:
         List[Dict[str, Any]]: A list of dictionaries with each dictionary defining a errata applicable
                             to the system given as a parameter.
-                            Retruns an empty dictionary if no applicable errata for the system are found.
+                            Returns an empty dictionary if no applicable errata for the system are found.
     """
     log_string = f"Getting list of unscheduled errata for system {system_id}"
     logger.info(log_string)
@@ -1558,5 +1558,5 @@ def main_cli():
         mcp.run(transport="stdio")
     else:
         # Defaults to stdio transport anyway
-        # But I explicitety state it here for clarity
+        # But I explicitly state it here for clarity
         mcp.run(transport="stdio")
