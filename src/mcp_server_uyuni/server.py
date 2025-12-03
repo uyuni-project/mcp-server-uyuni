@@ -1506,6 +1506,7 @@ async def list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
                 await ctx.warning(msg)
     return filtered_keys
 
+@mcp.tool()
 async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str, Any]]:
     """
     Provides a list of errata that are applicable to the system with the system_id
