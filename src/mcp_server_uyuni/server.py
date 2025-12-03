@@ -1264,6 +1264,7 @@ async def list_activation_keys() -> List[Dict[str, str]]:
                 print(f"Warning: Unexpected item format in activation key list: {key_data}")
     return filtered_keys
 
+@mcp.tool()
 async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str, Any]]:
     """
     Provides a list of errata that are applicable to the system with the system_id
@@ -1305,7 +1306,7 @@ async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str,
             if unscheduled_errata_result is not None:
                 print(f"Failed to retrieve unscheduled errata for system ID {system_id} or \
                       unexpected API result format. Result: {unscheduled_errata_result}")
-            return ""
+            return []
 
 def main_cli():
 
