@@ -1584,6 +1584,58 @@ async def list_system_groups(ctx: Context) -> List[Dict[str, str]]:
                 await ctx.warning(msg)
     return filtered_groups
 
+@write_tool()
+async def create_system_group(name: str, ctx: Context, description: str = "", confirm: Union[bool, str] = False) -> str:
+    """
+    Creates a new system group in Uyuni.
+
+    Args:
+        name: The name of the new system group.
+        description: An optional description for the system group.
+        confirm: User confirmation is required to execute this action. This parameter
+                 is `False` by default. To obtain the confirmation message that must
+                 be presented to the user, the model must first call the tool with
+                 `confirm=False`. If the user agrees, the model should call the tool
+                 a second time with `confirm=True`.
+
+    Returns:
+        str: A success message if the group was created,
+             e.g., "Successfully created system group 'my-group'".
+             Returns an error message if the creation failed.
+    """
+    log_string = f"Creating system group '{name}'"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    is_confirmed = _to_bool(confirm)
+
+    if not is_confirmed:
+        return f"CONFIRMATION REQUIRED: This will create a new system group named '{name}' with description '{description}'. Do you confirm?"
+
+    create_group_path = '/rhn/manager/api/systemgroup/create'
+
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+        api_result = await call_uyuni_api(
+            client=client,
+            method="POST",
+            api_path=create_group_path,
+            json_body={"name": name, "description": description},
+            error_context=f"creating system group '{name}'",
+            token=ctx.get_state('token')
+        )
+
+        if isinstance(api_result, dict) and 'id' in api_result:
+             # The API returns the created group object
+            msg = f"Successfully created system group '{name}'."
+            logger.info(msg)
+        elif api_result:
+             # If it returns something truthy that we didn't expect, but not None (which is error)
+             msg = f"Successfully created system group '{name}'. (API returned: {api_result})"
+             logger.warning(msg)
+        else:
+            msg = f"Failed to create system group '{name}'. Check server logs."
+            logger.error(msg)
+
 def main_cli():
 
     logger.info("Running Uyuni MCP server.")
