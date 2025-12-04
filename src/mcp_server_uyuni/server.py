@@ -26,6 +26,14 @@ from mcp import LoggingLevel, ServerSession, types
 from mcp_server_uyuni.logging_config import get_logger, Transport
 
 from .auth import AuthProvider
+from .errors import (
+    APIError,
+    HTTPError,
+    AuthError,
+    NetworkError,
+    UnexpectedResponse,
+    NotFoundError,
+)
 
 class ActivationKeySchema(BaseModel):
     activation_key: str
@@ -114,7 +122,6 @@ async def _call_uyuni_api(
     params: Dict[str, Any] = None,
     json_body: Dict[str, Any] = None,
     perform_login: bool = True,
-    default_on_error: Any = None,
     expected_result_key: str = 'result',
     expect_timeout: bool = False
 ) -> Any:
@@ -126,73 +133,96 @@ async def _call_uyuni_api(
     # Safety check: Do not allow POST requests if write tools are disabled.
     # This acts as a secondary guard after the @write_tool decorator.
     if method.upper() == 'POST' and not UYUNI_MCP_WRITE_TOOLS_ENABLED:
-        error_msg = (f"Attempted to call a write API ({api_path}) while write tools are disabled. "
-                     "Please set UYUNI_MCP_WRITE_TOOLS_ENABLED to 'true' to enable them.")
+        error_msg = (
+            f"Attempted to call a write API ({api_path}) while write tools are disabled. "
+            "Please set UYUNI_MCP_WRITE_TOOLS_ENABLED to 'true' to enable them."
+        )
         logger.error(error_msg)
-        return error_msg
+        raise APIError(error_msg)
 
+    full_api_url = UYUNI_SERVER + api_path
     if perform_login:
         try:
             if False:
+                # Try OIDC login with provided token
                 login_response = await client.get(
                     UYUNI_SERVER + '/rhn/manager/api/auth/oidcLogin',
-                    headers={"Authorization": f"Bearer {token}"})
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                login_response.raise_for_status()
             elif UYUNI_USER and UYUNI_PASS:
                 login_response = await client.post(
                     UYUNI_SERVER + '/rhn/manager/api/auth/login',
-                    json={"login": UYUNI_USER, "password": UYUNI_PASS})
-            login_response.raise_for_status()
+                    json={"login": UYUNI_USER, "password": UYUNI_PASS},
+                )
+                login_response.raise_for_status()
+            else:
+                logger.debug(f"perform_login=True but no token or username/password available for {error_context}; skipping login.")
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error during login for {error_context}: {e.request.url} - {e.response.status_code} - {e.response.text}")
-            return default_on_error
+            status = e.response.status_code if e.response is not None else None
+            body = e.response.text if e.response is not None else ''
+            logger.error(f"HTTP error during login for {error_context}: {getattr(e.request,'url',full_api_url)} - {status} - {body}")
+            if status in (401, 403):
+                raise AuthError(status, str(getattr(e.request, 'url', full_api_url)), body)
+            raise HTTPError(status or -1, str(getattr(e.request, 'url', full_api_url)), body)
         except httpx.RequestError as e:
-            logger.exception(f"Request error during login for {error_context}: {e.request.url} - {e}")
-            return default_on_error
-        except Exception as e:
-            logger.exception(f"An unexpected error occurred during login for {error_context}: {e}")
-            return default_on_error
-
-    full_api_url = UYUNI_SERVER + api_path
+            logger.exception(f"Request error during login for {error_context}: {getattr(e.request,'url',full_api_url)} - {e}")
+            raise NetworkError(getattr(e.request, 'url', full_api_url), e)
 
     try:
-        if method.upper() == 'GET':
+        method_upper = method.upper()
+        if method_upper == 'GET':
             response = await client.get(full_api_url, params=params)
-        elif method.upper() == 'POST':
+        elif method_upper == 'POST':
             logger.info(f"POSTing to {full_api_url}")
             response = await client.post(full_api_url, json=json_body, params=params)
-            logger.info(f"POST response: {response.text}")
+            logger.debug(f"POST response status: {response.status_code}")
         else:
-            logger.info(f"Unsupported HTTP method '{method}' for {error_context}.")
-            return default_on_error
-        response.raise_for_status()
-        response_data = response.json()
+            raise APIError(f"Unsupported HTTP method '{method}' for {error_context}.")
 
-        if response_data.get('success'):
-            if expected_result_key in response_data:
-                return response_data[expected_result_key]
-            # If 'success' is true, but the expected_result_key is not there (e.g. 'result' is missing)
-            logger.info(f"API call for {error_context} succeeded but '{expected_result_key}' not found in response. Response: {response_data}")
-            return default_on_error
-        else:
-            print(f"API call for {error_context} reported failure. Response: {response_data}")
-            return default_on_error
+        response.raise_for_status()
+
+        # Parse JSON if possible, otherwise fall back to raw text
+        try:
+            response_data = response.json()
+        except Exception:
+            response_data = response.text
+
+        # If response is a dict and follows Uyuni's {success: bool, result: ...} pattern
+        if isinstance(response_data, dict) and 'success' in response_data:
+            if response_data.get('success'):
+                # Prefer the expected_result_key but return full response dict as a fallback
+                return response_data.get(expected_result_key, response_data)
+            else:
+                logger.error(f"Uyuni API reported failure for {error_context}. Response: {response_data}")
+                raise UnexpectedResponse(full_api_url, response_data.get('message', response_data))
+
+        # Otherwise return whatever we received (list, dict, string, etc.)
+        return response_data
 
     except httpx.HTTPStatusError as e:
-        logger.error(f"HTTP error occurred while {error_context}: {e.request.url} - {e.response.status_code} - {e.response.text}")
-        return default_on_error
+        status = e.response.status_code if e.response is not None else None
+        body = e.response.text if e.response is not None else ''
+        logger.error(f"HTTP error occurred while {error_context}: {getattr(e.request,'url',full_api_url)} - {status} - {body}")
+        if status in (401, 403):
+            raise AuthError(status, str(getattr(e.request, 'url', full_api_url)), body)
+        raise HTTPError(status or -1, str(getattr(e.request, 'url', full_api_url)), body)
     except httpx.TimeoutException as e:
-        logger.info(f"timeout! timeout expected? {expect_timeout}")
+        logger.debug(f"Timeout! timeout expected? {expect_timeout}")
         if expect_timeout:
-            logger.info(f"A timeout occurred while {error_context} (expected for a long-running action): {e.request.url} - {e}")
+            logger.info(f"A timeout occurred while {error_context} (expected for a long-running action): {getattr(e.request,'url',full_api_url)} - {e}")
             return TIMEOUT_HAPPENED
-        logger.warning(f"A timeout occurred while {error_context}: {e.request.url} - {e}")
-        return default_on_error
+        logger.warning(f"A timeout occurred while {error_context}: {getattr(e.request,'url',full_api_url)} - {e}")
+        raise NetworkError(getattr(e.request, 'url', full_api_url), e, timed_out=True)
     except httpx.RequestError as e:
-        logger.exception(f"Request error occurred while {error_context}: {e.request.url} - {e}")
-        return default_on_error
+        logger.exception(f"Request error occurred while {error_context}: {getattr(e.request,'url',full_api_url)} - {e}")
+        raise NetworkError(getattr(e.request, 'url', full_api_url), e)
+    except UnexpectedResponse:
+        # Propagate API-specific failures unchanged
+        raise
     except Exception as e: # Catch other potential errors like JSONDecodeError
         logger.exception(f"An unexpected error occurred while {error_context}: {e}")
-        return default_on_error
+        raise APIError(f"Unexpected error while {error_context}: {e}")
 
 def _to_bool(value) -> bool:
     """
@@ -236,8 +266,7 @@ async def _list_systems(token: str) -> List[Dict[str, Union[str, int]]]:
             method="GET",
             api_path="/rhn/manager/api/system/listSystems",
             error_context="fetching active systems",
-            token=token,
-            default_on_error=[]
+            token=token
         )
 
     filtered_systems = []
@@ -297,8 +326,6 @@ async def get_system_details(system_identifier: Union[str, int], ctx: Context):
 
 async def _get_system_details(system_identifier: Union[str, int], token: str) -> Dict[str, Any]:
     system_id = await _resolve_system_id(system_identifier, token)
-    if not system_id:
-        return {} # Helper function already logged the reason for failure.
 
     async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         details_call: Coroutine = _call_uyuni_api(
@@ -307,8 +334,7 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
             api_path="/rhn/manager/api/system/getDetails",
             params={'sid': system_id},
             error_context=f"Fetching details for system {system_id}",
-            token=token,
-            default_on_error={}
+            token=token
         )
         uuid_call: Coroutine = _call_uyuni_api(
             client=client,
@@ -316,8 +342,7 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
             api_path="/rhn/manager/api/system/getUuid",
             params={'sid': system_id},
             error_context=f"Fetching UUID for system {system_id}",
-            token=token,
-            default_on_error=""
+            token=token
         )
         cpu_call: Coroutine = _call_uyuni_api(
             client=client,
@@ -325,8 +350,7 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
             api_path="/rhn/manager/api/system/getCpu",
             params={'sid': system_id},
             error_context=f"Fetching CPU information for system {system_id}",
-            token=token,
-            default_on_error={}
+            token=token
         )
         products_call: Coroutine = _call_uyuni_api(
             client=client,
@@ -334,8 +358,7 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
             api_path="/rhn/manager/api/system/getInstalledProducts",
             params={'sid': system_id},
             error_context=f"Fetching installed product information for system {system_id}",
-            token=token,
-            default_on_error=[]
+            token=token
         )
 
         results = await asyncio.gather(
@@ -441,8 +464,6 @@ async def get_system_event_history(system_identifier: Union[str, int], ctx: Cont
 
 async def _get_system_event_history(system_identifier: Union[str, int], limit: int, offset: int, earliest_date: str, token: str) -> list[Any]:
     system_id = await _resolve_system_id(system_identifier, token)
-    if not system_id:
-        return {} # Helper function already logged the reason for failure.
 
     async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         params = {'sid': system_id, 'limit': limit, 'offset': offset}
@@ -455,8 +476,7 @@ async def _get_system_event_history(system_identifier: Union[str, int], limit: i
             api_path="/rhn/manager/api/system/getEventHistory",
             params=params,
             error_context=f"Fetching event history for system {system_id}",
-            token=token,
-            default_on_error={}
+            token=token
         )
 
     if isinstance(result, list):
@@ -519,8 +539,6 @@ async def get_system_event_details(system_identifier: Union[str, int], event_id:
 
 async def _get_system_event_details(system_identifier: Union[str, int], event_id: int, token: str) -> Dict[str, Any]:
     system_id = await _resolve_system_id(system_identifier, token)
-    if not system_id:
-        return {} # Helper function already logged the reason for failure.
 
     async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
         result = await _call_uyuni_api(
@@ -529,8 +547,7 @@ async def _get_system_event_details(system_identifier: Union[str, int], event_id
             api_path="/rhn/manager/api/system/getEventDetails",
             params={'sid': system_id, 'eid': event_id},
             error_context=f"Fetching event details for event {event_id}, system {system_id}",
-            token=token,
-            default_on_error={}
+            token=token
         )
 
     if isinstance(result, dict):
@@ -540,51 +557,56 @@ async def _get_system_event_details(system_identifier: Union[str, int], event_id
         logger.error(result)
     return {}
 
-async def _resolve_system_id(system_identifier: Union[str, int], token: str) -> Optional[str]:
+async def _resolve_system_id(system_identifier: Union[str, int], token: str) -> str:
     """
     Resolves a system identifier, which can be a name or an ID, to a numeric system ID string.
- 
+
     If the identifier is numeric (or a string of digits), it's returned as a string.
     If it's a non-numeric string, it's treated as a name and the ID is looked up via the system.getId API endpoint.
- 
+
     Args:
         system_identifier: The system name (e.g., "buildhost.example.com") or system ID (e.g., 1000010000).
 
     Returns:
-        Optional[str]: The numeric system ID as a string if found, otherwise None.
+        str: The numeric system ID as a string.
+
+    Raises:
+        NotFoundError: If no systems match the provided name.
+        UnexpectedResponse: If the Uyuni API returns an unexpected payload (non-list, malformed items,
+                            or multiple matches for a single name).
     """
     id_str = str(system_identifier)
     if id_str.isdigit():
         return id_str
- 
+
     # If it's not a digit string, it must be a name.
     system_name = id_str
     logger.info(f"System identifier '{system_name}' is not numeric, treating as a name and looking up ID.")
 
     async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
+        api_path = "/rhn/manager/api/system/getId"
         # The result from system.getId is an array of system structs
         systems_list = await _call_uyuni_api(
             client=client,
             method="GET",
-            api_path="/rhn/manager/api/system/getId",
+            api_path=api_path,
             params={'name': system_name},
             error_context=f"resolving system ID for name '{system_name}'",
-            token=token,
-            default_on_error=[]  # Return an empty list on failure
+            token=token
         )
- 
+
     if not isinstance(systems_list, list):
         logger.error(f"Expected a list of systems for name '{system_name}', but received: {type(systems_list)}")
-        return None
- 
+        raise UnexpectedResponse(UYUNI_SERVER + api_path, repr(systems_list))
+
     if not systems_list:
-        logger.warning(f"System with name '{system_name}' not found.")
-        return None
- 
+        logger.error(f"System with name '{system_name}' not found.")
+        raise NotFoundError("System", system_name)
+
     if len(systems_list) > 1:
         logger.error(f"Multiple systems found with name '{system_name}'.")
-        return None
- 
+        raise UnexpectedResponse(UYUNI_SERVER + api_path, f"Multiple systems found for name {system_name}")
+
     first_system = systems_list[0]
     if isinstance(first_system, dict) and 'id' in first_system:
         resolved_id = str(first_system['id'])
@@ -592,7 +614,7 @@ async def _resolve_system_id(system_identifier: Union[str, int], token: str) -> 
         return resolved_id
     else:
         logger.error(f"System data for '{system_name}' is malformed. Expected a dict with 'id'. Got: {first_system}")
-        return None
+        raise UnexpectedResponse(UYUNI_SERVER + api_path, f"Malformed system data: {first_system!r}")
 
 async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str, system_id: int, 
                                   list_cves_path: str, ctx: Context) -> List[str]:
@@ -625,7 +647,6 @@ async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str,
         error_context=f"fetching CVEs for advisory {advisory_name} (system ID: {system_id})",
         params={'advisoryName': advisory_name},
         perform_login=False, # Login is handled by the calling function
-        default_on_error=None # Distinguish API error (None) from empty list []
     )
 
     processed_cves = []
@@ -668,15 +689,6 @@ async def check_system_updates(system_identifier: Union[str, int], ctx: Context)
 async def _check_system_updates(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
     token = ctx.get_state('token')
     system_id = await _resolve_system_id(system_identifier, token)
-    default_error_response = {
-        'system_identifier': system_identifier,
-        'has_pending_updates': False,
-        'update_count': 0,
-        'updates': []
-    }
-    if not system_id:
-        # Return a structure consistent with the success response, but indicating failure.
-        return default_error_response
 
     list_cves_api_path = '/rhn/manager/api/errata/listCves'
 
@@ -687,8 +699,7 @@ async def _check_system_updates(system_identifier: Union[str, int], ctx: Context
             api_path="/rhn/manager/api/system/getRelevantErrata",
             params={'sid': system_id},
             error_context=f"checking updates for system {system_identifier}",
-            token=token,
-            default_on_error=None # Distinguish API error from empty list
+            token=token
         )
 
         unscheduled_errata_call: Coroutine = _call_uyuni_api(
@@ -697,8 +708,7 @@ async def _check_system_updates(system_identifier: Union[str, int], ctx: Context
             api_path="/rhn/manager/api/system/getUnscheduledErrata",
             params={'sid': str(system_id)},
             error_context=f"checking unscheduled errata for system ID {system_id}",
-            token=token,
-            default_on_error=[] # Return empty list on failure
+            token=token
         )
 
         results = await asyncio.gather(
@@ -706,14 +716,6 @@ async def _check_system_updates(system_identifier: Union[str, int], ctx: Context
             unscheduled_errata_call
         )
         relevant_updates_list, unscheduled_updates_list = results
-
-        if not isinstance(relevant_updates_list, list) or not isinstance(unscheduled_updates_list, list):
-            logger.error(
-                f"API calls for system {system_id} did not return lists as expected. "
-                f"Type of relevant_updates: {type(relevant_updates_list).__name__}, "
-                f"Type of unscheduled_updates: {type(unscheduled_updates_list).__name__}"
-            )
-            return default_error_response
 
         unscheduled_advisory_names = {erratum.get('advisory_name') for erratum in unscheduled_updates_list}
 
@@ -877,9 +879,6 @@ async def schedule_apply_pending_updates_to_system(system_identifier: Union[str,
         return ""
 
     system_id = await _resolve_system_id(system_identifier, token)
-    if not system_id:
-        return "" # Helper function already logged the reason for failure.
-
     print(f"Found {len(errata_ids)} errata to apply for system {system_identifier} (ID: {system_id}). IDs: {errata_ids}")
 
     # 2. Schedule apply errata using the API endpoint
@@ -891,8 +890,7 @@ async def schedule_apply_pending_updates_to_system(system_identifier: Union[str,
             api_path="/rhn/manager/api/system/scheduleApplyErrata",
             json_body=payload,
             error_context=f"scheduling errata application for system {system_identifier}",
-            token=token,
-            default_on_error=None # Helper will return None on error
+            token=token
         )
 
         if isinstance(api_result, list) and api_result and isinstance(api_result[0], int):
@@ -938,8 +936,6 @@ async def schedule_apply_specific_update(system_identifier: Union[str, int], err
 
     token = ctx.get_state('token')
     system_id = await _resolve_system_id(system_identifier, token)
-    if not system_id:
-        return "" # Helper function already logged the reason for failure.
 
     print(f"Attempting to apply specific update (errata ID: {errata_id}) to system: {system_identifier}")
 
@@ -955,8 +951,7 @@ async def schedule_apply_specific_update(system_identifier: Union[str, int], err
             api_path="/rhn/manager/api/system/scheduleApplyErrata",
             json_body=payload,
             error_context=f"scheduling specific update (errata ID: {errata_id_int}) for system {system_identifier}",
-            token=token,
-            default_on_error=None # Helper returns None on error
+            token=token
         )
 
         if isinstance(api_result, list) and api_result and isinstance(api_result[0], int):
@@ -1082,7 +1077,6 @@ async def add_system(
             json_body=payload,
             error_context=f"adding system {host}",
             token=token,
-            default_on_error=None,
             expect_timeout=True,
         )
 
@@ -1131,8 +1125,6 @@ async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanu
 
     token = ctx.get_state('token')
     system_id = await _resolve_system_id(system_identifier, token)
-    if not system_id:
-        return "" # Helper function already logged the reason for failure.
 
     # Check if the system exists before proceeding
     active_systems = await _list_systems(token)
@@ -1154,8 +1146,7 @@ async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanu
             api_path="/rhn/manager/api/system/deleteSystem",
             json_body={"sid": system_id, "cleanupType": cleanup_type},
             error_context=f"removing system ID {system_id}",
-            token=token,
-            default_on_error=None
+            token=token
         )
 
     if api_result == 1:
@@ -1211,7 +1202,6 @@ async def get_systems_needing_security_update_for_cve(cve_identifier: str, ctx: 
             params={'cveName': cve_identifier},
             error_context=f"finding errata for CVE {cve_identifier}",
             token=token,
-            default_on_error=None # Distinguish API error from empty list
         )
 
         if errata_list is None: # API call failed
@@ -1238,7 +1228,6 @@ async def get_systems_needing_security_update_for_cve(cve_identifier: str, ctx: 
                 params={'advisoryName': advisory_name},
                 error_context=f"listing affected systems for advisory {advisory_name}",
                 perform_login=False, # Login already performed for this client session
-                default_on_error=None # Distinguish API error from empty list
             )
 
             if systems_data_result is None: # API call failed for this advisory
@@ -1299,8 +1288,7 @@ async def get_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]: # No
             method="GET",
             api_path=list_reboot_path,
             error_context="fetching systems needing reboot",
-            token=ctx.get_state('token'),
-            default_on_error=[] # Return empty list on error
+            token=ctx.get_state('token')
         )
 
         if isinstance(reboot_data_result, list):
@@ -1350,8 +1338,6 @@ async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context
 
     token = ctx.get_state('token')
     system_id = await _resolve_system_id(system_identifier, token)
-    if not system_id:
-        return "" # Helper function already logged the reason for failure.
 
     if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will reboot system {system_identifier}. Do you confirm?"
@@ -1369,8 +1355,7 @@ async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context
             api_path=schedule_reboot_path,
             json_body=payload,
             error_context=f"scheduling reboot for system {system_identifier}",
-            token=token,
-            default_on_error=None # Helper returns None on error
+            token=token
         )
 
         # Uyuni's scheduleReboot API returns an integer action ID directly in 'result'
@@ -1419,8 +1404,7 @@ async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
             method="GET",
             api_path=list_actions_path,
             error_context="listing all scheduled actions",
-            token=ctx.get_state('token'),
-            default_on_error=[] # Return empty list on error
+            token=ctx.get_state('token')
         )
 
         if isinstance(api_result, list):
@@ -1479,8 +1463,7 @@ async def cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] 
             api_path=cancel_actions_path,
             json_body=payload,
             error_context=f"canceling action {action_id}",
-            token=ctx.get_state('token'),
-            default_on_error=0 # API returns 1 on success, so 0 can signify an error or unexpected response from helper
+            token=ctx.get_state('token')
         )
         if api_result == 1:
             return f"Successfully canceled action: {action_id}"
@@ -1511,8 +1494,7 @@ async def list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
             method="GET",
             api_path=list_keys_path,
             error_context="listing activation keys",
-            token=ctx.get_state('token'),
-            default_on_error=[]
+            token=ctx.get_state('token')
         )
 
     filtered_keys = []
@@ -1551,8 +1533,7 @@ async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str,
             api_path=get_unscheduled_errata,
             params=payload,
             error_context=f"fetching unscheduled errata for system ID {system_id}",
-            token=ctx.get_state('token'),
-            default_on_error=None
+            token=ctx.get_state('token')
         )
 
         if isinstance(unscheduled_errata_result, list):
