@@ -1636,6 +1636,49 @@ async def create_system_group(name: str, ctx: Context, description: str = "", co
             msg = f"Failed to create system group '{name}'. Check server logs."
             logger.error(msg)
 
+@mcp.tool()
+async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, Any]]:
+    """
+    Lists the systems in a system group.
+
+    Args:
+        group_name: The name of the system group.
+
+    Returns:
+        List[Dict[str, Any]]: A list of dictionaries, where each dictionary represents a system
+                              with 'system_id' and 'system_name' fields.
+                              Returns an empty list if the API call fails or no systems are found.
+    """
+    log_string = f"Listing systems in group '{group_name}'"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    list_systems_path = '/rhn/manager/api/systemgroup/listSystemsMinimal'
+
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+        api_result = await call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path=list_systems_path,
+            params={"groupName": group_name},
+            error_context=f"listing systems in group '{group_name}'",
+            token=ctx.get_state('token')
+        )
+
+    filtered_systems = []
+    if isinstance(api_result, list):
+        for system in api_result:
+            if isinstance(system, dict):
+                filtered_systems.append({
+                    'system_id': system.get('id'),
+                    'system_name': system.get('name')
+                })
+            else:
+                msg = f"Unexpected item format in group systems list: {system}"
+                logger.warning(msg)
+                await ctx.warning(msg)
+    return filtered_systems
+
 def main_cli():
 
     logger.info("Running Uyuni MCP server.")
