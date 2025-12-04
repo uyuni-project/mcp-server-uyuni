@@ -1432,6 +1432,88 @@ async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, An
                 print(f"Warning: Unexpected item format in group systems list: {system}")
     return filtered_systems
 
+@write_tool()
+async def add_systems_to_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context, confirm: Union[bool, str] = False) -> str:
+    """
+    Adds systems to a system group.
+
+    Args:
+        group_name: The name of the system group.
+        system_identifiers: A list of system names or IDs to add to the group.
+        confirm: User confirmation is required to execute this action. This parameter
+                 is `False` by default. To obtain the confirmation message that must
+                 be presented to the user, the model must first call the tool with
+                 `confirm=False`. If the user agrees, the model should call the tool
+                 a second time with `confirm=True`.
+
+    Returns:
+        str: A success message if the systems were added.
+    """
+    return await _manage_group_systems(group_name, system_identifiers, True, ctx, confirm)
+
+@write_tool()
+async def remove_systems_from_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context, confirm: Union[bool, str] = False) -> str:
+    """
+    Removes systems from a system group.
+
+    Args:
+        group_name: The name of the system group.
+        system_identifiers: A list of system names or IDs to remove from the group.
+        confirm: User confirmation is required to execute this action. This parameter
+                 is `False` by default. To obtain the confirmation message that must
+                 be presented to the user, the model must first call the tool with
+                 `confirm=False`. If the user agrees, the model should call the tool
+                 a second time with `confirm=True`.
+
+    Returns:
+        str: A success message if the systems were removed.
+    """
+    return await _manage_group_systems(group_name, system_identifiers, False, ctx, confirm)
+
+async def _manage_group_systems(group_name: str, system_identifiers: List[Union[str, int]], add: bool, ctx: Context, confirm: Union[bool, str] = False) -> str:
+    """
+    Internal helper to add or remove systems from a group.
+    """
+    action_str = "add" if add else "remove"
+    log_string = f"Attempting to {action_str} systems {system_identifiers} to/from group '{group_name}'"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    is_confirmed = _to_bool(confirm)
+
+    if not is_confirmed:
+        return f"CONFIRMATION REQUIRED: This will {action_str} {len(system_identifiers)} systems to/from group '{group_name}'. Do you confirm?"
+
+    # Resolve all system IDs
+    resolved_ids = []
+    for identifier in system_identifiers:
+        sid = await _resolve_system_id(identifier)
+        if sid:
+            resolved_ids.append(int(sid))
+        else:
+            print(f"Warning: Could not resolve system identifier '{identifier}'. Skipping.")
+
+    if not resolved_ids:
+        return "No valid system identifiers found. Aborting."
+
+    add_remove_path = '/rhn/manager/api/systemgroup/addOrRemoveSystems'
+
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
+        api_result = await _call_uyuni_api(
+            client=client,
+            method="POST",
+            api_path=add_remove_path,
+            json_body={"systemGroupName": group_name, "serverIds": resolved_ids, "add": add},
+            error_context=f"{action_str}ing systems to/from group '{group_name}'",
+            default_on_error=None
+        )
+
+        if api_result == 1:
+            past_tense_action = "added" if add else "removed"
+            return f"Successfully {past_tense_action} {len(resolved_ids)} systems to/from group '{group_name}'."
+        else:
+            return f"Failed to {action_str} systems. Check server logs. (API Result: {api_result})"
+
 def main_cli():
 
     logger.info("Running Uyuni MCP server.")
