@@ -1,8 +1,15 @@
 from typing import Any, Dict, Optional
 import httpx
-from mcp_server_uyuni.logging_config import get_logger
 
-from mcp_server_uyuni.config import CONFIG
+from .logging_config import get_logger
+from .config import CONFIG
+from .errors import (
+    APIError,
+    HTTPError,
+    AuthError,
+    NetworkError,
+    UnexpectedResponse
+)
 
 logger = get_logger(__name__)
 
@@ -23,7 +30,6 @@ async def call(
     params: Dict[str, Any] = None,
     json_body: Dict[str, Any] = None,
     perform_login: bool = True,
-    default_on_error: Any = None,
     expected_result_key: str = 'result',
     expect_timeout: bool = False
 ) -> Any:
@@ -35,11 +41,14 @@ async def call(
     # Safety check: Do not allow POST requests if write tools are disabled.
     # This acts as a secondary guard after the @write_tool decorator.
     if method.upper() == 'POST' and not CONFIG["UYUNI_MCP_WRITE_TOOLS_ENABLED"]:
-        error_msg = (f"Attempted to call a write API ({api_path}) while write tools are disabled. "
-                     "Please set UYUNI_MCP_WRITE_TOOLS_ENABLED to 'true' to enable them.")
+        error_msg = (
+            f"Attempted to call a write API ({api_path}) while write tools are disabled. "
+            "Please set UYUNI_MCP_WRITE_TOOLS_ENABLED to 'true' to enable them."
+        )
         logger.error(error_msg)
-        return error_msg
+        raise APIError(error_msg)
 
+    full_api_url = CONFIG["UYUNI_SERVER"] + api_path
     if perform_login:
         try:
             if token:
@@ -48,60 +57,77 @@ async def call(
                     CONFIG["UYUNI_SERVER"] + '/rhn/manager/api/oidcLogin',
                     headers={"Authorization": f"Bearer {token}"}
                 )
+                login_response.raise_for_status()
             elif CONFIG["UYUNI_USER"] and CONFIG["UYUNI_PASS"]:
                 login_response = await client.post(
                     CONFIG["UYUNI_SERVER"] + '/rhn/manager/api/login',
                     json={"login": CONFIG["UYUNI_USER"], "password": CONFIG["UYUNI_PASS"]}
                 )
-            login_response.raise_for_status()
+                login_response.raise_for_status()
+            else:
+                logger.debug(f"perform_login=True but no token or username/password available for {error_context}; skipping login.")
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error during login for {error_context}: {e.request.url} - {e.response.status_code} - {e.response.text}")
-            return default_on_error
+            status = e.response.status_code if e.response is not None else None
+            body = e.response.text if e.response is not None else ''
+            logger.error(f"HTTP error during login for {error_context}: {getattr(e.request,'url',full_api_url)} - {status} - {body}")
+            if status in (401, 403):
+                raise AuthError(status, str(getattr(e.request, 'url', full_api_url)), body)
+            raise HTTPError(status or -1, str(getattr(e.request, 'url', full_api_url)), body)
         except httpx.RequestError as e:
-            logger.exception(f"Request error during login for {error_context}: {e.request.url} - {e}")
-            return default_on_error
-        except Exception as e:
-            logger.exception(f"An unexpected error occurred during login for {error_context}: {e}")
-            return default_on_error
-
-    full_api_url = CONFIG["UYUNI_SERVER"] + api_path
+            logger.exception(f"Request error during login for {error_context}: {getattr(e.request,'url',full_api_url)} - {e}")
+            raise NetworkError(getattr(e.request, 'url', full_api_url), e)
 
     try:
-        if method.upper() == 'GET':
+        method_upper = method.upper()
+        if method_upper == 'GET':
             response = await client.get(full_api_url, params=params)
-        elif method.upper() == 'POST':
+        elif method_upper == 'POST':
             logger.info(f"POSTing to {full_api_url}")
             response = await client.post(full_api_url, json=json_body, params=params)
-            logger.info(f"POST response: {response.text}")
+            logger.debug(f"POST response status: {response.status_code}")
         else:
-            logger.info(f"Unsupported HTTP method '{method}' for {error_context}.")
-            return default_on_error
-        response.raise_for_status()
-        response_data = response.json()
+            raise APIError(f"Unsupported HTTP method '{method}' for {error_context}.")
 
-        if response_data.get('success'):
-            if expected_result_key in response_data:
-                return response_data[expected_result_key]
-            # If 'success' is true, but the expected_result_key is not there (e.g. 'result' is missing)
-            logger.info(f"API call for {error_context} succeeded but '{expected_result_key}' not found in response. Response: {response_data}")
-            return default_on_error
-        else:
-            print(f"API call for {error_context} reported failure. Response: {response_data}")
-            return default_on_error
+        response.raise_for_status()
+
+        # Parse JSON if possible, otherwise fall back to raw text
+        try:
+            response_data = response.json()
+        except Exception:
+            response_data = response.text
+
+        # If response is a dict and follows Uyuni's {success: bool, result: ...} pattern
+        if isinstance(response_data, dict) and 'success' in response_data:
+            if response_data.get('success'):
+                # Prefer the expected_result_key but return full response dict as a fallback
+                return response_data.get(expected_result_key, response_data)
+            else:
+                logger.error(f"Uyuni API reported failure for {error_context}. Response: {response_data}")
+                raise UnexpectedResponse(full_api_url, response_data.get('message', response_data))
+
+        # Otherwise return whatever we received (list, dict, string, etc.)
+        return response_data
 
     except httpx.HTTPStatusError as e:
-        logger.error(f"HTTP error occurred while {error_context}: {e.request.url} - {e.response.status_code} - {e.response.text}")
-        return default_on_error
+        status = e.response.status_code if e.response is not None else None
+        body = e.response.text if e.response is not None else ''
+        logger.error(f"HTTP error occurred while {error_context}: {getattr(e.request,'url',full_api_url)} - {status} - {body}")
+        if status in (401, 403):
+            raise AuthError(status, str(getattr(e.request, 'url', full_api_url)), body)
+        raise HTTPError(status or -1, str(getattr(e.request, 'url', full_api_url)), body)
     except httpx.TimeoutException as e:
-        logger.info(f"timeout! timeout expected? {expect_timeout}")
+        logger.debug(f"Timeout! timeout expected? {expect_timeout}")
         if expect_timeout:
-            logger.info(f"A timeout occurred while {error_context} (expected for a long-running action): {e.request.url} - {e}")
+            logger.info(f"A timeout occurred while {error_context} (expected for a long-running action): {getattr(e.request,'url',full_api_url)} - {e}")
             return TIMEOUT_HAPPENED
-        logger.warning(f"A timeout occurred while {error_context}: {e.request.url} - {e}")
-        return default_on_error
+        logger.warning(f"A timeout occurred while {error_context}: {getattr(e.request,'url',full_api_url)} - {e}")
+        raise NetworkError(getattr(e.request, 'url', full_api_url), e, timed_out=True)
     except httpx.RequestError as e:
-        logger.exception(f"Request error occurred while {error_context}: {e.request.url} - {e}")
-        return default_on_error
+        logger.exception(f"Request error occurred while {error_context}: {getattr(e.request,'url',full_api_url)} - {e}")
+        raise NetworkError(getattr(e.request, 'url', full_api_url), e)
+    except UnexpectedResponse:
+        # Propagate API-specific failures unchanged
+        raise
     except Exception as e: # Catch other potential errors like JSONDecodeError
         logger.exception(f"An unexpected error occurred while {error_context}: {e}")
-        return default_on_error
+        raise APIError(f"Unexpected error while {error_context}: {e}")

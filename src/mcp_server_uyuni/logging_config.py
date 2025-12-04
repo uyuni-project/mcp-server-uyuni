@@ -1,7 +1,7 @@
 import sys
 import logging
 from typing import Union
-from mcp_server_uyuni.constants import Transport
+from .constants import Transport
 
 def get_logger(
     name: str = "mcp_server_uyuni",
