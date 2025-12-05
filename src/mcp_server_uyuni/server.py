@@ -1556,10 +1556,28 @@ async def list_system_groups(ctx: Context) -> List[Dict[str, str]]:
     each group the identifier, name, description and system count.
 
     Returns:
-        List[Dict[str, str]]: A list of dictionaries, where each dictionary represents a system group with 'id',
-                              'name', 'description' and 'system_count' fields. The 'system_count' refers to the
-                              number of systems assigned to each group. Returns an empty list if the API call
-                              fails, the response is not in the expected format, or no groups are found.
+        A list of dictionaries, where each dictionary represents a system group with 'id', 'name',
+        'description' and 'system_count' fields. The 'system_count' refers to the number of systems
+        assigned to each group.
+
+        Returns an empty list if the API call fails, the response is not in the expected format,
+        or no groups are found.
+
+        Example:
+            [
+                {
+                    "id": "1",
+                    "name": "Default Group",
+                    "description": "Default group for all systems",
+                    "system_count": "10"
+                },
+                {
+                    "id": "2",
+                    "name": "Test Group",
+                    "description": "Group for testing purposes",
+                    "system_count": "5"
+                }
+            ]
     """
     list_groups_path = '/rhn/manager/api/systemgroup/listAllGroups'
 
@@ -1599,9 +1617,11 @@ async def create_system_group(name: str, ctx: Context, description: str = "", co
                  a second time with `confirm=True`.
 
     Returns:
-        str: A success message if the group was created,
-             e.g., "Successfully created system group 'my-group'".
-             Returns an error message if the creation failed.
+        A success message if the group was created, e.g., "Successfully created system group 'my-group'".
+        Returns an error message if the creation failed.
+
+        Example:
+            Successfully created system group 'my-group'.
     """
     log_string = f"Creating system group '{name}'"
     logger.info(log_string)
@@ -1645,9 +1665,22 @@ async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, An
         group_name: The name of the system group.
 
     Returns:
-        List[Dict[str, Any]]: A list of dictionaries, where each dictionary represents a system
-                              with 'system_id' and 'system_name' fields.
-                              Returns an empty list if the API call fails or no systems are found.
+        A list of dictionaries, where each dictionary represents a system with 'system_id' and
+        'system_name' fields.
+
+        Returns an empty list if the API call fails or no systems are found.
+
+        Example:
+            [
+                {
+                    "system_id": "123456789",
+                    "system_name": "my-system"
+                },
+                {
+                    "system_id": "987654321",
+                    "system_name": "my-other-system"
+                }
+            ]
     """
     log_string = f"Listing systems in group '{group_name}'"
     logger.info(log_string)
@@ -1694,7 +1727,10 @@ async def add_systems_to_group(group_name: str, system_identifiers: List[Union[s
                  a second time with `confirm=True`.
 
     Returns:
-        str: A success message if the systems were added.
+        A success message if the systems were added.
+
+        Example:
+            Successfully added 1 systems to/from group 'test-group'.
     """
     return await _manage_group_systems(group_name, system_identifiers, True, ctx, confirm)
 
@@ -1713,7 +1749,10 @@ async def remove_systems_from_group(group_name: str, system_identifiers: List[Un
                  a second time with `confirm=True`.
 
     Returns:
-        str: A success message if the systems were removed.
+        A success message if the systems were removed.
+
+        Example:
+            Successfully removed 1 systems to/from group 'test-group'.
     """
     return await _manage_group_systems(group_name, system_identifiers, False, ctx, confirm)
 
