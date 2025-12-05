@@ -65,7 +65,7 @@ async def call(
                 )
                 login_response.raise_for_status()
             else:
-                logger.debug(f"perform_login=True but no token or username/password available for {error_context}; skipping login.")
+                logger.warning(f"perform_login=True but no token or username/password available for {error_context}; skipping login.")
         except httpx.HTTPStatusError as e:
             status = e.response.status_code if e.response is not None else None
             body = e.response.text if e.response is not None else ''

@@ -134,9 +134,9 @@ async def _list_systems(token: str) -> List[Dict[str, Union[str, int]]]:
             if isinstance(system, dict):
                 filtered_systems.append({'system_name': system.get('name'), 'system_id': system.get('id')})
             else:
-                print(f"Warning: Unexpected item format in system list: {system}")
-    elif systems_data_result: # Log if not the default empty list but still not a list
-        print(f"Warning: Expected a list of systems, but received: {type(systems_data_result)}")
+                logger.warning(f"Unexpected item format in system list: {system}")
+    elif systems_data_result:
+        logger.warning(f"Expected a list of systems, but received: {type(systems_data_result)}")
 
     return filtered_systems
 
@@ -490,15 +490,18 @@ async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str,
         List[str]: A list of CVE identifier strings. Returns an empty list on failure or if no CVEs are found.
     """
 
-    log_string = f"Fetching CVEs for advisory {advisory_name}"
-    logger.info(log_string)
-    await ctx.info(log_string)
+
+    msg = f"Fetching CVEs for advisory {advisory_name}"
+    logger.info(msg)
+    await ctx.info(msg)
 
     if not advisory_name:
-        print(f"Warning: advisory_name is missing for system ID {system_id}, cannot fetch CVEs.")
+        msg = f"advisory_name is missing for system ID {system_id}, cannot fetch CVEs."
+        logger.error(msg)
+        await ctx.error(msg)
         return []
 
-    print(f"Fetching CVEs for advisory: {advisory_name} (system ID: {system_id})")
+    logger.info(f"Fetching CVEs for advisory: {advisory_name} (system ID: {system_id})")
     cve_list_from_api = await call_uyuni_api(
         client=client,
         method="GET",
@@ -511,11 +514,6 @@ async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str,
     processed_cves = []
     if isinstance(cve_list_from_api, list):
         processed_cves = [str(cve) for cve in cve_list_from_api if cve]
-    elif cve_list_from_api is None:
-        # This means the API call might have failed OR API returned "result": null successfully.
-        # call_uyuni_api would return default_on_error (None) on failure.
-        # If API returns "result": null, helper returns None. In both cases, processed_cves remains [].
-        pass
 
     return processed_cves
 
@@ -653,20 +651,24 @@ async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
     active_systems = await _list_systems(ctx.get_state('token')) # Get the list of all systems
 
     if not active_systems:
-        print("Warning: No active systems found or failed to retrieve system list.")
+        msg = "No active systems found."
+        logger.warning(msg)
+        await ctx.warning(msg)
         return []
 
-    print(f"Checking {len(active_systems)} systems for updates...")
+    msg = f"Checking {len(active_systems)} systems for updates..."
+    logger.info(msg)
+    await ctx.info(msg)
 
-    for system_summary in active_systems:
+    total_systems = len(active_systems)
+    for i, system_summary in enumerate(active_systems):
         system_id = system_summary.get('system_id')
         system_name = system_summary.get('system_name')
 
-        if system_id is None:
-            print(f"Warning: Skipping system due to missing ID: {system_summary}")
-            continue
-
-        print(f"Checking updates for system: {system_name} (ID: {system_id})")
+        await ctx.report_progress(i, total_systems)
+        msg = f"Checking updates for system: {system_name} (ID: {system_id})"
+        logger.info(msg)
+        await ctx.info(msg)
         # Use the existing check_system_updates tool
         update_check_result = await _check_system_updates(system_id, ctx)
 
@@ -679,8 +681,11 @@ async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
                 'updates': update_check_result.get('updates', [])
             })
         # else: System has no updates, do nothing for this system
+    await ctx.report_progress(total_systems, total_systems)
 
-    print(f"Finished checking systems. Found {len(systems_with_updates)} systems with updates.")
+    msg = f"Finished checking systems. Found {len(systems_with_updates)} systems with updates."
+    logger.info(msg)
+    await ctx.info(msg)
     return systems_with_updates
 
 @write_tool()
@@ -706,41 +711,41 @@ async def schedule_apply_pending_updates_to_system(system_identifier: Union[str,
         str: The action url if updates were successfully scheduled.
              Otherwise, returns an empty string.
     """
-    log_string = f"Attempting to apply pending updates for system ID: {system_identifier}"
-    logger.info(log_string)
-    await ctx.info(log_string)
+    msg = f"Attempting to apply pending updates for system ID: {system_identifier}"
+    logger.info(msg)
+    await ctx.info(msg)
 
     is_confirmed = _to_bool(confirm)
-
     if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will apply pending updates to the system {system_identifier}.  Do you confirm?"
 
     token = ctx.get_state('token')
-
-    # 1. Use check_system_updates to get relevant errata
     update_info = await _check_system_updates(system_identifier, ctx)
 
     if not update_info or not update_info.get('has_pending_updates'):
-        print(f"No pending updates found for system {system_identifier}, or an error occurred while fetching update information.")
-        return ""
+        msg = f"No pending updates found for system {system_identifier}."
+        logger.info(msg)
+        return msg
 
     errata_list = update_info.get('updates', [])
     if not errata_list:
         # This case should ideally be covered by 'has_pending_updates' being false,
         # but good to have a safeguard.
-        print(f"Update check for system {system_identifier} indicated updates, but the updates list is empty.")
-        return ""
+        msg = f"Update check for system {system_identifier} indicated updates, but the updates list is empty."
+        logger.warning(msg)
+        return msg
 
     errata_ids = [erratum.get('update_id') for erratum in errata_list if erratum.get('update_id') is not None]
-
     if not errata_ids:
-        print(f"Could not extract any valid errata IDs for system {system_identifier} from the update information: {errata_list}")
-        return ""
+        msg = f"Could not extract any valid errata IDs for system {system_identifier} from the update information: {errata_list}"
+        logger.error(msg)
+        return msg
 
     system_id = await _resolve_system_id(system_identifier, token)
-    print(f"Found {len(errata_ids)} errata to apply for system {system_identifier} (ID: {system_id}). IDs: {errata_ids}")
+    msg = f"Found {len(errata_ids)} errata to apply for system {system_identifier} (ID: {system_id}). IDs: {errata_ids}"
+    logger.info(msg)
+    await ctx.info(msg)
 
-    # 2. Schedule apply errata using the API endpoint
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
         payload = {"sid": int(system_id), "errataIds": errata_ids}
         api_result = await call_uyuni_api(
@@ -754,13 +759,12 @@ async def schedule_apply_pending_updates_to_system(system_identifier: Union[str,
 
         if isinstance(api_result, list) and api_result and isinstance(api_result[0], int):
             action_id = api_result[0]
-            print(f"Successfully scheduled action {action_id} to apply {len(errata_ids)} errata to system {system_identifier}.")
+            logger.info(f"Successfully scheduled action {action_id} to apply {len(errata_ids)} errata to system {system_identifier}.")
             return "Update successfully scheduled at " + CONFIG["UYUNI_SERVER"] + "/rhn/schedule/ActionDetails.do?aid=" + str(action_id)
         else:
-            # Error message already printed by call_uyuni_api if it returned None
-            if api_result is not None: # Log if result is not None but also not the expected format
-                 print(f"Failed to schedule errata for system {system_identifier} or unexpected API response format. Result: {api_result}")
-            return ""
+            msg = f"Failed to schedule errata for system {system_identifier}. Unexpected API response format. Result: {api_result}"
+            logger.error(msg)
+            return msg
 
 @write_tool()
 async def schedule_apply_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
@@ -796,7 +800,7 @@ async def schedule_apply_specific_update(system_identifier: Union[str, int], err
     token = ctx.get_state('token')
     system_id = await _resolve_system_id(system_identifier, token)
 
-    print(f"Attempting to apply specific update (errata ID: {errata_id}) to system: {system_identifier}")
+    logger.info(f"Attempting to apply specific update (errata ID: {errata_id}) to system: {system_identifier}")
 
     if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will apply specific update (errata ID: {errata_id}) to the system {system_identifier}. Do you confirm?"
@@ -816,18 +820,18 @@ async def schedule_apply_specific_update(system_identifier: Union[str, int], err
         if isinstance(api_result, list) and api_result and isinstance(api_result[0], int):
             action_id = api_result[0]
             success_message = f"Update (errata ID: {errata_id_int}) successfully scheduled for system {system_identifier}. Action URL: {UYUNI_SERVER}/rhn/schedule/ActionDetails.do?aid={action_id}"
-            print(success_message)
+            logger.info(success_message)
             return success_message
         # Some schedule APIs might return int directly in result (though scheduleApplyErrata usually returns a list)
         elif isinstance(api_result, int): # Defensive check
             action_id = api_result
             success_message = f"Update (errata ID: {errata_id_int}) successfully scheduled. Action URL: {UYUNI_SERVER}/rhn/schedule/ActionDetails.do?aid={action_id}"
-            print(success_message)
+            logger.info(success_message)
             return success_message
         else:
-            if api_result is not None: # Log if not None but also not expected format
-                print(f"Failed to schedule specific update (errata ID: {errata_id_int}) for system {system_identifier} or unexpected API result format. Result: {api_result}")
-            return ""
+            msg = f"Failed to schedule specific update (errata ID: {errata_id_int}) for system {system_identifier} or unexpected API result format. Result: {api_result}"
+            logger.error(msg)
+            return msg
 
 @write_tool()
 async def add_system(
@@ -910,7 +914,7 @@ async def add_system(
     # Unescape the raw string from the environment variable to convert literal '\n' to actual newlines for the JSON payload.
     ssh_priv_key = ssh_priv_key_raw.replace('\\n', '\n')
 
-    print(f"Attempting to add system: {host}")
+    logger.info(f"Attempting to add system: {host}")
 
     ssh_priv_key_pass = os.environ.get('UYUNI_SSH_PRIV_KEY_PASS')
     if not ssh_priv_key_pass:
@@ -948,7 +952,7 @@ async def add_system(
     elif api_result == 1:  # The API returns 1 on success
         logger.info("api_result was 1")
         success_message = f"System {host} successfully scheduled to be added."
-        print(success_message)
+        logger.info(success_message)
         return success_message
     else:
         logger.info(f"api result was NOT 1 {api_result}")
@@ -1052,7 +1056,7 @@ async def get_systems_needing_security_update_for_cve(cve_identifier: str, ctx: 
     token = ctx.get_state('token')
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
         # 1. Call findByCve (login will be handled by the helper)
-        print(f"Searching for errata related to CVE: {cve_identifier}")
+        logger.info(f"Searching for errata related to CVE: {cve_identifier}")
         errata_list = await call_uyuni_api(
             client=client,
             method="GET",
@@ -1065,20 +1069,24 @@ async def get_systems_needing_security_update_for_cve(cve_identifier: str, ctx: 
         if errata_list is None: # API call failed
             return []
         if not isinstance(errata_list, list):
-            print(f"Warning: Expected a list of errata for CVE {cve_identifier}, but received: {type(errata_list)}")
+            msg = f"Expected a list of errata for CVE {cve_identifier}, but received: {type(errata_list)}"
+            logger.error(msg)
+            await ctx.error(msg)
             return []
         if not errata_list:
-            print(f"No errata found for CVE {cve_identifier}.")
+            msg = f"No errata found for CVE {cve_identifier}."
+            logger.info(msg)
+            await ctx.info(msg)
             return []
 
         # 2. For each erratum, call listAffectedSystems
         for erratum in errata_list:
             advisory_name = erratum.get('advisory_name')
             if not advisory_name:
-                print(f"Skipping erratum due to missing 'advisory_name': {erratum}")
+                logger.warning(f"Skipping erratum due to missing 'advisory_name': {erratum}")
                 continue
 
-            print(f"Fetching systems affected by advisory: {advisory_name} (related to CVE: {cve_identifier})")
+            logger.info(f"Fetching systems affected by advisory: {advisory_name} (related to CVE: {cve_identifier})")
             systems_data_result = await call_uyuni_api(
                 client=client,
                 method="GET",
@@ -1091,7 +1099,7 @@ async def get_systems_needing_security_update_for_cve(cve_identifier: str, ctx: 
             if systems_data_result is None: # API call failed for this advisory
                 continue # Move to the next advisory
             if not isinstance(systems_data_result, list):
-                print(f"Warning: Expected list of affected systems for {advisory_name}, got {type(systems_data_result)}")
+                logger.warning(f"Expected list of affected systems for {advisory_name}, got {type(systems_data_result)}")
                 continue
 
             for system_info in systems_data_result:
@@ -1106,14 +1114,16 @@ async def get_systems_needing_security_update_for_cve(cve_identifier: str, ctx: 
                                 'cve_identifier': cve_identifier
                             }
                     else:
-                        print(f"Warning: Received system data with missing ID or name for advisory {advisory_name}: {system_info}")
+                        logger.warning(f"Received system data with missing ID or name for advisory {advisory_name}: {system_info}")
                 else:
-                    print(f"Warning: Unexpected item format in affected systems list for advisory {advisory_name}: {system_info}")
+                    logger.warning(f"Unexpected item format in affected systems list for advisory {advisory_name}: {system_info}")
 
     if not affected_systems_map:
-        print(f"No systems found affected by CVE {cve_identifier} after checking all related errata.")
+        msg = f"No systems found affected by CVE {cve_identifier} after checking all related errata."
+        logger.info(msg)
+        await ctx.info(msg)
     else:
-        print(f"Found {len(affected_systems_map)} unique system(s) affected by CVE {cve_identifier}.")
+        logger.info(f"Found {len(affected_systems_map)} unique system(s) affected by CVE {cve_identifier}.")
 
     return list(affected_systems_map.values())
 
@@ -1160,9 +1170,9 @@ async def get_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]: # No
                             'reboot_status': 'reboot_required'
                         })
                 else:
-                    print(f"Warning: Unexpected item format in reboot list: {system_info}")
+                    logger.warning(f"Unexpected item format in reboot list: {system_info}")
         elif reboot_data_result: # Log if not default empty list but also not a list
-            print(f"Warning: Expected a list for systems needing reboot, but received: {type(reboot_data_result)}")
+            logger.warning(f"Expected a list for systems needing reboot, but received: {type(reboot_data_result)}")
 
     return systems_needing_reboot_list
 
@@ -1220,13 +1230,10 @@ async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context
             action_id = api_result
             action_detail_url = f"{CONFIG['UYUNI_SERVER']}/rhn/schedule/ActionDetails.do?aid={action_id}"
             success_message = f"System reboot successfully scheduled. Action URL: {action_detail_url}"
-            print(success_message)
+            logger.info(success_message)
             return success_message
         else:
-            # Error message already printed by call_uyuni_api if it returned None
-            if api_result is not None: # Log if result is not None but also not an int
-                print(f"Failed to schedule reboot for system {system_identifier} or unexpected API result format. Result: {api_result}")
-            return ""
+            return "Unexpected API response format when scheduling reboot. Check server logs for details."
 
 @mcp.tool()
 async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
@@ -1272,9 +1279,9 @@ async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
                         modified_action['action_id'] = modified_action.pop('id')
                     processed_actions_list.append(modified_action)
                 else:
-                    print(f"Warning: Unexpected item format in actions list: {action_dict}")
+                    logger.warning(f"Unexpected item format in actions list: {action_dict}")
         elif api_result: # Log if not default empty list but also not a list
-            print(f"Warning: Expected a list for all scheduled actions, but received: {type(api_result)}")
+            logger.warning(f"Expected a list for all scheduled actions, but received: {type(api_result)}")
     return processed_actions_list
 
 @write_tool()
@@ -1324,7 +1331,6 @@ async def cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] 
         if api_result == 1:
             return f"Successfully canceled action: {action_id}"
         else:
-            # The call_uyuni_api helper already prints detailed errors.
             return f"Failed to cancel action: {action_id}. The API did not return success (expected 1, got {api_result}). Check server logs for details."
 
 @mcp.tool()
@@ -1358,7 +1364,9 @@ async def list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
             if isinstance(key_data, dict):
                 filtered_keys.append({'key': key_data.get('key'), 'description': key_data.get('description')})
             else:
-                print(f"Warning: Unexpected item format in activation key list: {key_data}")
+                msg = f"Unexpected item format in activation key list: {key_data}"
+                logger.warning(msg)
+                await ctx.warning(msg)
     return filtered_keys
 
 async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str, Any]]:
@@ -1397,10 +1405,9 @@ async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str,
 
             return unscheduled_errata_result
         else:
-            if unscheduled_errata_result is not None:
-                print(f"Failed to retrieve unscheduled errata for system ID {system_id} or \
-                      unexpected API result format. Result: {unscheduled_errata_result}")
-            return ""
+            msg = f"Failed to retrieve unscheduled errata for system ID {system_id}. Unexpected API result format. Result: {unscheduled_errata_result}"
+            logger.error(msg)
+            return msg
 
 def main_cli():
 
