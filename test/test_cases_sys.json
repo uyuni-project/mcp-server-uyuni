@@ -1,6 +1,5 @@
 [
   {
-
     "id": "TC-SYS-001",
     "prompt": "Get the name and system id of all systems in the uyuni server.",
     "expected_output": "The response must contain the following system and ID pairs: \n* {build_host_name}: {build_host_id} \n* {deblike_minion_name}: {deblike_minion_id} \n* {proxy_name}: {proxy_id} \n* {rhlike_minion_name}: {rhlike_minion_id} \n* {suse_minion_name}: {suse_minion_id} \n* {suse_ssh_minion_name}: {suse_ssh_minion_id}"
@@ -29,5 +28,15 @@
     "id": "TC-SYS-006",
     "prompt": "Get CPU details for system '{build_host_name}'.",
     "expected_output": "Returns a message with CPU attributes of model {build_host_cpu_model}."
+  },
+  {
+    "id": "TC-SYS-007",
+    "prompt": "Create a new system group named 'test-group' with description 'Test Group Description'.",
+    "expected_output": "CONFIRMATION REQUIRED: This will create a new system group named 'test-group' with description 'Test Group Description'. Do you confirm?"
+  },
+  {
+    "id": "TC-SYS-008",
+    "prompt": "Create a new system group named 'test-group' with description 'Test Group Description'. Confirm yes.",
+    "expected_output": "Successfully created system group 'test-group'."
   }
 ]

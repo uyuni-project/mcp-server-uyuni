@@ -1307,6 +1307,252 @@ async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str,
                       unexpected API result format. Result: {unscheduled_errata_result}")
             return ""
 
+@mcp.tool()
+async def list_system_groups() -> List[Dict[str, str]]:
+    """
+    Fetches a list of system groups from the Uyuni server.
+
+    This tool retrieves all system groups visible to the user and returns a list containing for
+    each group the identifier, name, description and system count.
+
+    Returns:
+        A list of dictionaries, where each dictionary represents a system group with 'id', 'name',
+        'description' and 'system_count' fields. The 'system_count' refers to the number of systems
+        assigned to each group.
+
+        Returns an empty list if the API call fails, the response is not in the expected format,
+        or no groups are found.
+
+        Example:
+            [
+                {
+                    "id": "1",
+                    "name": "Default Group",
+                    "description": "Default group for all systems",
+                    "system_count": "10"
+                },
+                {
+                    "id": "2",
+                    "name": "Test Group",
+                    "description": "Group for testing purposes",
+                    "system_count": "5"
+                }
+            ]
+    """
+    list_groups_path = '/rhn/manager/api/systemgroup/listAllGroups'
+
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
+        api_result = await _call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path=list_groups_path,
+            error_context="listing system groups",
+            default_on_error=[]
+        )
+
+    filtered_groups = []
+    if isinstance(api_result, list):
+        for group_data in api_result:
+            if isinstance(group_data, dict):
+                filtered_groups.append({'id': str(group_data.get('id')), 'name': group_data.get('name'),
+                    'description': group_data.get('description'), 'system_count': str(group_data.get('system_count'))})
+            else:
+                print(f"Warning: Unexpected item format in system group list: {group_data}")
+    return filtered_groups
+
+@write_tool()
+async def create_system_group(name: str, ctx: Context, description: str = "", confirm: Union[bool, str] = False) -> str:
+    """
+    Creates a new system group in Uyuni.
+
+    Args:
+        name: The name of the new system group.
+        description: An optional description for the system group.
+        confirm: User confirmation is required to execute this action. This parameter
+                 is `False` by default. To obtain the confirmation message that must
+                 be presented to the user, the model must first call the tool with
+                 `confirm=False`. If the user agrees, the model should call the tool
+                 a second time with `confirm=True`.
+
+    Returns:
+        A success message if the group was created, e.g., "Successfully created system group 'my-group'".
+        Returns an error message if the creation failed.
+
+        Example:
+            Successfully created system group 'my-group'.
+    """
+    log_string = f"Creating system group '{name}'"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    is_confirmed = _to_bool(confirm)
+
+    if not is_confirmed:
+        return f"CONFIRMATION REQUIRED: This will create a new system group named '{name}' with description '{description}'. Do you confirm?"
+
+    create_group_path = '/rhn/manager/api/systemgroup/create'
+
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
+        api_result = await _call_uyuni_api(
+            client=client,
+            method="POST",
+            api_path=create_group_path,
+            json_body={"name": name, "description": description},
+            error_context=f"creating system group '{name}'",
+            default_on_error=None
+        )
+
+        if isinstance(api_result, dict) and 'id' in api_result:
+             # The API returns the created group object
+            return f"Successfully created system group '{name}'."
+        elif api_result:
+             # If it returns something truthy that we didn't expect, but not None (which is error)
+             return f"Successfully created system group '{name}'. (API returned: {api_result})"
+        else:
+            return f"Failed to create system group '{name}'. Check server logs."
+
+@mcp.tool()
+async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, Any]]:
+    """
+    Lists the systems in a system group.
+
+    Args:
+        group_name: The name of the system group.
+
+    Returns:
+        A list of dictionaries, where each dictionary represents a system with 'system_id' and
+        'system_name' fields.
+
+        Returns an empty list if the API call fails or no systems are found.
+
+        Example:
+            [
+                {
+                    "system_id": "123456789",
+                    "system_name": "my-system"
+                },
+                {
+                    "system_id": "987654321",
+                    "system_name": "my-other-system"
+                }
+            ]
+    """
+    log_string = f"Listing systems in group '{group_name}'"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    list_systems_path = '/rhn/manager/api/systemgroup/listSystemsMinimal'
+
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
+        api_result = await _call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path=list_systems_path,
+            params={"groupName": group_name},
+            error_context=f"listing systems in group '{group_name}'",
+            default_on_error=[]
+        )
+
+    filtered_systems = []
+    if isinstance(api_result, list):
+        for system in api_result:
+            if isinstance(system, dict):
+                filtered_systems.append({
+                    'system_id': system.get('id'),
+                    'system_name': system.get('name')
+                })
+            else:
+                print(f"Warning: Unexpected item format in group systems list: {system}")
+    return filtered_systems
+
+@write_tool()
+async def add_systems_to_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context, confirm: Union[bool, str] = False) -> str:
+    """
+    Adds systems to a system group.
+
+    Args:
+        group_name: The name of the system group.
+        system_identifiers: A list of system names or IDs to add to the group.
+        confirm: User confirmation is required to execute this action. This parameter
+                 is `False` by default. To obtain the confirmation message that must
+                 be presented to the user, the model must first call the tool with
+                 `confirm=False`. If the user agrees, the model should call the tool
+                 a second time with `confirm=True`.
+
+    Returns:
+        A success message if the systems were added.
+
+        Example:
+            Successfully added 1 systems to/from group 'test-group'.
+    """
+    return await _manage_group_systems(group_name, system_identifiers, True, ctx, confirm)
+
+@write_tool()
+async def remove_systems_from_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context, confirm: Union[bool, str] = False) -> str:
+    """
+    Removes systems from a system group.
+
+    Args:
+        group_name: The name of the system group.
+        system_identifiers: A list of system names or IDs to remove from the group.
+        confirm: User confirmation is required to execute this action. This parameter
+                 is `False` by default. To obtain the confirmation message that must
+                 be presented to the user, the model must first call the tool with
+                 `confirm=False`. If the user agrees, the model should call the tool
+                 a second time with `confirm=True`.
+
+    Returns:
+        A success message if the systems were removed.
+
+        Example:
+            Successfully removed 1 systems to/from group 'test-group'.
+    """
+    return await _manage_group_systems(group_name, system_identifiers, False, ctx, confirm)
+
+async def _manage_group_systems(group_name: str, system_identifiers: List[Union[str, int]], add: bool, ctx: Context, confirm: Union[bool, str] = False) -> str:
+    """
+    Internal helper to add or remove systems from a group.
+    """
+    action_str = "add" if add else "remove"
+    log_string = f"Attempting to {action_str} systems {system_identifiers} to/from group '{group_name}'"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    is_confirmed = _to_bool(confirm)
+
+    if not is_confirmed:
+        return f"CONFIRMATION REQUIRED: This will {action_str} {len(system_identifiers)} systems to/from group '{group_name}'. Do you confirm?"
+
+    # Resolve all system IDs
+    resolved_ids = []
+    for identifier in system_identifiers:
+        sid = await _resolve_system_id(identifier)
+        if sid:
+            resolved_ids.append(int(sid))
+        else:
+            print(f"Warning: Could not resolve system identifier '{identifier}'. Skipping.")
+
+    if not resolved_ids:
+        return "No valid system identifiers found. Aborting."
+
+    add_remove_path = '/rhn/manager/api/systemgroup/addOrRemoveSystems'
+
+    async with httpx.AsyncClient(verify=UYUNI_MCP_SSL_VERIFY) as client:
+        api_result = await _call_uyuni_api(
+            client=client,
+            method="POST",
+            api_path=add_remove_path,
+            json_body={"systemGroupName": group_name, "serverIds": resolved_ids, "add": add},
+            error_context=f"{action_str}ing systems to/from group '{group_name}'",
+            default_on_error=None
+        )
+
+        if api_result == 1:
+            past_tense_action = "added" if add else "removed"
+            return f"Successfully {past_tense_action} {len(resolved_ids)} systems to/from group '{group_name}'."
+        else:
+            return f"Failed to {action_str} systems. Check server logs. (API Result: {api_result})"
+
 def main_cli():
 
     logger.info("Running Uyuni MCP server.")
