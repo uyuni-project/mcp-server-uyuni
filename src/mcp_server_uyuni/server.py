@@ -461,6 +461,99 @@ async def _get_system_event_details(system_identifier: Union[str, int], event_id
         logger.error(result)
     return {}
 
+@mcp.tool()
+async def find_systems_by_name(name: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
+    """
+    Lists systems that match the provided hostname.
+
+    Args:
+        name: The system name (e.g., "buildhost.example.com").
+
+    Returns:
+        A list of system objects (system_name and system_id) that match the provided name.
+        Returns an empty list if no systems are found.
+
+    Example:
+        [
+            { "system_name": "ubuntu1.example.com", "system_id": 100010000 },
+            { "system_name": "ubuntu2.example.com", "system_id": 100010001 }
+        ]
+    """
+    log_string = f"Finding systems with name {name}"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    token = ctx.get_state('token')
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+        systems_data_result = await call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path="/rhn/manager/api/system/search/hostname",
+            params={'searchTerm': name},
+            error_context=f"finding systems with name {name}",
+            token=token
+        )
+
+    filtered_systems = []
+    if isinstance(systems_data_result, list):
+        for system in systems_data_result:
+            if isinstance(system, dict):
+                filtered_systems.append({'system_name': system.get('name'), 'system_id': system.get('id')})
+            else:
+                logger.warning(f"Unexpected item format in system list: {system}")
+    elif systems_data_result:
+        logger.warning(f"Expected a list of systems, but received: {type(systems_data_result)}")
+
+    return filtered_systems
+
+@mcp.tool()
+async def find_systems_by_ip(ip_address: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
+    """
+    Lists systems that match the provided IP address.
+
+    Args:
+        ip_address: The system IP address (e.g., "192.168.122.193").
+
+    Returns:
+        A list of system objects (system_name, system_id and ip) that match the provided IP address.
+        Returns an empty list if no systems are found.
+
+    Example:
+        [
+            {
+              "system_name": "ubuntu.example.com",
+              "system_id": 100010000,
+              "ip": "192.168.122.193"
+            }
+        ]
+    """
+    log_string = f"Finding systems with IP address {ip_address}"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    token = ctx.get_state('token')
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+        systems_data_result = await call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path="/rhn/manager/api/system/search/ip",
+            params={'searchTerm': ip_address},
+            error_context=f"finding systems with IP address {ip_address}",
+            token=token
+        )
+
+    filtered_systems = []
+    if isinstance(systems_data_result, list):
+        for system in systems_data_result:
+            if isinstance(system, dict):
+                filtered_systems.append({'system_name': system.get('name'), 'system_id': system.get('id'), 'ip': system.get('ip')})
+            else:
+                logger.warning(f"Unexpected item format in system list: {system}")
+    elif systems_data_result:
+        logger.warning(f"Expected a list of systems, but received: {type(systems_data_result)}")
+
+    return filtered_systems
+
 async def _resolve_system_id(system_identifier: Union[str, int], token: str) -> str:
     """
     Resolves a system identifier, which can be a name or an ID, to a numeric system ID string.
