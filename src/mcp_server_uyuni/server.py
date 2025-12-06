@@ -160,7 +160,11 @@ async def get_system_details(system_identifier: Union[str, int], ctx: Context):
                 - model: The CPU model
                 - vendor: The CPU vendor
                 - arch: The CPU architecture
-            - installed_product: List of installed products on the system.
+            - network: Network addresses and the hostname of the system.
+                - hostname: The hostname of the system
+                - ip: The IPv4 address of the system
+                - ip6: The IPv6 address of the system
+            - installed_products: List of installed products on the system.
                 You can use this field to identify what OS the system is running.
 
         Example:
@@ -175,7 +179,30 @@ async def get_system_details(system_identifier: Union[str, int], ctx: Context):
                 "model": "QEMU Virtual CPU",
                 "vendor": "AuthenticAMD",
                 "arch": "x86_64"
-              }
+              },
+              "network": {
+                "hostname": "opensuse.example.local",
+                "ip": "192.168.122.193",
+                "ip6": "fe80::5054:ff:fe12:3456"
+              },
+              "installed_products": [
+                {
+                  "release": "0",
+                  "name": "SLES",
+                  "isBaseProduct": true,
+                  "arch": "x86_64",
+                  "version": "15.7",
+                  "friendlyName": "SUSE Linux Enterprise Server 15 SP7 x86_64"
+                },
+                {
+                  "release": "0",
+                  "name": "sle-module-basesystem",
+                  "isBaseProduct": false,
+                  "arch": "x86_64",
+                  "version": "15.7",
+                  "friendlyName": "Basesystem Module 15 SP7 x86_64"
+                }
+              ]
             }
         """
     log_string = f"Getting details of system {system_identifier}"
@@ -211,6 +238,14 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
             error_context=f"Fetching CPU information for system {system_id}",
             token=token
         )
+        network_call: Coroutine = call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path="/rhn/manager/api/system/getNetwork",
+            params={'sid': system_id},
+            error_context=f"Fetching network information for system {system_id}",
+            token=token
+        )
         products_call: Coroutine = call_uyuni_api(
             client=client,
             method="GET",
@@ -224,10 +259,11 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
             details_call,
             uuid_call,
             cpu_call,
+            network_call,
             products_call
         )
 
-        details_result, uuid_result, cpu_result, products_result = results
+        details_result, uuid_result, cpu_result, network_result, products_result = results
 
     if isinstance(details_result, dict):
         # Only add the identifier if the API returned actual data
@@ -250,6 +286,17 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
         else:
             logger.error(f"Unexpected API response when getting CPU information for system {system_id}")
             logger.error(cpu_result)
+
+        if isinstance(network_result, dict):
+            network_details = {
+                "hostname": network_result["hostname"],
+                "ip": network_result["ip"],
+                "ip6": network_result["ip6"]
+            }
+            system_details["network"] = network_details
+        else:
+            logger.error(f"Unexpected API response when getting network information for system {system_id}")
+            logger.error(network_result)
 
         if isinstance(products_result, list):
             base_product = [p["friendlyName"] for p in products_result if p["isBaseProduct"]]
