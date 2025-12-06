@@ -258,8 +258,6 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
             logger.error(f"Unexpected API response when getting installed products for system {system_id}")
             logger.error(products_result)
 
-
-
         return system_details
     else:
         logger.error(f"Unexpected API response when getting details for system {system_id}")
@@ -518,7 +516,7 @@ async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str,
     return processed_cves
 
 @mcp.tool()
-async def check_system_updates(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
+async def get_system_updates(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
 
     """
     Checks if a specific system in the Uyuni server has pending updates (relevant errata),
@@ -541,9 +539,9 @@ async def check_system_updates(system_identifier: Union[str, int], ctx: Context)
     log_string = f"Checking pending updates for system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
-    return await _check_system_updates(system_identifier, ctx)
+    return await _get_system_updates(system_identifier, ctx)
 
-async def _check_system_updates(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
+async def _get_system_updates(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
     token = ctx.get_state('token')
     system_id = await _resolve_system_id(system_identifier, token)
 
@@ -669,8 +667,8 @@ async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
         msg = f"Checking updates for system: {system_name} (ID: {system_id})"
         logger.info(msg)
         await ctx.info(msg)
-        # Use the existing check_system_updates tool
-        update_check_result = await _check_system_updates(system_id, ctx)
+        # Use the existing get_system_updates tool
+        update_check_result = await _get_system_updates(system_id, ctx)
 
         if update_check_result.get('has_pending_updates', False):
             # If the system has updates, add its info and update details to the result list
@@ -689,13 +687,13 @@ async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
     return systems_with_updates
 
 @write_tool()
-async def schedule_apply_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
+async def schedule_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
 
     """
     Checks for pending updates on a system, schedules all of them to be applied,
     and returns the action ID of the scheduled task.
 
-    This tool first calls 'check_system_updates' to determine relevant errata.
+    This tool first calls 'get_system_updates' to determine relevant errata.
     If updates are found, it then calls the 'system/scheduleApplyErrata' API
     endpoint to apply all found errata.
 
@@ -720,7 +718,7 @@ async def schedule_apply_pending_updates_to_system(system_identifier: Union[str,
         return f"CONFIRMATION REQUIRED: This will apply pending updates to the system {system_identifier}.  Do you confirm?"
 
     token = ctx.get_state('token')
-    update_info = await _check_system_updates(system_identifier, ctx)
+    update_info = await _get_system_updates(system_identifier, ctx)
 
     if not update_info or not update_info.get('has_pending_updates'):
         msg = f"No pending updates found for system {system_identifier}."
@@ -767,7 +765,7 @@ async def schedule_apply_pending_updates_to_system(system_identifier: Union[str,
             return msg
 
 @write_tool()
-async def schedule_apply_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
+async def schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
 
     """
     Schedules a specific update (erratum) to be applied to a system.
@@ -795,7 +793,6 @@ async def schedule_apply_specific_update(system_identifier: Union[str, int], err
         errata_id_int = int(errata_id)
     except (ValueError, TypeError):
         return f"Invalid errata ID '{errata_id}'. The ID must be an integer."
-
 
     token = ctx.get_state('token')
     system_id = await _resolve_system_id(system_identifier, token)
@@ -1022,9 +1019,9 @@ async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanu
         return error_message
 
 @mcp.tool()
-async def get_systems_needing_security_update_for_cve(cve_identifier: str, ctx: Context) -> List[Dict[str, Any]]:
+async def list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context) -> List[Dict[str, Any]]:
     """
-    Finds systems requiring a security update due to a specific CVE identifier.
+    Finds systems requiring a security update for a specific CVE identifier.
 
     This tool identifies systems that are vulnerable to a given Common
     Vulnerabilities and Exposures (CVE) identifier. It first looks up the
@@ -1128,7 +1125,7 @@ async def get_systems_needing_security_update_for_cve(cve_identifier: str, ctx: 
     return list(affected_systems_map.values())
 
 @mcp.tool()
-async def get_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]: # No change needed here
+async def list_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
     """
     Fetches a list of systems from the Uyuni server that require a reboot.
 
