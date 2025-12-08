@@ -16,7 +16,7 @@ UYUNI_PASS = os.environ["UYUNI_PASS"]
 
 UYUNI_MCP_HOST = os.environ.get("UYUNI_MCP_HOST", "127.0.0.1")
 UYUNI_MCP_PORT = int(os.environ.get("UYUNI_MCP_PORT", "8000"))
-UYUNI_AUTH_SERVER = os.environ.get("UYUNI_AUTH_SERVER")
+UYUNI_AUTH_SERVER = os.environ.get("UYUNI_AUTH_SERVER", None)
 
 UYUNI_MCP_SSL_VERIFY = (
     os.environ.get("UYUNI_MCP_SSL_VERIFY", "true").lower()

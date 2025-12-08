@@ -1551,7 +1551,8 @@ def main_cli():
     logger.info("Running Uyuni MCP server.")
 
     if CONFIG["UYUNI_MCP_TRANSPORT"] == Transport.HTTP.value:
-        mcp.add_middleware(AuthTokenMiddleware())
+        if CONFIG["AUTH_SERVER"]:
+            mcp.add_middleware(AuthTokenMiddleware())
         mcp.run(transport="streamable-http", host=CONFIG["UYUNI_MCP_HOST"], port=CONFIG["UYUNI_MCP_PORT"])
     elif CONFIG["UYUNI_MCP_TRANSPORT"] == Transport.STDIO.value:
         mcp.run(transport="stdio")
