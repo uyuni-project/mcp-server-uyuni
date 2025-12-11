@@ -1597,7 +1597,7 @@ async def list_system_groups(ctx: Context) -> List[Dict[str, str]]:
                 filtered_groups.append({'id': str(group_data.get('id')), 'name': group_data.get('name'),
                     'description': group_data.get('description'), 'system_count': str(group_data.get('system_count'))})
             else:
-                msg = f"Unexpected item format in system group list: {group_data}")
+                msg = f"Unexpected item format in system group list: {group_data}"
                 logger.warning(msg)
                 await ctx.warning(msg)
     return filtered_groups
@@ -1655,6 +1655,7 @@ async def create_system_group(name: str, ctx: Context, description: str = "", co
         else:
             msg = f"Failed to create system group '{name}'. Check server logs."
             logger.error(msg)
+        return msg
 
 @mcp.tool()
 async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, Any]]:
@@ -1693,7 +1694,7 @@ async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, An
             client=client,
             method="GET",
             api_path=list_systems_path,
-            params={"groupName": group_name},
+            params={"systemGroupName": group_name},
             error_context=f"listing systems in group '{group_name}'",
             token=ctx.get_state('token')
         )
@@ -1770,10 +1771,12 @@ async def _manage_group_systems(group_name: str, system_identifiers: List[Union[
     if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will {action_str[0]} {len(system_identifiers)} systems {action_str[1]} group '{group_name}'. Do you confirm?"
 
+    token = ctx.get_state('token')
+
     # Resolve all system IDs
     resolved_ids = []
     for identifier in system_identifiers:
-        sid = await _resolve_system_id(identifier)
+        sid = await _resolve_system_id(identifier, token)
         if sid:
             resolved_ids.append(int(sid))
         else:
@@ -1791,7 +1794,7 @@ async def _manage_group_systems(group_name: str, system_identifiers: List[Union[
             api_path=add_remove_path,
             json_body={"systemGroupName": group_name, "serverIds": resolved_ids, "add": add},
             error_context=f"attempting to {action_str[0]} systems {action_str[1]} group '{group_name}'",
-            token=ctx.get_state('token')
+            token=token
         )
 
         if api_result == 1:
