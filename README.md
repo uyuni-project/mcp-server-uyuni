@@ -1,9 +1,8 @@
 # Uyuni MCP Server
 
+The Uyuni MCP Server is a Model Context Protocol (MCP) server implementation that bridges the gap between Large Language Models (LLMs) and the Uyuni configuration and infrastructure management solution.
 
-The Uyuni MCP Server is a Model Context Protocol (MCP) server implementation that bridges the gap between Large Language Models (LLMs) and the Uyuni systems management solution.
-
-This project allows AI agents (such as Gemini CLI, Claude Desktop or other MCP-compliant clients) to securely interact with your Uyuni server. By exposing Uyuni's API as standardized MCP tools, it enables users to manage their Linux infrastructure using natural language commands. Instead of navigating the web UI or writing complex API scripts, you can simply ask your AI assistant to perform tasks like auditing systems, checking for updates, or scheduling maintenance.
+This project allows AI agents (such as Gemini CLI, Claude Desktop or other MCP-compliant clients) to securely interact with your Uyuni server. The Uyuni MCP server enables users to manage their Linux infrastructure using natural language. Instead of navigating the web UI or writing complex API scripts, you can simply ask your AI assistant to perform tasks like auditing systems, checking for updates, or scheduling maintenance.
 
 Key Capabilities
 This server exposes a suite of tools that allow LLMs to:
@@ -25,8 +24,6 @@ It is designed to be run as a container or locally, offering a streamlined way t
 - [Feedback](#feedback)
 - [License](#license)
 - [Disclaimer](#disclaimer)
-
-
 
 ## Usage
 
