@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "mcp-server-uyuni": {
+      "command": "uv",
+      "server_type": "stdio",
+      "args": ["run", "--env-file=./uyuni-connection-config-stdio.env","--directory","./src/mcp-server-uyuni/","mcp-server-uyuni"]
+    }
+  }
+}
+
