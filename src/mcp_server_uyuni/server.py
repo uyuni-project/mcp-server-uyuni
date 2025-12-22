@@ -210,18 +210,31 @@ async def get_system_details(system_identifier: Union[str, int], ctx: Context):
     await ctx.info(log_string)
     return await _get_system_details(system_identifier, ctx.get_state('token'))
 
-async def _get_system_details(system_identifier: Union[str, int], token: str) -> Dict[str, Any]:
-    system_id = await _resolve_system_id(system_identifier, token)
+async def _get_system_details(system_identifier: str, token: str) -> Dict[str, Any]:
+    try:
+        system_id = await _resolve_system_id(system_identifier, token)
+    except (UnexpectedResponse, NotFoundError) as e:
+        logger.warning(f"Could not resolve system ID for '{system_identifier}': {e}")
+        return {}
 
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
-        details_call: Coroutine = call_uyuni_api(
-            client=client,
-            method="GET",
-            api_path="/rhn/manager/api/system/getDetails",
-            params={'sid': system_id},
-            error_context=f"Fetching details for system {system_id}",
-            token=token
-        )
+        try:
+            details_result = await call_uyuni_api(
+                client=client,
+                method="GET",
+                api_path="/rhn/manager/api/system/getDetails",
+                params={'sid': system_id},
+                error_context=f"Fetching details for system {system_id}",
+                token=token
+            )
+        except UnexpectedResponse as e:
+            logger.warning(f"System {system_id} not found or API error: {e}")
+            return {}
+
+        if not isinstance(details_result, dict) or 'id' not in details_result:
+            logger.warning(f"System {system_id} not found or details could not be fetched. Result: {details_result}")
+            return {}
+
         uuid_call: Coroutine = call_uyuni_api(
             client=client,
             method="GET",
@@ -256,60 +269,54 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
         )
 
         results = await asyncio.gather(
-            details_call,
             uuid_call,
             cpu_call,
             network_call,
-            products_call
+            products_call,
+            return_exceptions=True
         )
 
-        details_result, uuid_result, cpu_result, network_result, products_result = results
+        uuid_result, cpu_result, network_result, products_result = results
 
-    if isinstance(details_result, dict):
-        # Only add the identifier if the API returned actual data
-        system_details = {
-            "system_id": details_result["id"],
-            "system_name": details_result["profile_name"],
-            "last_boot": details_result["last_boot"],
-            "uuid": uuid_result
+    system_details = {
+        "system_id": details_result["id"],
+        "system_name": details_result["profile_name"],
+        "last_boot": details_result["last_boot"],
+        "uuid": uuid_result if not isinstance(uuid_result, Exception) else None
+    }
+
+    if isinstance(cpu_result, dict):
+        cpu_details = {
+            "family": cpu_result.get("family"),
+            "mhz": cpu_result.get("mhz"),
+            "model": cpu_result.get("model"),
+            "vendor": cpu_result.get("vendor"),
+            "arch": cpu_result.get("arch")
         }
-
-        if isinstance(cpu_result, dict):
-            cpu_details = {
-                "family": cpu_result["family"],
-                "mhz": cpu_result["mhz"],
-                "model": cpu_result["model"],
-                "vendor": cpu_result["vendor"],
-                "arch": cpu_result["arch"]
-            }
-            system_details["cpu"] = cpu_details
-        else:
-            logger.error(f"Unexpected API response when getting CPU information for system {system_id}")
-            logger.error(cpu_result)
-
-        if isinstance(network_result, dict):
-            network_details = {
-                "hostname": network_result["hostname"],
-                "ip": network_result["ip"],
-                "ip6": network_result["ip6"]
-            }
-            system_details["network"] = network_details
-        else:
-            logger.error(f"Unexpected API response when getting network information for system {system_id}")
-            logger.error(network_result)
-
-        if isinstance(products_result, list):
-            base_product = [p["friendlyName"] for p in products_result if p["isBaseProduct"]]
-            system_details["installed_products"] = base_product
-        else:
-            logger.error(f"Unexpected API response when getting installed products for system {system_id}")
-            logger.error(products_result)
-
-        return system_details
+        system_details["cpu"] = cpu_details
     else:
-        logger.error(f"Unexpected API response when getting details for system {system_id}")
-        logger.error(details_result)
-    return {}
+        logger.error(f"Unexpected API response when getting CPU information for system {system_id}")
+        logger.error(cpu_result)
+
+    if isinstance(network_result, dict):
+        network_details = {
+            "hostname": network_result.get("hostname"),
+            "ip": network_result.get("ip"),
+            "ip6": network_result.get("ip6")
+        }
+        system_details["network"] = network_details
+    else:
+        logger.error(f"Unexpected API response when getting network information for system {system_id}")
+        logger.error(network_result)
+
+    if isinstance(products_result, list):
+        base_product = [p["friendlyName"] for p in products_result if p.get("isBaseProduct")]
+        system_details["installed_products"] = base_product
+    else:
+        logger.error(f"Unexpected API response when getting installed products for system {system_id}")
+        logger.error(products_result)
+
+    return system_details
 
 @mcp.tool()
 async def get_system_event_history(system_identifier: Union[str, int], ctx: Context, offset: int = 0, limit: int = 10, earliest_date: str = None):
@@ -1627,6 +1634,26 @@ async def create_system_group(name: str, ctx: Context, description: str = "", co
     logger.info(log_string)
     await ctx.info(log_string)
 
+    token = ctx.get_state('token')
+
+    # Check if group already exists
+    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+        existing_groups = await call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path='/rhn/manager/api/systemgroup/listAllGroups',
+            error_context="checking existing system groups",
+            token=token
+        )
+
+    if isinstance(existing_groups, list):
+        for group in existing_groups:
+            if isinstance(group, dict) and group.get('name') == name:
+                msg = f"System group '{name}' already exists. No action taken."
+                logger.info(msg)
+                await ctx.info(msg)
+                return msg
+
     is_confirmed = _to_bool(confirm)
 
     if not is_confirmed:
@@ -1641,7 +1668,7 @@ async def create_system_group(name: str, ctx: Context, description: str = "", co
             api_path=create_group_path,
             json_body={"name": name, "description": description},
             error_context=f"creating system group '{name}'",
-            token=ctx.get_state('token')
+            token=token
         )
 
         if isinstance(api_result, dict) and 'id' in api_result:

@@ -3,30 +3,30 @@
     "proxy": {
       "id": "1000010000",
       "name": "suma-test-ai-proxy.mgr.suse.de",
-      "cpu_model": "AMD EPYC-Milan Processor"
+      "cpu_model": "AMD EPYC-Genoa Processor"
     },
     "build_host": {
-      "id": "1000010005",
+      "id": "1000010003",
       "name": "suma-test-ai-build-host.mgr.suse.de",
       "cpu_model": "QEMU Virtual CPU"
     },
     "deblike_minion": {
-      "id": "1000010004",
+      "id": "1000010002",
       "name": "suma-test-ai-deblike-minion.mgr.suse.de",
       "cpu_model": "QEMU Virtual CPU"
     },
     "rhlike_minion": {
-      "id": "1000010003",
+      "id": "1000010001",
       "name": "suma-test-ai-rhlike-minion.mgr.suse.de",
       "cpu_model": "QEMU Virtual CPU"
     },
     "suse_minion": {
-      "id": "1000010001",
+      "id": "1000010004",
       "name": "suma-test-ai-suse-minion.mgr.suse.de",
       "cpu_model": "QEMU Virtual CPU"
     },
     "suse_ssh_minion": {
-      "id": "1000010002",
+      "id": "1000010005",
       "name": "suma-test-ai-suse-sshminion.mgr.suse.de",
       "cpu_model": "QEMU Virtual CPU"
     },
