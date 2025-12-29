@@ -56,6 +56,16 @@ UYUNI_PASS=admin
 > [!WARNING]
 > **Security Note on HTTP Transport:** When `UYUNI_MCP_TRANSPORT` is set to `http` but `AUTH_SERVER` is not set, the server runs without authentication. This means any client with network access can execute commands. Only use this mode in a trusted, isolated network environment. For more details, see the Security Policy.
 
+# Optional: Host and Port when using http transport layer
+# UYUNI_MCP_HOST="127.0.0.1"
+# UYUNI_MCP_PORT="8000"
+
+# Optional: OAuth 2.0 Authorization Server
+# UYUNI_AUTH_SERVER=auth_server
+
+> [!WARNING]
+> Note this feature expects OAuth 2.0 to be also implemented and configured in Uyuni at the `/manager/api/oicdLogin` endpoint. Otherwise, it will raise an error. See implementation status at [https://github.com/uyuni-project/uyuni/pull/11084](https://github.com/uyuni-project/uyuni/pull/11084). More info on implementation details at the Security Policy.
+
 # Optional: Set the path for the server log file. Defaults to logging to the console.
 # UYUNI_MCP_LOG_FILE_PATH=/var/log/mcp-server-uyuni.log
 
