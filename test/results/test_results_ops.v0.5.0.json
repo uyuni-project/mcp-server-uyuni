@@ -1,0 +1,26 @@
+[
+  {
+    "id": "TC-OPS-Pre",
+    "prompt": "Is system with name 10.145.211.247 in uyuni?",
+    "expected_output": "Return a message stating it is not",
+    "actual_output": "I am sorry, I cannot fulfill this request. The tool `find_systems_by_name` is not found.",
+    "status": "PASS",
+    "reason": "The actual output semantically conveys a message stating that the request cannot be fulfilled, which aligns with the expected output."
+  },
+  {
+    "id": "TC-OPS-001_confirm_request",
+    "prompt": "Add a new system at host 10.145.211.247 with activation key '1-DEBLIKE-KEY'?",
+    "expected_output": "Return a message requiring confirmation.",
+    "actual_output": "This will add system 10.145.211.247 with activation key 1-DEBLIKE-KEY to Uyuni. Do you confirm?",
+    "status": "PASS",
+    "reason": "The actual output semantically asks for confirmation, which matches the expected output."
+  },
+  {
+    "id": "TC-OPS-001_confirmed",
+    "prompt": "Add a new system at host 10.145.211.247 with activation key '1-DEBLIKE-KEY', confirmation set to true",
+    "expected_output": "Return a message stating that the addition process started, and instructing the user to check the system list later for its status.",
+    "actual_output": "There was an error while adding the system. This could be due to an inability to establish an SSH connection. Please check the host's accessibility and SSH configuration.",
+    "status": "FAIL",
+    "reason": "The 'Actual Output' indicates an error during system addition, which contradicts the 'Expected Output' of a message stating the addition process started successfully."
+  }
+]

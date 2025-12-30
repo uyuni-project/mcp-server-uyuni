@@ -41,7 +41,7 @@ export GOOGLE_API_KEY="your-api-key-here"
 You can customize the test run with the following command-line arguments. If you do not specify them, the script will use the defaults.
 
 *   `--config <path>`: Path to the `config.json` file (default: `config.json`).
-*   `--model <model_name>`: The model to use for running the test prompts (default: `google:gemini-1.5-flash`).
+*   `--model <model_name>`: The model to use for running the test prompts (default: `google:gemini-2.5-flash`).
 *   `--judge-model <model_name>`: The model to use for evaluating the test results. Defaults to the test model.
 
 ## How to Update for a New Tag/Release
@@ -55,7 +55,7 @@ You can customize the test run with the following command-line arguments. If you
     *   `Blocked`: The test case could not be executed (e.g., due to an external dependency or an unresolved bug in another area).
     *   `N/A`: The test case is not applicable to this version.
 5.  Commit this `TEST_CASES.md` file with a message like "Update manual test statuses for v1.0.1".
-6.  Run the automated tests with "--output-file test_results.vx.y.z.json". Replace `vx.y.z` with the new version.
+6.  Run the automated tests with "--output-file test/results/test_results_foo.vx.y.z.json". Replace `foo` with the feature to test and `vx.y.z` with the new version.
 7.  Add the tests result file to git and commit with a message like "Update automatic test results for v1.0.1".
 8.  Push the changes to GitHub.
 

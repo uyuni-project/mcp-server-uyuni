@@ -25,6 +25,33 @@ It is designed to be run as a container or locally, offering a streamlined way t
 - [License](#license)
 - [Disclaimer](#disclaimer)
 
+## Tool List
+
+* `list_systems`: Fetches a list of active systems from the Uyuni server, returning their names and IDs.
+* `get_system_details`: Gets details of the specified system.
+* `get_system_event_history`: Gets the event/action history of the specified system.
+* `get_system_event_details`: Gets the details of the event associated with the especified server and event ID.
+* `find_systems_by_name`: Lists systems that match the provided hostname.
+* `find_systems_by_ip`: Lists systems that match the provided IP address.
+* `get_system_updates`: Checks if a specific system has pending updates (relevant errata).
+* `check_all_systems_for_updates`: Checks all active systems for pending updates.
+* `list_systems_needing_update_for_cve`: Finds systems requiring a security update for a specific CVE identifier.
+* `list_systems_needing_reboot`: Fetches a list of systems from the Uyuni server that require a reboot.
+* `get_unscheduled_errata`: Lists applicable and unscheduled patches for a system.
+* `list_activation_keys`: Retrieves a list of available activation keys for bootstrapping new systems.
+* `list_all_scheduled_actions`: Fetches a list of all scheduled, in-progress, completed, or failed actions.
+* `list_system_groups`: Fetches a list of system groups from the Uyuni server.
+* `list_group_systems`: Lists the systems in a system group.
+* `schedule_pending_updates_to_system`: Checks for pending updates on a system, schedules all of them to be applied.
+* `schedule_specific_update`: Schedules a specific update (erratum) to be applied to a system.
+* `add_system`: Bootstraps and registers a new system with Uyuni using an activation key.
+* `remove_system`: Decommissions and removes a system from Uyuni management.
+* `schedule_system_reboot`: Schedules a reboot for a specified system.
+* `cancel_action`: Cancels a previously scheduled action, such as an update or reboot.
+* `create_system_group`: Creates a new system group in Uyuni.
+* `add_systems_to_group`: Adds systems to a system group.
+* `remove_systems_from_group`: Removes systems from a system group.
+
 ## Usage
 
 There are two main ways to run the Uyuni MCP Server: using the pre-built container or running it locally with `uv`. Both methods require a `config` file.
@@ -55,6 +82,16 @@ UYUNI_PASS=admin
 
 > [!WARNING]
 > **Security Note on HTTP Transport:** When `UYUNI_MCP_TRANSPORT` is set to `http` but `AUTH_SERVER` is not set, the server runs without authentication. This means any client with network access can execute commands. Only use this mode in a trusted, isolated network environment. For more details, see the Security Policy.
+
+# Optional: Host and Port when using http transport layer
+# UYUNI_MCP_HOST="127.0.0.1"
+# UYUNI_MCP_PORT="8000"
+
+# Optional: OAuth 2.0 Authorization Server
+# UYUNI_AUTH_SERVER=auth_server
+
+> [!WARNING]
+> Note this feature expects OAuth 2.0 to be also implemented and configured in Uyuni at the `/manager/api/oicdLogin` endpoint. Otherwise, it will raise an error. See implementation status at [https://github.com/uyuni-project/uyuni/pull/11084](https://github.com/uyuni-project/uyuni/pull/11084). More info on implementation details at the Security Policy.
 
 # Optional: Set the path for the server log file. Defaults to logging to the console.
 # UYUNI_MCP_LOG_FILE_PATH=/var/log/mcp-server-uyuni.log
@@ -215,33 +252,6 @@ Add the following to your `config.gemini.json`:
   }
 }
 ```
-
-## Tool List
-
-* `list_systems`: Fetches a list of active systems from the Uyuni server, returning their names and IDs.
-* `get_system_details`: Gets details of the specified system.
-* `get_system_event_history`: Gets the event/action history of the specified system.
-* `get_system_event_details`: Gets the details of the event associated with the especified server and event ID.
-* `find_systems_by_name`: Lists systems that match the provided hostname.
-* `find_systems_by_ip`: Lists systems that match the provided IP address.
-* `get_system_updates`: Checks if a specific system has pending updates (relevant errata).
-* `check_all_systems_for_updates`: Checks all active systems for pending updates.
-* `list_systems_needing_update_for_cve`: Finds systems requiring a security update for a specific CVE identifier.
-* `list_systems_needing_reboot`: Fetches a list of systems from the Uyuni server that require a reboot.
-* `get_unscheduled_errata`: Lists applicable and unscheduled patches for a system.
-* `list_activation_keys`: Retrieves a list of available activation keys for bootstrapping new systems.
-* `list_all_scheduled_actions`: Fetches a list of all scheduled, in-progress, completed, or failed actions.
-* `list_system_groups`: Fetches a list of system groups from the Uyuni server.
-* `list_group_systems`: Lists the systems in a system group.
-* `schedule_pending_updates_to_system`: Checks for pending updates on a system, schedules all of them to be applied.
-* `schedule_specific_update`: Schedules a specific update (erratum) to be applied to a system.
-* `add_system`: Bootstraps and registers a new system with Uyuni using an activation key.
-* `remove_system`: Decommissions and removes a system from Uyuni management.
-* `schedule_system_reboot`: Schedules a reboot for a specified system.
-* `cancel_action`: Cancels a previously scheduled action, such as an update or reboot.
-* `create_system_group`: Creates a new system group in Uyuni.
-* `add_systems_to_group`: Adds systems to a system group.
-* `remove_systems_from_group`: Removes systems from a system group.
 
 
 ## Feedback
