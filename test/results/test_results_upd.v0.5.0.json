@@ -1,0 +1,82 @@
+[
+  {
+    "id": "TC-UPD-001",
+    "prompt": "Are there any updates for system ID 1000010003? List them.",
+    "expected_output": "The response must contain a list of pending updates for system 1000010003.",
+    "actual_output": "There are 139 pending updates for system ID 1000010003. Here is a list of the updates:\n\n*   **SUSE-15-SP7-2025-4409**: Recommended update for haveged\n*   **SUSE-15-SP7-2025-4393**: important: Security update for the Linux Kernel (CVE-2022-50253, CVE-2023-53676, CVE-2025-21710, CVE-2025-37916, CVE-2025-38359, CVE-2025-39788, CVE-2025-39805, CVE-2025-39819, CVE-2025-39822, CVE-2025-39859, CVE-2025-39944, CVE-2025-39980, CVE-2025-40001, CVE-2025-40021, CVE-2025-40027, CVE-2025-40030, CVE-2025-40038, CVE-2025-40040, CVE-2025-40047, CVE-2025-40048, CVE-2025-40055, CVE-2025-40059, CVE-2025-40064, CVE-2025-40070, CVE-2025-40074, CVE-2025-40075, CVE-2025-40080, CVE-2025-40083, CVE-2025-40086, CVE-2025-40098, CVE-2025-40105, CVE-2025-40107, CVE-2025-40109, CVE-2025-40110, CVE-2025-40111, CVE-2025-40115, CVE-2025-40116, CVE-2025-40118, CVE-2025-40120, CVE-2025-40121, CVE-2025-40127, CVE-2025-40129, CVE-2025-40139, CVE-2025-40140, CVE-2025-40141, CVE-2025-40149, CVE-2025-40154, CVE-2025-40156, CVE-2025-40157, CVE-2025-40159, CVE-2025-40164, CVE-2025-40168, CVE-2025-40169, CVE-2025-40171, CVE-2025-40172, CVE-2025-40173, CVE-2025-40176, CVE-2025-40180, CVE-2025-40183, CVE-2025-40185, CVE-2025-40186, CVE-2025-40188, CVE-2025-40194, CVE-2025-40198, CVE-2025-40200, CVE-2025-40204, CVE-2025-40205, CVE-2025-40206, CVE-2025-40207)\n*   **SUSE-15-SP7-2025-4376**: Recommended update for lvm2\n*   **SUSE-15-SP7-2025-4374**: Recommended update for suse-module-tools\n*   **SUSE-15-SP7-2025-4368**: low: Security update for python3 (CVE-2025-6075, CVE-2025-8291)\n*   **SUSE-15-SP7-2025-4362**: Recommended update for gcc15\n*   **SUSE-15-SP7-2025-4323**: moderate: Security update for gnutls (CVE-2025-9820)\n*   **SUSE-15-SP7-2025-4308**: moderate: Security update for glib2 (CVE-2025-7039)\n*   **SUSE-15-SP7-2025-4305**: moderate: Security update for grub2 (CVE-2025-54770, CVE-2025-54771, CVE-2025-61661, CVE-2025-61662, CVE-2025-61663, CVE-2025-61664)\n*   **SUSE-15-SP7-2025-4303**: Recommended update for kmod\n*   **SUSE-15-SP7-2025-4300**: moderate: Security update for curl (CVE-2025-11563)\n*   **SUSE-15-SP7-2025-4297**: low: Security update for python311 (CVE-2025-6075, CVE-2025-8291)\n*   **SUSE-15-SP7-2025-4293**: Recommended update for gpgme\n*   **SUSE-15-SP7-2025-4264**: important: Security update for ruby2.5 (CVE-2024-35221, CVE-2024-47220, CVE-2024-49761, CVE-2025-24294, CVE-2025-27219, CVE-2025-27220, CVE-2025-27221, CVE-2025-6442)\n*   **SUSE-15-SP7-2025-4092**: moderate: Security update for elfutils (CVE-2025-1352, CVE-2025-1372, CVE-2025-1376, CVE-2025-1377)\n*   **SUSE-15-SP7-2025-4155**: Recommended update for cyrus-sasl\n*   **SUSE-15-SP7-2025-4138**: Recommended update for systemd\n*   **SUSE-15-SP7-2025-4118**: Recommended update for freetype2\n*   **SUSE-15-SP7-2025-4113**: Recommended update for python-kiwi\n*   **SUSE-15-SP7-2025-4083**: Recommended update for dracut\n*   **SUSE-15-SP7-2025-4067**: moderate: Security update for openssh (CVE-2025-61984, CVE-2025-61985)\n*   **SUSE-15-SP7-2025-4057**: important: Security update for the Linux Kernel (CVE-2023-31248, CVE-2023-3772, CVE-2023-39197, CVE-2023-42753, CVE-2023-53147, CVE-2023-53148, CVE-2023-53150, CVE-2023-53151, CVE-2023-53152, CVE-2023-53165, CVE-2023-53167, CVE-2023-53170, CVE-2023-53174, CVE-2023-53175, CVE-2023-53177, CVE-2023-53179, CVE-2023-53180, CVE-2023-53181, CVE-2023-53183, CVE-2023-53184, CVE-2023-53185, CVE-2023-53187, CVE-2023-53189, CVE-2023-53192, CVE-2023-53195, CVE-2023-53196, CVE-2023-53201, CVE-2023-53204, CVE-2023-53205, CVE-2023-53206, CVE-2023-53207, CVE-2023-53208, CVE-2023-53209, CVE-2023-53210, CVE-2023-53215, CVE-2023-53217, CVE-2023-53220, CVE-2023-53221, CVE-2023-53222, CVE-2023-53226, CVE-2023-53230, CVE-2023-53231, CVE-2023-53235, CVE-2023-53238, CVE-2023-53243, CVE-2023-53245, CVE-2023-53247, CVE-2023-53248, CVE-2023-53249, CVE-2023-53251, CVE-2023-53252, CVE-2023-53255, CVE-2023-53257, CVE-2023-53258, CVE-2023-53260, CVE-2023-53263, CVE-2023-53264, CVE-2023-53272, CVE-2023-53274, CVE-2023-53275, CVE-2023-53280, CVE-2023-53286, CVE-2023-53287, CVE-2023-53288, CVE-2023-53291, CVE-2023-53292, CVE-2023-53303, CVE-2023-53304, CVE-2023-53305, CVE-2023-53309, CVE-2023-53311, CVE-2023-53312, CVE-2023-53313, CVE-2023-53314, CVE-2023-53316, CVE-2023-53319, CVE-2023-53321, CVE-2023-53322, CVE-2023-53323, CVE-2023-53324, CVE-2023-53325, CVE-2023-53328, CVE-2023-53331, CVE-2023-53333, CVE-2023-53336, CVE-2023-53338, CVE-2023-53339, CVE-2023-53342, CVE-2023-53343, CVE-2023-53350, CVE-2023-53352, CVE-2023-53354, CVE-2023-53356, CVE-2023-53357, CVE-2023-53360, CVE-2023-53362, CVE-2023-53364, CVE-2023-53365, CVE-2023-53367, CVE-2023-53368, CVE-2023-53369, CVE-2023-53370, CVE-2023-53371, CVE-2023-53374, CVE-2023-53377, CVE-2023-53379, CVE-2023-53380, CVE-2023-53384, CVE-2023-53385, CVE-2023-53386, CVE-2023-53391, CVE-2023-53394, CVE-2023-53395, CVE-2023-53397, CVE-2023-53401, CVE-2023-53420, CVE-2023-53421, CVE-2023-53424, CVE-2023-53425, CVE-2023-53426, CVE-2023-53428, CVE-2023-53429, CVE-2023-53432, CVE-2023-53436, CVE-2023-53438, CVE-2023-53441, CVE-2023-53442, CVE-2023-53444, CVE-2023-53446, CVE-2023-53447, CVE-2023-53448, CVE-2023-53451, CVE-2023-53454, CVE-2023-53456, CVE-2023-53457, CVE-2023-53461, CVE-2023-53462, CVE-2023-53463, CVE-2023-53465, CVE-2023-53472, CVE-2023-53479, CVE-2023-53480, CVE-2023-53485, CVE-2023-53487, CVE-2023-53488, CVE-2023-53490, CVE-2023-53491, CVE-2023-53492, CVE-2023-53493, CVE-2023-53495, CVE-2023-53496, CVE-2023-53500, CVE-2023-53501, CVE-2023-53504, CVE-2023-53505",
+    "status": "PASS",
+    "reason": "The actual output semantically contains a list of pending updates for system ID 1000010003, matching the expected output."
+  },
+  {
+    "id": "TC-UPD-002",
+    "prompt": "Are there any updates for 'suma-test-ai-rhlike-minion.mgr.suse.de'?",
+    "expected_output": "The response must contain a list of pending updates for system 'suma-test-ai-rhlike-minion.mgr.suse.de'.",
+    "actual_output": "Yes, there are 3 pending updates for 'suma-test-ai-rhlike-minion.mgr.suse.de':\n\n1.  **virgo-dummy-3456** (Bug Fix Advisory): \"Test update for virgo-dummy\". Associated CVE: CVE-1999-9998. No reboot suggested.\n2.  **milkyway-dummy-2345** (Security Advisory): \"low: Security update for milkyway-dummy\". Associated CVE: CVE-1999-9999. No reboot suggested.\n3.  **andromeda-dummy-6789** (Bug Fix Advisory): \"Test update for andromeda-dummy\". No CVEs associated. A reboot is suggested for this update.",
+    "status": "PASS",
+    "reason": "The actual output contains a list of pending updates for the specified system, fulfilling the expectation."
+  },
+  {
+    "id": "TC-UPD-003",
+    "prompt": "Use the available tools to check all systems for pending updates and return a list of the systems that have them.",
+    "expected_output": "The response must contain a list of systems that have pending updates.",
+    "actual_output": "The following systems have pending updates:\n\n*   **suma-test-ai-build-host.mgr.suse.de**: 139 updates\n*   **suma-test-ai-deblike-minion.mgr.suse.de**: 3 updates\n*   **suma-test-ai-proxy.mgr.suse.de**: 22 updates\n*   **suma-test-ai-rhlike-minion.mgr.suse.de**: 3 updates\n*   **suma-test-ai-suse-minion.mgr.suse.de**: 135 updates\n*   **suma-test-ai-suse-sshminion.mgr.suse.de**: 137 updates",
+    "status": "PASS",
+    "reason": "The actual output provides a list of systems with pending updates, which semantically matches the expected output."
+  },
+  {
+    "id": "TC-UPD-004_confirm_request",
+    "prompt": "Can you update my server with id 1000010003?",
+    "expected_output": "CONFIRMATION REQUIRED: This will apply pending updates to the system 1000010003.  Do you confirm?",
+    "actual_output": "This will apply pending updates to the system 1000010003. Do you confirm?",
+    "status": "PASS",
+    "reason": "The actual output semantically asks for confirmation, which matches the expected output's requirement for a confirmation prompt."
+  },
+  {
+    "id": "TC-UPD-005_confirm_request",
+    "prompt": "Can you update suma-test-ai-rhlike-minion.mgr.suse.de?",
+    "expected_output": "CONFIRMATION REQUIRED: This will apply pending updates to the system suma-test-ai-rhlike-minion.mgr.suse.de.  Do you confirm?",
+    "actual_output": "I am sorry, I cannot fulfill this request. The tool for scheduling pending updates to a system is not found.",
+    "status": "FAIL",
+    "reason": "The 'Actual Output' is an error message, which does not semantically match the 'Expected Output' of a confirmation prompt."
+  },
+  {
+    "id": "TC-UPD-006_confirmed",
+    "prompt": "Update my server with id 1000010003. I confirm.",
+    "expected_output": "Update successfully scheduled at ...'",
+    "actual_output": "Update successfully scheduled at https://suma-test-ai-server.mgr.suse.de/rhn/schedule/ActionDetails.do?aid=35",
+    "status": "PASS",
+    "reason": "The actual output matches the expected output, where '...' serves as a placeholder for dynamic content."
+  },
+  {
+    "id": "TC-UPD-007",
+    "prompt": "Are there any security updates for my systems?",
+    "expected_output": "The response must contain a list of systems that have pending security updates.",
+    "actual_output": "I'm sorry, an unexpected error occurred with the available tools. Could you please try again?",
+    "status": "FAIL",
+    "reason": "The actual output is an error message and does not contain the expected list of systems with pending security updates."
+  },
+  {
+    "id": "TC-UPD-008_confirm_request",
+    "prompt": "Can you schedule applying the update with update id 2764 for system id 1000010000?",
+    "expected_output": "CONFIRMATION REQUIRED: This will apply specific update (errata ID: 2764) to the system 1000010000. Do you confirm?",
+    "actual_output": "I am sorry, I cannot fulfill this request. The tool to schedule a specific update is not found.",
+    "status": "FAIL",
+    "reason": "The 'Actual Output' is an error message and does not contain the expected confirmation prompt."
+  },
+  {
+    "id": "TC-UPD-009_confirm_request",
+    "prompt": "Can you schedule applying the update with update id 2764 for system suma-test-ai-proxy.mgr.suse.de?",
+    "expected_output": "CONFIRMATION REQUIRED: This will apply specific update (errata ID: 2764) to the system suma-test-ai-proxy.mgr.suse.de. Do you confirm?",
+    "actual_output": "I am sorry, I am unable to schedule a specific update. The tool `schedule_specific_update` is not available.",
+    "status": "FAIL",
+    "reason": "The 'Actual Output' is an error message indicating the tool is unavailable, which does not semantically match the 'Expected Output' of a confirmation prompt."
+  },
+  {
+    "id": "TC-UPD-010_confirmed",
+    "prompt": "Schedule applying the update with update id 2764 for system id 1000010000. I confirm.",
+    "expected_output": "Update (errata ID: 2764) successfully scheduled for system 1000010000. Action URL: ...'",
+    "actual_output": "I was unable to schedule the update with id `2764` for the system with id `1000010000`. The Uyuni server reported that the errata ID is invalid. Please double-check the errata ID and try again.",
+    "status": "FAIL",
+    "reason": "The 'Actual Output' indicates a failure to schedule the update, which semantically contradicts the 'Expected Output' that states the update was successfully scheduled."
+  }
+]
