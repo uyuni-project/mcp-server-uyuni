@@ -59,6 +59,9 @@ UYUNI_PASS=admin
 # Optional: Set the path for the server log file. Defaults to logging to the console.
 # UYUNI_MCP_LOG_FILE_PATH=/var/log/mcp-server-uyuni.log
 
+# Optional: Set the logging level. Can be 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'. Defaults to 'INFO'.
+# UYUNI_MCP_LOG_LEVEL=DEBUG
+
 # Required to bootstrap new systems into Uyuni via the `add_system` tool.
 UYUNI_SSH_PRIV_KEY="-----BEGIN OPENSSH PRIVATE KEY-----\n..."
 UYUNI_SSH_PRIV_KEY_PASS=""
