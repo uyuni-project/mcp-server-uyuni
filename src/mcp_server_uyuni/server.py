@@ -40,7 +40,11 @@ base_url = f'http://{CONFIG["UYUNI_MCP_HOST"]}:{CONFIG["UYUNI_MCP_PORT"]}'
 auth_provider = AuthProvider(CONFIG["AUTH_SERVER"], base_url, CONFIG["UYUNI_MCP_WRITE_TOOLS_ENABLED"]) if CONFIG["AUTH_SERVER"] else None
 mcp = FastMCP("mcp-server-uyuni", auth=auth_provider)
 
-logger = get_logger(log_file=CONFIG["UYUNI_MCP_LOG_FILE_PATH"], transport=CONFIG["UYUNI_MCP_TRANSPORT"])
+logger = get_logger(
+    log_file=CONFIG["UYUNI_MCP_LOG_FILE_PATH"],
+    transport=CONFIG["UYUNI_MCP_TRANSPORT"],
+    log_level=CONFIG["UYUNI_MCP_LOG_LEVEL"]
+)
 
 class AuthTokenMiddleware(Middleware):
     async def on_call_tool(self, ctx: MiddlewareContext, call_next):
