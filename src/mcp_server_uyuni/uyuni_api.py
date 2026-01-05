@@ -11,7 +11,7 @@ from .errors import (
     UnexpectedResponse
 )
 
-logger = get_logger(__name__)
+logger = get_logger(__name__, log_level=CONFIG["UYUNI_MCP_LOG_LEVEL"])
 
 TIMEOUT_HAPPENED = object()
 
@@ -80,11 +80,15 @@ async def call(
     try:
         method_upper = method.upper()
         if method_upper == 'GET':
+            logger.info(f"GETting from {full_api_url}")
             response = await client.get(full_api_url, params=params)
+            logger.debug(f"GET response status: {response.status_code}")
+            logger.debug(f"GET response text: {response.text}")
         elif method_upper == 'POST':
             logger.info(f"POSTing to {full_api_url}")
             response = await client.post(full_api_url, json=json_body, params=params)
             logger.debug(f"POST response status: {response.status_code}")
+            logger.debug(f"POST response text: {response.text}")
         else:
             raise APIError(f"Unsupported HTTP method '{method}' for {error_context}.")
 
