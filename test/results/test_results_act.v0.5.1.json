@@ -1,0 +1,10 @@
+[
+  {
+    "id": "TC-ACT-001",
+    "prompt": "List activation keys",
+    "expected_output": "The return message includes the activation keys 1-SUSE-KEY-x86_64, 1-RH-LIKE-KEY, 1-DEBLIKE-KEY, 1-SUSE-SSH-KEY-x86_64, 1-SUSE-SSH-TUNNEL-KEY-x86_64, 1-PROXY-KEY-x86_64, 1-BUILD-HOST-KEY-x86_64, and 1-TERMINAL-KEY-x86_64. It can optionally include descriptions of the keys.",
+    "actual_output": "",
+    "status": "FAIL",
+    "reason": "The actual output is empty and does not contain any of the expected activation keys."
+  }
+]

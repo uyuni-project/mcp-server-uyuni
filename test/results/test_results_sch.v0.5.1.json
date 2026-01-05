@@ -1,0 +1,26 @@
+[
+  {
+    "id": "TC-SCH-001",
+    "prompt": "List all scheduled actions in Uyuni.",
+    "expected_output": "Returns a list of action dictionaries, or an empty list if none. Example fields: id, name, type, earliest.",
+    "actual_output": "",
+    "status": "FAIL",
+    "reason": "The 'Actual Output' is an empty string, but the 'Expected Output' describes returning a list of dictionaries, or an empty list if none, which an empty string does not represent."
+  },
+  {
+    "id": "TC-SCH-002_confirm_request",
+    "prompt": "Can you cancel an action with a valid ID?",
+    "expected_output": "Returns a message the requires confirmation",
+    "actual_output": "Yes, I can. What is the ID of the action you would like to cancel?",
+    "status": "FAIL",
+    "reason": "The actual output does not semantically ask the user for confirmation to proceed with an action; instead, it asks for more information."
+  },
+  {
+    "id": "TC-SCH-002_confirmed",
+    "prompt": "Cancel an action with a valid ID, confirmation set to true",
+    "expected_output": "A message stating that the action was successfully canceled.",
+    "actual_output": "I need the action ID to cancel the action. Please provide a valid action ID.",
+    "status": "FAIL",
+    "reason": "The actual output is a request for an action ID, not a message stating that an action was successfully canceled."
+  }
+]
