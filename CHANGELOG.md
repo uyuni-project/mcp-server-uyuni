@@ -21,6 +21,7 @@
 * **all:** fix API error handling
 * **system:** reorganize system list/detail tools
 * **all:** improve confirmation
+* **system:** graceful exit in case of non-existent system
 
 ## 0.4.0 (2025-07-23)
 
