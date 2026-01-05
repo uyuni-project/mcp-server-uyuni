@@ -9,6 +9,7 @@
 * **errata:** add tool to get unscheduled errata
 * **system:** add system search tools
 * **system:** add network information to system details tool
+* **all:** add debug level env variable
 
 
 ### Bug Fixes
