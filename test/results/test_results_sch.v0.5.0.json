@@ -1,0 +1,26 @@
+[
+  {
+    "id": "TC-SCH-001",
+    "prompt": "List all scheduled actions in Uyuni.",
+    "expected_output": "Returns a list of action dictionaries, or an empty list if none. Example fields: id, name, type, earliest.",
+    "actual_output": "Here is a list of all scheduled actions:\n\n*   **Action ID:** 34, **Name:** Package List Refresh scheduled by (unknown), **Type:** Package List Refresh, **Earliest Execution:** 2025-12-17T15:12:53Z\n*   **Action ID:** 33, **Name:** Package List Refresh scheduled by admin, **Type:** Package List Refresh, **Earliest Execution:** 2025-12-17T15:10:50Z\n*   **Action ID:** 32, **Name:** Package List Refresh scheduled by (unknown), **Type:** Package List Refresh, **Earliest Execution:** 2025-12-17T15:10:45Z\n*   **Action ID:** 31, **Name:** Subscribe channels scheduled by admin, **Type:** Subscribe to channels, **Earliest Execution:** 2025-12-17T15:10:39Z\n*   **Action ID:** 30, **Name:** Subscribe channels scheduled by admin, **Type:** Subscribe to channels, **Earliest Execution:** 2025-12-17T15:10:27Z\n*   **Action ID:** 25, **Name:** Hardware List Refresh scheduled by (unknown), **Type:** Hardware List Refresh, **Earliest Execution:** 2025-12-17T15:10:27Z\n*   **Action ID:** 21, **Name:** Hardware List Refresh scheduled by (unknown), **Type:** Hardware List Refresh, **Earliest Execution:** 2025-12-17T15:10:18Z\n*   **Action ID:** 17, **Name:** Hardware List Refresh scheduled by (unknown), **Type:** Hardware List Refresh, **Earliest Execution:** 2025-12-17T15:10:18Z\n*   **Action ID:** 22, **Name:** Apply highstate scheduled by admin, **Type:** Apply states, **Earliest Execution:** 2025-12-17T15:10:18Z\n*   **Action ID:** 12, **Name:** Hardware List Refresh scheduled by (unknown), **Type:** Hardware List Refresh, **Earliest Execution:** 2025-12-17T15:10:14Z\n*   **Action ID:** 8, **Name:** Hardware List Refresh scheduled by (unknown), **Type:** Hardware List Refresh, **Earliest Execution:** 2025-12-17T15:10:05Z\n*   **Action ID:** 29, **Name:** Package List Refresh scheduled by admin, **Type:** Package List Refresh, **Earliest Execution:** 2025-12-17T15:09:48Z\n*   **Action ID:** 28, **Name:** Package List Refresh scheduled by admin, **Type:** Package List Refresh, **Earliest Execution:** 2025-12-17T15:09:35Z\n*   **Action ID:** 27, **Name:** Package List Refresh scheduled by admin, **Type:** Package List Refresh, **Earliest Execution:** 2025-12-17T15:09:33Z\n*   **Action ID:** 26, **Name:** Apply states [certs, channels, packages, util.systeminfo] scheduled by admin, **Type:** Apply states, **Earliest Execution:** 2025-12-17T15:09:27Z\n*   **Action ID:** 23, **Name:** Apply states [certs, channels, packages, services.salt-minion] scheduled by admin, **Type:** Apply states, **Earliest Execution:** 2025-12-17T15:09:19Z\n*   **Action ID:** 19, **Name:** Apply states [certs, channels, packages, services.salt-minion] scheduled by admin, **Type:** Apply states, **Earliest Execution:** 2025-12-17T15:09:18Z\n*   **Action ID:** 20, **Name:** Package List Refresh scheduled by admin, **Type:** Package List Refresh, **Earliest Execution:** 2025-12-17T15:09:18Z\n*   **Action ID:** 13, **Name:** Apply states [certs, channels, packages, services.salt-minion] scheduled by admin, **Type:** Apply states, **Earliest Execution:** 2025-12-17T15:09:14Z\n*   **Action ID:** 10, **Name:** Package List Refresh scheduled by admin, **Type:** Package List Refresh, **Earliest Execution:** 2025-12-17T15:09:08Z\n*   **Action ID:** 9, **Name:** Apply states [certs, channels, packages, services.salt-minion] scheduled by admin, **Type:** Apply states, **Earliest Execution:** 2025-12-17T15:09:05Z\n*   **Action ID:** 6, **Name:** Hardware List Refresh scheduled by admin, **Type:** Hardware List Refresh, **Earliest Execution:** 2025-12-17T15:07:56Z\n*   **Action ID:** 2, **Name:** Hardware List Refresh scheduled by (unknown), **Type:** Hardware List Refresh, **Earliest Execution:** 2025-12-17T15:05:40Z\n*   **Action ID:** 4, **Name:** Package List Refresh scheduled by admin, **Type:** Package List Refresh, **Earliest Execution:** 2025-12-17T15:04:54Z\n*   **Action ID:** 3, **Name:** Apply states [certs, channels, packages, services.salt-minion] scheduled by admin, **Type:** Apply states, **Earliest Execution:** 2025-12-17T15:04:41Z",
+    "status": "PASS",
+    "reason": "The actual output provides a list of actions containing the specified fields (id, name, type, earliest), which semantically matches the expected output."
+  },
+  {
+    "id": "TC-SCH-002_confirm_request",
+    "prompt": "Can you cancel an action with a valid ID?",
+    "expected_output": "Returns a message the requires confirmation",
+    "actual_output": "Yes, I can. Please provide the action ID.",
+    "status": "FAIL",
+    "reason": "The 'Actual Output' does not semantically ask for confirmation as required by the 'Expected Output'."
+  },
+  {
+    "id": "TC-SCH-002_confirmed",
+    "prompt": "Cancel an action with a valid ID, confirmation set to true",
+    "expected_output": "A message stating that the action was successfully canceled.",
+    "actual_output": "I need the action ID to cancel the action. Please provide it.",
+    "status": "FAIL",
+    "reason": "The actual output indicates a request for an action ID, which is not a message stating that the action was successfully canceled."
+  }
+]

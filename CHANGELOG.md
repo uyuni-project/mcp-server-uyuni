@@ -1,3 +1,27 @@
+## 0.5.0 (2025-12-30)
+
+### Features
+
+* **security:** OAuth support with external idP
+* **security:** add write-enable flag to control state-changing tools
+* **system group:** add tools to add, list and remove systems from groups 
+* **system gorup:** add tool to create system groups
+* **errata:** add tool to get unscheduled errata
+* **system:** add system search tools
+* **system:** add network information to system details tool
+
+
+### Bug Fixes
+
+* **all:** update to latest fastmcp and review dependencies
+* **all:** fix update fastmcp v2 function call
+* **security:** use UYUNI_MCP_SSL_VERIFY environment variable instead of "false"
+* **all:** standarize tool naming
+* **all:** standarize logging and status reporting
+* **all:** fix API error handling
+* **system:** reorganize system list/detail tools
+* **all:** improve confirmation
+
 ## 0.4.0 (2025-07-23)
 
 ### Features

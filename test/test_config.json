@@ -31,7 +31,7 @@
       "cpu_model": "QEMU Virtual CPU"
     },
     "new_system": {
-      "host": "10.145.211.203",
+      "host": "10.145.211.247",
       "activation_key": "1-DEBLIKE-KEY"
     }
   },

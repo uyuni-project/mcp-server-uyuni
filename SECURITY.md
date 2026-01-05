@@ -39,10 +39,17 @@ To enable these "write tools", you must explicitly set the `UYUNI_MCP_WRITE_TOOL
 The server can be run with two different transport layers, configured via the `UYUNI_MCP_TRANSPORT` environment variable:
 
 *   **`stdio` (default):** In this mode, the server communicates over standard input/output. Access is limited to processes that can execute the server binary directly on the host machine. This is the most secure mode of operation.
-*   **`http`:** In this mode, the server runs as an HTTP service. Because there is no authentication layer, **any client with network access to the server's host and port can execute any tool**.
+*   **`http`:** In this mode, the server runs as an HTTP service. Unless you set `UYUNI_AUTH_SERVER`, there is no authentication layer and **any client with network access to the server's host and port can execute any tool**.
 
 > [!WARNING]
-> Running the server with `UYUNI_MCP_TRANSPORT=http` and `UYUNI_MCP_WRITE_TOOLS_ENABLED=true` in an untrusted network environment poses a significant security risk. This combination allows any client with network access to perform destructive actions without authentication. It is strongly recommended to use this configuration only in isolated, trusted networks or to implement network-level controls (e.g., firewall rules) to restrict access to authorized clients only.
+> Running the server with `UYUNI_MCP_TRANSPORT=http` and `UYUNI_MCP_WRITE_TOOLS_ENABLED=true` but `UYUNI_AUTH_SERVER` not set in an untrusted network environment poses a significant security risk. This combination allows any client with network access to perform destructive actions without authentication. It is strongly recommended to use this configuration only in isolated, trusted networks or to implement network-level controls (e.g., firewall rules) to restrict access to authorized clients only.
+
+
+## Enabling OAuth 2.0
+
+You can set the server to use OAuth 2.0 authorization workflows by setting the `UYUNI_AUTH_SERVER` environment variable. Note this feature expects OAuth 2.0 to be also implemented and configured in Uyuni at the `/manager/api/oicdLogin` endpoint. Otherwise, it will raise an error. The mcp server will forward the needed security information in the HTTP Authorization Headers.
+
+The server falls back to the usual user/pass auth with env vars if `UYUNI_AUTH_SERVER` is not configured.
 
 ## Tool Execution and Confirmation
 
