@@ -227,12 +227,6 @@ def main():
         default=None,
         help="Model to use for judging the test results. Defaults to the test model if not specified.",
     )
-    parser.add_argument(
-        "--test-id",
-        type=str,
-        default=None,
-        help="Run a specific test case by its ID.",
-    )
     args = parser.parse_args()
 
     if not args.test_cases_file.is_file():
@@ -267,14 +261,6 @@ def main():
 
     with open(args.test_cases_file, "r", encoding="utf-8") as f:
         test_cases = json.load(f)
-
-    if args.test_id:
-        original_count = len(test_cases)
-        test_cases = [tc for tc in test_cases if tc.get("id") == args.test_id]
-        if not test_cases:
-            print(f"Error: Test case with ID '{args.test_id}' not found.", file=sys.stderr)
-            sys.exit(1)
-        print(f"Filtered tests: Running 1 test out of {original_count}.")
 
     results = []
     passed_count = 0

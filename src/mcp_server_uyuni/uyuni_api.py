@@ -106,9 +106,8 @@ async def call(
                 # Prefer the expected_result_key but return full response dict as a fallback
                 return response_data.get(expected_result_key, response_data)
             else:
-                message = response_data.get('message', str(response_data))
-                logger.warning(f"Uyuni API reported failure for {error_context}. Response: {response_data}")
-                raise UnexpectedResponse(full_api_url, message)
+                logger.error(f"Uyuni API reported failure for {error_context}. Response: {response_data}")
+                raise UnexpectedResponse(full_api_url, response_data.get('message', response_data))
 
         # Otherwise return whatever we received (list, dict, string, etc.)
         return response_data
