@@ -486,6 +486,9 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def find_systems_by_name(name: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
+    return await _find_systems_by_name(name, ctx)
+
+async def _find_systems_by_name(name: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
     log_string = f"Finding systems with name {name}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -534,6 +537,9 @@ DYNAMIC_DESCRIPTION= f"""
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def find_systems_by_ip(ip_address: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
+    return await _find_systems_by_ip(ip_address, ctx)
+
+async def _find_systems_by_ip(ip_address: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
     log_string = f"Finding systems with IP address {ip_address}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -785,9 +791,11 @@ DYNAMIC_DESCRIPTION = f"""
                               Returns an empty list if no systems are found,
                               fetching the system list fails, or no systems have updates.
     """
-
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
+    return await _check_all_systems_for_updates(ctx)
+
+async def _check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
     log_string = "Checking all system for updates"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -855,7 +863,9 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @write_tool(description = DYNAMIC_DESCRIPTION)
 async def schedule_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
+    return await _schedule_pending_updates_to_system(system_identifier, ctx, confirm)
 
+async def _schedule_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
     msg = f"Attempting to apply pending updates for system ID: {system_identifier}"
     logger.info(msg)
     await ctx.info(msg)
@@ -930,7 +940,9 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @write_tool(description = DYNAMIC_DESCRIPTION)
 async def schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
+    return await _schedule_specific_update(system_identifier, errata_id, ctx, confirm)
 
+async def _schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
     log_string = f"Attempting to apply specific update (errata ID: {errata_id}) to system ID: {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -964,13 +976,13 @@ async def schedule_specific_update(system_identifier: Union[str, int], errata_id
 
         if isinstance(api_result, list) and api_result and isinstance(api_result[0], int):
             action_id = api_result[0]
-            success_message = f"Update (errata ID: {errata_id_int}) successfully scheduled for system {system_identifier}. Action URL: {UYUNI_SERVER}/rhn/schedule/ActionDetails.do?aid={action_id}"
+            success_message = f"Update (errata ID: {errata_id_int}) successfully scheduled for system {system_identifier}. Action URL: {CONFIG['UYUNI_SERVER']}/rhn/schedule/ActionDetails.do?aid={action_id}"
             logger.info(success_message)
             return success_message
         # Some schedule APIs might return int directly in result (though scheduleApplyErrata usually returns a list)
         elif isinstance(api_result, int): # Defensive check
             action_id = api_result
-            success_message = f"Update (errata ID: {errata_id_int}) successfully scheduled. Action URL: {UYUNI_SERVER}/rhn/schedule/ActionDetails.do?aid={action_id}"
+            success_message = f"Update (errata ID: {errata_id_int}) successfully scheduled. Action URL: {CONFIG['UYUNI_SERVER']}/rhn/schedule/ActionDetails.do?aid={action_id}"
             logger.info(success_message)
             return success_message
         else:
@@ -1006,6 +1018,18 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @write_tool(description = DYNAMIC_DESCRIPTION)
 async def add_system(
+    host: str,
+    ctx: Context,
+    activation_key: str = "",
+    ssh_port: int = 22,
+    ssh_user: str = "root",
+    proxy_id: int = None,
+    salt_ssh: bool = False,
+    confirm: Union[bool, str] = False,
+) -> str:
+    return await _add_system(host, ctx, activation_key, ssh_port, ssh_user, proxy_id, salt_ssh, confirm)
+
+async def _add_system(
     host: str,
     ctx: Context,
     activation_key: str = "",
@@ -1124,6 +1148,9 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @write_tool(description = DYNAMIC_DESCRIPTION)
 async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanup: bool = True, confirm: Union[bool, str] = False) -> str:
+    return await _remove_system(system_identifier, ctx, cleanup, confirm)
+
+async def _remove_system(system_identifier: Union[str, int], ctx: Context, cleanup: bool = True, confirm: Union[bool, str] = False) -> str:
     log_string = f"Attempting to remove system with id {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1187,7 +1214,9 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context) -> List[Dict[str, Any]]:
+    return await _list_systems_needing_update_for_cve(cve_identifier, ctx)
 
+async def _list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context) -> List[Dict[str, Any]]:
     log_string = f"Getting systems that need to apply CVE {cve_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1285,7 +1314,9 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def list_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
+    return await _list_systems_needing_reboot(ctx)
 
+async def _list_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
     log_string = "Fetch list of system that require a reboot."
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1340,7 +1371,9 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @write_tool(description = DYNAMIC_DESCRIPTION)
 async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context, confirm: Union[bool, str] = False) -> str:
+    return await _schedule_system_reboot(system_identifier, ctx, confirm)
 
+async def _schedule_system_reboot(system_identifier: Union[str, int], ctx:Context, confirm: Union[bool, str] = False) -> str:
     log_string = f"Schedule system reboot for system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1397,7 +1430,9 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
+    return await _list_all_scheduled_actions(ctx)
 
+async def _list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
     log_string = "Listing all scheduled actions"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1445,9 +1480,11 @@ DYNAMIC_DESCRIPTION = f"""
              Returns an error message if the cancellation failed for any reason,
              e.g., "Failed to cancel action 123. Please check the action ID and server logs."
     """
-
 @write_tool(description = DYNAMIC_DESCRIPTION)
 async def cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] = False) -> str:
+    return await _cancel_action(action_id, ctx, confirm)
+
+async def _cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] = False) -> str:
     log_string = f"Cancel action {action_id}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1492,6 +1529,9 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
+    return await _list_activation_keys(ctx)
+
+async def _list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
     list_keys_path = '/rhn/manager/api/activationkey/listActivationKeys'
 
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
@@ -1529,6 +1569,9 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str, Any]]:
+    return await _get_unscheduled_errata(system_id, ctx)
+
+async def _get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str, Any]]:
     log_string = f"Getting list of unscheduled errata for system {system_id}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1587,6 +1630,9 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def list_system_groups(ctx: Context) -> List[Dict[str, str]]:
+    return await _list_system_groups(ctx)
+
+async def _list_system_groups(ctx: Context) -> List[Dict[str, str]]:
     list_groups_path = '/rhn/manager/api/systemgroup/listAllGroups'
 
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
@@ -1631,6 +1677,9 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @write_tool(description = DYNAMIC_DESCRIPTION)
 async def create_system_group(name: str, ctx: Context, description: str = "", confirm: Union[bool, str] = False) -> str:
+    return await _create_system_group(name, ctx, description, confirm)
+
+async def _create_system_group(name: str, ctx: Context, description: str = "", confirm: Union[bool, str] = False) -> str:
     log_string = f"Creating system group '{name}'"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1694,7 +1743,9 @@ async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, An
     log_string = f"Listing systems in group '{group_name}'"
     logger.info(log_string)
     await ctx.info(log_string)
+    return await _list_group_systems(group_name, ctx.get_state('token'))
 
+async def _list_group_systems(group_name: str, token: str) -> List[Dict[str, Any]]:
     list_systems_path = '/rhn/manager/api/systemgroup/listSystemsMinimal'
 
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
@@ -1704,7 +1755,7 @@ async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, An
             api_path=list_systems_path,
             params={"systemGroupName": group_name},
             error_context=f"listing systems in group '{group_name}'",
-            token=ctx.get_state('token')
+            token=token
         )
 
     filtered_systems = []
@@ -1718,7 +1769,6 @@ async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, An
             else:
                 msg = f"Unexpected item format in group systems list: {system}"
                 logger.warning(msg)
-                await ctx.warning(msg)
     return filtered_systems
 
 DYNAMIC_DESCRIPTION = f"""
