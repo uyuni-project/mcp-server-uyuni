@@ -54,7 +54,7 @@ class AuthTokenMiddleware(Middleware):
         and injects it into the context state for other tools to use.
         """
         fastmcp_ctx = ctx.fastmcp_context
-        auth_header = fastmcp_ctx.request_context.request.headers['authorization']
+        auth_header = fastmcp_ctx.request_context.request.headers.get('authorization')
         token = None
         if auth_header:
             # Expecting "Authorization: Bearer <token>"

@@ -1,10 +1,11 @@
 import pytest
 import respx
+import httpx
 from httpx import Response
 import os
 import sys
 import json
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
@@ -15,6 +16,7 @@ os.environ.setdefault("UYUNI_MCP_WRITE_TOOLS_ENABLED", "true")
 os.environ.setdefault("UYUNI_MCP_SSL_VERIFY", "false")
 
 from mcp_server_uyuni import server
+from mcp_server_uyuni.errors import HTTPError, AuthError, NotFoundError, UnexpectedResponse
 
 @pytest.fixture
 def mock_ctx():
@@ -566,3 +568,207 @@ async def test_list_system_groups(mock_uyuni, mock_ctx):
     assert result[0]['id'] == "10"
     assert result[0]['name'] == "group1"
     assert route.called
+
+@pytest.mark.asyncio
+async def test_api_error_500(mock_uyuni):
+    base_url = server.CONFIG["UYUNI_SERVER"]
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/listSystems").mock(
+        return_value=Response(500, text="Internal Server Error")
+    )
+    with pytest.raises(HTTPError) as excinfo:
+        await server._list_systems("mock_token")
+    assert excinfo.value.status_code == 500
+
+@pytest.mark.asyncio
+async def test_auth_failure_401(mock_uyuni):
+    base_url = server.CONFIG["UYUNI_SERVER"]
+    # Override the default login mock
+    mock_uyuni.post(f"{base_url}/rhn/manager/api/oidcLogin").mock(
+        return_value=Response(401, text="Unauthorized")
+    )
+    with pytest.raises(AuthError) as excinfo:
+        await server._list_systems("mock_token")
+    assert excinfo.value.status_code == 401
+
+@pytest.mark.asyncio
+async def test_add_system_already_exists(mock_uyuni, mock_ctx, monkeypatch):
+    base_url = server.CONFIG["UYUNI_SERVER"]
+    monkeypatch.setenv("UYUNI_SSH_PRIV_KEY", "secret")
+
+    # Mock listSystems to return existing system
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/listSystems").mock(
+        return_value=Response(200, json={"success": True, "result": [{"id": 1001, "name": "existing-system"}]})
+    )
+
+    result = await server._add_system("existing-system", mock_ctx, activation_key="key")
+    assert "already exists" in result
+
+@pytest.mark.asyncio
+async def test_add_system_missing_ssh_key(mock_uyuni, mock_ctx, monkeypatch):
+    base_url = server.CONFIG["UYUNI_SERVER"]
+    monkeypatch.delenv("UYUNI_SSH_PRIV_KEY", raising=False)
+
+    # Mock listSystems (empty)
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/listSystems").mock(
+        return_value=Response(200, json={"success": True, "result": []})
+    )
+
+    result = await server._add_system("new-system", mock_ctx, activation_key="key", confirm=True)
+    assert "UYUNI_SSH_PRIV_KEY environment variable is not set" in result
+
+@pytest.mark.asyncio
+async def test_add_system_timeout(mock_uyuni, mock_ctx, monkeypatch):
+    base_url = server.CONFIG["UYUNI_SERVER"]
+    monkeypatch.setenv("UYUNI_SSH_PRIV_KEY", "secret")
+
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/listSystems").mock(
+        return_value=Response(200, json={"success": True, "result": []})
+    )
+
+    # Mock bootstrap to raise TimeoutException
+    mock_uyuni.post(f"{base_url}/rhn/manager/api/system/bootstrapWithPrivateSshKey").mock(
+        side_effect=httpx.TimeoutException("Timeout")
+    )
+
+    result = await server._add_system("new-system", mock_ctx, activation_key="key", confirm=True)
+    assert "process started" in result
+    assert "may take some time" in result
+
+@pytest.mark.asyncio
+async def test_remove_system_not_found(mock_uyuni, mock_ctx):
+    base_url = server.CONFIG["UYUNI_SERVER"]
+    system_id = 9999
+
+    # Mock listSystems (does not contain 9999)
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/listSystems").mock(
+        return_value=Response(200, json={"success": True, "result": [{"id": 1001, "name": "sys1"}]})
+    )
+
+    result = await server._remove_system(system_id, mock_ctx)
+    assert f"System with ID {system_id} not found" in result
+
+@pytest.mark.asyncio
+async def test_resolve_system_id_by_name_not_found(mock_uyuni, mock_ctx):
+    base_url = server.CONFIG["UYUNI_SERVER"]
+    name = "non-existent"
+
+    # Mock getId returning empty list
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/getId").mock(
+        return_value=Response(200, json={"success": True, "result": []})
+    )
+
+    with pytest.raises(NotFoundError):
+        await server._get_system_details(name, "mock_token")
+
+@pytest.mark.asyncio
+async def test_resolve_system_id_by_name_multiple_found(mock_uyuni, mock_ctx):
+    base_url = server.CONFIG["UYUNI_SERVER"]
+    name = "ambiguous"
+
+    # Mock getId returning multiple
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/getId").mock(
+        return_value=Response(200, json={"success": True, "result": [{"id": 1}, {"id": 2}]})
+    )
+
+    with pytest.raises(UnexpectedResponse) as excinfo:
+        await server._get_system_details(name, "mock_token")
+    assert "Multiple systems found" in str(excinfo.value)
+
+@pytest.mark.asyncio
+async def test_malformed_api_response(mock_uyuni):
+    base_url = server.CONFIG["UYUNI_SERVER"]
+
+    # Mock listSystems returning something that is not a list
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/listSystems").mock(
+        return_value=Response(200, json={"success": True, "result": "not-a-list"})
+    )
+
+    result = await server._list_systems("mock_token")
+    assert result == []
+
+def test_write_tool_disabled(monkeypatch):
+    monkeypatch.setitem(server.CONFIG, "UYUNI_MCP_WRITE_TOOLS_ENABLED", False)
+
+    def dummy_func():
+        pass
+
+    # When disabled, decorator returns original function
+    decorated = server.write_tool()(dummy_func)
+    assert decorated is dummy_func
+
+def test_write_tool_enabled(monkeypatch):
+    monkeypatch.setitem(server.CONFIG, "UYUNI_MCP_WRITE_TOOLS_ENABLED", True)
+
+    # Mock mcp.tool to verify it wraps the function
+    mock_tool_decorator = MagicMock(side_effect=lambda f: f)
+    mock_tool_factory = MagicMock(return_value=mock_tool_decorator)
+
+    with patch.object(server.mcp, 'tool', mock_tool_factory):
+        def dummy_func():
+            pass
+
+        server.write_tool()(dummy_func)
+        assert mock_tool_factory.called
+
+@pytest.mark.asyncio
+async def test_auth_middleware_extracts_token():
+    middleware = server.AuthTokenMiddleware()
+
+    mock_ctx = MagicMock()
+    # Mock the nested structure: ctx.fastmcp_context.request_context.request.headers
+    mock_ctx.fastmcp_context.request_context.request.headers = {'authorization': 'Bearer my-token'}
+    mock_ctx.fastmcp_context.set_state = MagicMock()
+
+    async def call_next(ctx):
+        return "ok"
+
+    await middleware.on_call_tool(mock_ctx, call_next)
+
+    mock_ctx.fastmcp_context.set_state.assert_called_with('token', 'my-token')
+
+@pytest.mark.asyncio
+async def test_auth_middleware_missing_header():
+    middleware = server.AuthTokenMiddleware()
+
+    mock_ctx = MagicMock()
+    mock_ctx.fastmcp_context.request_context.request.headers = {}
+    mock_ctx.fastmcp_context.set_state = MagicMock()
+
+    async def call_next(ctx):
+        return "ok"
+
+    await middleware.on_call_tool(mock_ctx, call_next)
+
+    mock_ctx.fastmcp_context.set_state.assert_called_with('token', None)
+
+@pytest.mark.asyncio
+async def test_auth_middleware_malformed_header():
+    middleware = server.AuthTokenMiddleware()
+
+    mock_ctx = MagicMock()
+    mock_ctx.fastmcp_context.request_context.request.headers = {'authorization': 'Basic user:pass'}
+    mock_ctx.fastmcp_context.set_state = MagicMock()
+
+    async def call_next(ctx):
+        return "ok"
+
+    await middleware.on_call_tool(mock_ctx, call_next)
+
+    mock_ctx.fastmcp_context.set_state.assert_called_with('token', None)
+
+def test_main_cli_stdio(monkeypatch):
+    monkeypatch.setitem(server.CONFIG, "UYUNI_MCP_TRANSPORT", "stdio")
+
+    with patch.object(server.mcp, 'run') as mock_run:
+        server.main_cli()
+        mock_run.assert_called_with(transport="stdio")
+
+def test_main_cli_http(monkeypatch):
+    monkeypatch.setitem(server.CONFIG, "UYUNI_MCP_TRANSPORT", "http")
+    monkeypatch.setitem(server.CONFIG, "UYUNI_MCP_HOST", "localhost")
+    monkeypatch.setitem(server.CONFIG, "UYUNI_MCP_PORT", 8000)
+    monkeypatch.setitem(server.CONFIG, "AUTH_SERVER", None)
+
+    with patch.object(server.mcp, 'run') as mock_run:
+        server.main_cli()
+        mock_run.assert_called_with(transport="streamable-http", host="localhost", port=8000)
