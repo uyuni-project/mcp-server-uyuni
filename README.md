@@ -9,18 +9,19 @@ This server exposes a suite of tools that allow LLMs to:
 
 - Inspect Infrastructure: Retrieve lists of active systems and view system information.
 - Manage Updates: Identify systems with pending security updates or CVEs and schedule patch applications.
-- Execute Actions: Schedule reboots.
+- Execute Actions: Schedule patches, system updates and reboots.
 
-It is designed to be run as a container or locally, offering a streamlined way to integrate AI-driven automation into your system administration workflows.
+It is designed to be run as a container remotely (HTTP) or locally (stdio), offering a streamlined way to integrate AI-driven automation into your system administration workflows.
 
 ## Table of Contents
 
 - [Tool List](#tool-list)
-- [Usage](#usage)
-  - [1. Configuration](#1-configuration)
-  - [2. Running as a Container (Recommended)](#2-running-as-a-container-recommended)
-  - [3. Running Locally with uv](#3-running-locally-with-uv)
-  - [4. Client Configuration Examples](#4-client-configuration-examples)
+- [Getting Started](#getting-started)
+  - [Configuring the Server](#configuring-the-server)
+  - [Running the Server](#running-the-server)
+- [Security](#security)
+  - [OAuth 2.0](#oauth-20)
+  - [Best Practices](#best-practices)
 - [Feedback](#feedback)
 - [License](#license)
 - [Disclaimer](#disclaimer)
@@ -52,59 +53,62 @@ It is designed to be run as a container or locally, offering a streamlined way t
 * `add_systems_to_group`: Adds systems to a system group.
 * `remove_systems_from_group`: Removes systems from a system group.
 
-## Usage
+## Getting Started
 
-There are two main ways to run the Uyuni MCP Server: using the pre-built container or running it locally with `uv`. Both methods require a `config` file.
+To use the Uyuni MCP Server, follow these two main steps:
+1.  **Configuring the Server**: Set up the connection details for your Uyuni instance.
+2.  **Running the Server**: Choose one of the provided methods to launch the server (e.g., as a container or a local script) and configure your MCP client how to connect to and interact with the server.
 
-To use the Uyuni MCP Server, you must first create a configuration file. Once configured, you can run the server using a container engine (i.e. docker) (recommended) or locally with uv.
-
-### 1\. Configuration
+### Configuring the Server
 
 Create a file (e.g., `uyuni-config.env`) to store your environment variables. You can place this file anywhere, but you must reference its path when running the server.
 
 ```bash
-# Required: Basic server parameters.
+# Required fields
+#
+# Basic API parameters
 UYUNI_SERVER=192.168.1.124:8443
-UYUNI_USER=admin
-UYUNI_PASS=admin
+UYUNI_USER=mcp-user
+UYUNI_PASS=password
 
-# Optional: Set to 'false' to disable SSL certificate verification. Defaults to 'true'.
-# UYUNI_MCP_SSL_VERIFY=false
+# Optional fields
+#
+# Set to 'false' to disable SSL certificate verification. Defaults to 'true'.
+UYUNI_MCP_SSL_VERIFY=true
 
-# Optional: Set to 'true' to enable tools that perform write actions (e.g., POST requests). Defaults to 'false'.
-# UYUNI_MCP_WRITE_TOOLS_ENABLED=false
+# Set to 'true' to enable tools that perform write actions (e.g., POST requests). Defaults to 'false'.
+UYUNI_MCP_WRITE_TOOLS_ENABLED=false
 
-> [!WARNING]
-> **Security Note on Write Tools:** Enabling `UYUNI_MCP_WRITE_TOOLS_ENABLED` allows the execution of state-changing and potentially destructive actions (e.g., removing systems, applying updates). When combined with `UYUNI_MCP_TRANSPORT=http`, this risk is amplified, as any client with network access can perform these actions. Only enable write tools in a trusted environment.
+# Set the transport protocol. Can be 'stdio' (default) or 'http'.
+UYUNI_MCP_TRANSPORT=stdio
 
-# Optional: Set the transport protocol. Can be 'stdio' (default) or 'http'.
-# UYUNI_MCP_TRANSPORT=stdio
+# Host and Port when using HTTP transport
+UYUNI_MCP_HOST=127.0.0.1
+UYUNI_MCP_PORT=8080
 
-> [!WARNING]
-> **Security Note on HTTP Transport:** When `UYUNI_MCP_TRANSPORT` is set to `http` but `AUTH_SERVER` is not set, the server runs without authentication. This means any client with network access can execute commands. Only use this mode in a trusted, isolated network environment. For more details, see the Security Policy.
+# OAuth 2.0 authorization server
+UYUNI_AUTH_SERVER=auth.example.com
 
-# Optional: Host and Port when using http transport layer
-# UYUNI_MCP_HOST="127.0.0.1"
-# UYUNI_MCP_PORT="8000"
-
-# Optional: OAuth 2.0 Authorization Server
-# UYUNI_AUTH_SERVER=auth_server
-
-> [!WARNING]
-> Note this feature expects OAuth 2.0 to be also implemented and configured in Uyuni at the `/manager/api/oicdLogin` endpoint. Otherwise, it will raise an error. See implementation status at [https://github.com/uyuni-project/uyuni/pull/11084](https://github.com/uyuni-project/uyuni/pull/11084). More info on implementation details at the Security Policy.
-
-# Optional: Set the path for the server log file. Defaults to logging to the console.
-# UYUNI_MCP_LOG_FILE_PATH=/var/log/mcp-server-uyuni.log
-
-# Optional: Set the logging level. Can be 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'. Defaults to 'INFO'.
-# UYUNI_MCP_LOG_LEVEL=DEBUG
+# Set the path for the server log file. Defaults to logging to the console.
+UYUNI_MCP_LOG_FILE_PATH=/var/log/mcp-server-uyuni.log
+# Set the logging level. Can be 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'. Defaults to 'INFO'.
+UYUNI_MCP_LOG_LEVEL=DEBUG
 
 # Required to bootstrap new systems into Uyuni via the `add_system` tool.
 UYUNI_SSH_PRIV_KEY="-----BEGIN OPENSSH PRIVATE KEY-----\n..."
 UYUNI_SSH_PRIV_KEY_PASS=""
 ```
 
-Replace the values with your Uyuni server details. **This file contains sensitive information and should not be committed to version control.**
+> [!WARNING]
+> **Security Note on Write Tools:** Enabling `UYUNI_MCP_WRITE_TOOLS_ENABLED` allows the execution of state-changing and potentially destructive actions (e.g., removing systems, applying updates). When combined with `UYUNI_MCP_TRANSPORT=http`, this risk is amplified, as any client with network access can perform these actions. Only enable write tools in a trusted environment.
+
+
+> [!WARNING]
+> **Security Note on HTTP Transport:** When `UYUNI_MCP_TRANSPORT` is set to `http` but `AUTH_SERVER` is not set, the server runs without authentication. This means any client with network access can execute commands. Only use this mode in a trusted, isolated network environment. For more details, see the Security Policy.
+
+
+> [!WARNING]
+> Note this feature expects OAuth 2.0 to be also supported in Uyuni at the `/manager/api/oicdLogin` endpoint. Otherwise, it will raise an error. See implementation status at [https://github.com/uyuni-project/uyuni/pull/11084](https://github.com/uyuni-project/uyuni/pull/11084). More info on implementation details at the Security Policy.
 
 > [!NOTE]
 > **Formatting the SSH Private Key**
@@ -124,137 +128,160 @@ Replace the values with your Uyuni server details. **This file contains sensitiv
 
 Alternatively, you can also set environment variables instead of using a file.
 
+### Running the Server
 
+Choose one of the following methods to run the server.
 
-### 2\. Running as a Container (Recommended)
+#### Option A: As a Client-Managed Container (Recommended)
 
-The easiest way to run the server is using the pre-built container image. This method isolates the environment and requires no local dependencies other than the container engine (i.e. docker).
+With this method, the MCP client handles the lifecycle of the container. This is the easiest method for deployment, as it isolates the environment and requires no local dependencies other than a container engine (e.g., Docker).
 
+Pre-built container images are available on the GitHub Container Registry. Refer to your MCP client's documentation for specific configuration syntax.
 
-This is the easiest method for deployment. Pre-built container images are available on the GitHub Container Registry.
+**Client Configuration Examples:**
 
- Replace `/path/to/your/config` with the absolute path to your `config` file. Replace `VERSION` with the desired release tag (e.g., `v0.2.1`) or use `latest` for the most recent build from the `main` branch.
+*   **Using an environment file:**
 
-```json
-{
-  "mcpServers": {
-    "mcp-server-uyuni": {
-      "command": "docker",
-      "args": [
-        "run", "-i", "--rm",
-        "--env-file", "/path/to/your/config",
-        "ghcr.io/uyuni-project/mcp-server-uyuni:VERSION"
-      ]
+    Replace `/path/to/uyuni-config.env` with the absolute path to your configuration file. Replace `VERSION` with the desired release tag (e.g., `v0.2.1`) or use `latest`.
+
+    ```json
+    {
+      "mcpServers": {
+        "mcp-server-uyuni": {
+          "command": "docker",
+          "args": [
+            "run", "-i", "--rm",
+            "--env-file", "/path/to/uyuni-config.env",
+            "ghcr.io/uyuni-project/mcp-server-uyuni:VERSION"
+          ]
+        }
+      }
     }
-  }
-}
+    ```
 
-```
+*   **Using environment variables:**
 
-Alternatively, you can use environment variables instead of a file.
-
-```json
-{
-  "mcpServers": {
-    "mcp-server-uyuni": {
-      "command": "docker",
-      "args": [
-        "run", "-i", "--rm",
-        "-e", "UYUNI_SERVER=192.168.1.124:8443",
-        "-e", "UYUNI_USER=admin",
-        "-e", "UYUNI_PASS=admin",
-        "ghcr.io/uyuni-project/mcp-server-uyuni:VERSION"
-      ]
+    ```json
+    {
+      "mcpServers": {
+        "mcp-server-uyuni": {
+          "command": "docker",
+          "args": [
+            "run", "-i", "--rm",
+            "-e", "UYUNI_SERVER=192.168.1.124:8443",
+            "-e", "UYUNI_USER=admin",
+            "-e", "UYUNI_PASS=admin",
+            "ghcr.io/uyuni-project/mcp-server-uyuni:VERSION"
+          ]
+        }
+      }
     }
-  }
-}
-```
+    ```
 
-**Command:**
+#### Option B: As a Standalone HTTP Server
+
+This method is ideal for multi-user environments where you need a persistent, network-accessible server with OAuth 2.0 support.
+
+First, ensure the following environment variables are set in your configuration:
 
 ```bash
-docker run -i --rm --env-file /path/to/uyuni-config.env ghcr.io/uyuni-project/mcp-server-uyuni:latest
+UYUNI_MCP_TRANSPORT=http
+UYUNI_MCP_HOST=0.0.0.0 # Or a specific interface
+UYUNI_MCP_PORT=8080
+UYUNI_AUTH_SERVER=auth.example.com
 ```
 
-  * **`-i`**: Keeps STDIN open (required for MCP communication).
-  * **`--rm`**: Removes the container after it exits.
-  * **`--env-file`**: Points to the configuration file you created in step 1.
+Then, run the container:
 
-### 3\. Running Locally with `uv`
+```bash
+docker run --env-file /path/to/uyuni-config.env -p 8080:8080 ghcr.io/uyuni-project/mcp-server-uyuni:latest
+```
+
+Your MCP client can then connect to the server using its URL.
+
+**Client Configuration Example:**
+```json
+{
+  "mcpServers": {
+    "mcp-server-uyuni": {
+      "url": "http://127.0.0.1:8080/mcp",
+      "type": "http"
+    }
+  }
+}
+```
+
+> [!NOTE]
+> The server runs on plain HTTP. For production environments, it is strongly recommended to use a reverse proxy (e.g., Nginx, Apache) to provide HTTPS encryption (TLS), handle certificates, and enhance security.
+
+> [!WARNING]
+> Unsetting `UYUNI_AUTH_SERVER` in HTTP mode bypasses OAuth, enabling any client on the network to access the server. This is only intended for trusted development environments.
+
+#### Option C: Running Locally with `uv` (for development)
 
 If you are developing or prefer running Python directly, you can use `uv`.
 
 **Prerequisites:**
 
   * Install `uv`: [https://docs.astral.sh/uv](https://docs.astral.sh/uv)
-  * Clone this repository.
+  * Clone this repository
+  * Sync dependencies from the root of the repository by running `uv sync`
 
 **Setup and Run:**
 
-1.  Sync dependencies:
-    ```bash
-    uv sync
-    ```
-2.  Run the server:
-    ```bash
-    uv run --env-file /path/to/uyuni-config.env --directory /path/to/sources/ mcp-server-uyuni
-
-
-### 4\. Client Configuration Examples
-
-MCP servers are rarely run manually; they are usually configured within an MCP Client (like Gemini CLI). Below are examples of how to configure your client to use `mcp-server-uyuni`.
-
-#### Gemini CLI Configuration
-
-Add the following to your `config.gemini.json`:
-
-**Container Method:**
+To use the server in client-managed stdio mode, use the following configuration example:
 
 ```json
 {
   "mcpServers": {
     "mcp-server-uyuni": {
-      "command": "docker",
-      "args": [
-        "run",
-        "-i",
-        "--rm",
-        "-v",
-        "/path/to/mcp-server-uyuni.log:/tmp/mcp-server-uyuni.log",
-        "--name",
-        "mcp-server-uyuni",
-        "--env-file",
-        "/path/to/uyuni-connection-config-stdio.env",
-        "registry.opensuse.org/systemsmanagement/uyuni/ai/devel_bci_16.0_containerfile/uyuni-ai/mcp-uyuni-server",
-        "/usr/bin/mcp-server-uyuni"
-      ]
-    }
-  },
-  "security": {
-    "auth": {
-      "selectedType": "gemini-api-key"
-    }
-  }
-}
-```
-
-**Local `uv` Method:**
-
-```json
-{
-  "mcpServers": {
-    "uyuni": {
-      "command": "/path/to/uv",
+      "command": "uv",
       "args": [
         "run",
         "--env-file", "/path/to/uyuni-config.env",
-        "--directory", "/path/to/mcp-server-uyuni-repo",
+        "--directory", "/path/to/your/mcp-server-uyuni",
         "mcp-server-uyuni"
       ]
     }
   }
 }
 ```
+
+To run the server in standalone HTTP mode, use the following command:
+
+```bash
+uv run --env-file /path/to/uyuni-config.env --directory /path/to/your/mcp-server-uyuni mcp-server-uyuni
+```
+
+
+## Security
+
+### OAuth 2.0
+
+When running the server in HTTP mode (`UYUNI_MCP_TRANSPORT=http`), it is strongly recommended to secure it with an authentication layer. The server includes support for OAuth 2.0 to authenticate client requests. To enable it, set the `UYUNI_AUTH_SERVER` environment variable to your identity provider's URL.
+
+#### Configuring an Identity Provider
+
+[TODO]
+
+### Best Practices
+
+Follow these practices to harden your deployment.
+
+#### Principle of Least Privilege
+The Uyuni user configured via `UYUNI_USER` should have the minimum set of permissions required to perform its tasks. Avoid using highly privileged accounts like `admin`. See "Role-Based Access Control" in Uyuni documentation to fine-tune permissions.
+
+#### Enable Write Actions Cautiously
+Enabling state-changing tools with `UYUNI_MCP_WRITE_TOOLS_ENABLED=true` poses a significant risk. Only enable this in trusted environments and when all other security measures, such as authentication and HTTPS, are in place.
+
+#### Secure Secrets
+Avoid hardcoding secrets like passwords (`UYUNI_PASS`) or SSH keys (`UYUNI_SSH_PRIV_KEY`) in your configuration files, especially if they are checked into version control. Use a secrets management system (e.g., HashiCorp Vault, cloud provider secret stores) or inject them as environment variables at runtime. Ensure configuration files containing secrets (like `uyuni-config.env`) are not committed to Git.
+
+### Production Logging
+For production environments, configure structured logging to a file for monitoring and auditing:
+- Set `UYUNI_MCP_LOG_FILE_PATH` to a secure location (e.g., `/var/log/mcp-server-uyuni.log`).
+- Set `UYUNI_MCP_LOG_LEVEL` to `INFO` or `WARNING`.
+Regularly review logs for unusual or unauthorized activity.
 
 
 ## Feedback
@@ -263,7 +290,8 @@ We would love to hear from you! Any idea you want to discuss or share, please do
 
 If you encounter any bug, be so kind to open a new bug report at [https://github.com/uyuni-project/mcp-server-uyuni/issues/new?type=bug](https://github.com/uyuni-project/mcp-server-uyuni/issues/new?type=bug)
 
-Thanks in advance from the uyuni team!
+Thanks in advance from the Uyuni team!
+
 
 ## License
 
