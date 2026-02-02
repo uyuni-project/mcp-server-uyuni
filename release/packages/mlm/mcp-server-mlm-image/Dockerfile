@@ -24,4 +24,6 @@ RUN echo "rpm.install.excludedocs = yes" >>/etc/zypp/zypp.conf && \
     python313-mcp-server-mlm && \
     zypper clean
 
+ENV UYUNI_PRODUCT_NAME="Multi Linux Manager (MLM)"
+
 CMD ["mcp-server-uyuni"]

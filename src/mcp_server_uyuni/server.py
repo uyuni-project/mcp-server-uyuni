@@ -38,6 +38,7 @@ class ActivationKeySchema(BaseModel):
 
 base_url = f'http://{CONFIG["UYUNI_MCP_HOST"]}:{CONFIG["UYUNI_MCP_PORT"]}'
 auth_provider = AuthProvider(CONFIG["AUTH_SERVER"], base_url, CONFIG["UYUNI_MCP_WRITE_TOOLS_ENABLED"]) if CONFIG["AUTH_SERVER"] else None
+uyuni_product_name = CONFIG["UYUNI_PRODUCT_NAME"] if CONFIG["UYUNI_PRODUCT_NAME"] else "Uyuni" 
 mcp = FastMCP("mcp-server-uyuni", auth=auth_provider)
 
 logger = get_logger(
@@ -95,10 +96,8 @@ def _to_bool(value) -> bool:
     """
     return str(value).lower() in ("true", "yes", "1")
 
-@mcp.tool()
-async def list_systems(ctx: Context) -> List[Dict[str, Any]]:
-    """
-    Fetches a list of active systems from the Uyuni server, returning their names and IDs.
+DYNAMIC_DESCRIPTION = f"""
+    Fetches a list of active systems from the {uyuni_product_name} server, returning their names and IDs.
 
     The returned list contains system objects, each of which consists of a 'system_name'
     and a numerical 'system_id' field for an active system.
@@ -115,6 +114,8 @@ async def list_systems(ctx: Context) -> List[Dict[str, Any]]:
             { "system_name": "opensuseleap15.example.com", "system_id": 100010001 }
         ]
     """
+@mcp.tool()
+async def list_systems(ctx: Context, description = DYNAMIC_DESCRIPTION) -> List[Dict[str, Any]]:
     log_string = "Getting list of active systems"
     logger.info(log_string)
     await ctx.info(log_string)
