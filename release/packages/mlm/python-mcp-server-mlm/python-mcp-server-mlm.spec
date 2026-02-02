@@ -22,13 +22,15 @@
 %else
 %bcond_with libalternatives
 %endif
+%global p_version 0.5.0
+
 Name:           python-mcp-server-mlm
-Version:        0.5.0
+Version:        0.5.0+git%(tar xfO %{SOURCE0} mcp-server-uyuni-%{p_version}/last-commit)
 Release:        0
 Summary:        Model Context Protocol Server for Uyuni Server API
 License:        Apache-2.0
 URL:            https://github.com/uyuni-project/mcp-server-uyuni
-Source:         mcp-server-uyuni-%{version}.tar.gz
+Source:         mcp-server-uyuni-%{p_version}.tar.gz
 Patch0:         review-pydeps.patch  
 
 BuildRequires:  %{python_module pip}
@@ -95,7 +97,7 @@ Requires:       %{python_module uvicorn = 0.34.2}
 Requires:       %{python_module websockets = 14.2}
 Requires:       %{python_module Werkzeug = 3.1.1}
 # End
-Provides:       %{name}-commit = %(tar xfO %{SOURCE0} mcp-server-uyuni-%{version}/last-commit)
+Provides:       %{name}-commit = %(tar xfO %{SOURCE0} mcp-server-uyuni-%{p_version}/last-commit)
 
 BuildArch:      noarch
 
@@ -112,7 +114,7 @@ Requires(postun): update-alternatives
 Model Context Protocol Server for Uyuni/MLM Server API.
 
 %prep
-%autosetup -p1 -n mcp-server-uyuni-%{version}
+%autosetup -p1 -n mcp-server-uyuni-%{p_version}
 
 %build
 %pyproject_wheel

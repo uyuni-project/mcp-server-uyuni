@@ -13,6 +13,6 @@
  		<param name="file">Dockerfile</param>
  		<param name="package">python313-mcp-server-mlm</param>
  		<param name="regex">%COMMIT_HASH%</param>
- 		<param name="parse-version">python313-mcp-server-mlm-commit = (.*)</param>
+ 		<param name="parse-version">offset</param>
 	</service>
 </services>
