@@ -10,6 +10,9 @@ LABEL org.opencontainers.image.version="%PKG_VERSION%"
 LABEL org.opensuse.reference="registry.suse.com/suse/agentic/mcp/multi-linux-manager:%PKG_VERSION%.%RELEASE%"
 LABEL org.openbuildservice.disturl="%DISTURL%"
 LABEL org.opencontainers.image.created="%BUILDTIME%"
+LABEL org.opencontainers.image.source="https://github.com/uyuni-project/mcp-server-uyuni"
+LABEL org.opencontainers.image.version="%PKG_VERSION%"
+LABEL org.opencontainers.image.revision="%COMMIT_HASH%"
 
 # Workaround for https://github.com/openSUSE/obs-build/issues/487
 # RUN zypper --non-interactive in sles-release
