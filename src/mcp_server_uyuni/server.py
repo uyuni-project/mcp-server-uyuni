@@ -110,8 +110,8 @@ DYNAMIC_DESCRIPTION = f"""
 
     Example:
         [
-            { "system_name": "ubuntu.example.com", "system_id": 100010000 },
-            { "system_name": "opensuseleap15.example.com", "system_id": 100010001 }
+            {{ "system_name": "ubuntu.example.com", "system_id": 100010000 }},
+            {{ "system_name": "opensuseleap15.example.com", "system_id": 100010001 }}
         ]
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
@@ -171,42 +171,42 @@ DYNAMIC_DESCRIPTION = f"""Gets details of the specified system.
                 You can use this field to identify what OS the system is running.
 
         Example:
-            {
+            {{
               "system_id": "100010001",
               "system_name": "opensuse.example.local",
               "last_boot": "2025-04-01T15:21:56Z",
               "uuid": "a8c3f40d-c1ae-406e-9f9b-96e7d5fdf5a3",
-              "cpu": {
+              "cpu": {{
                 "family": "15",
                 "mhz": "1896.436",
                 "model": "QEMU Virtual CPU",
                 "vendor": "AuthenticAMD",
                 "arch": "x86_64"
-              },
-              "network": {
+              }},
+              "network": {{
                 "hostname": "opensuse.example.local",
                 "ip": "192.168.122.193",
                 "ip6": "fe80::5054:ff:fe12:3456"
-              },
+              }},
               "installed_products": [
-                {
+                {{
                   "release": "0",
                   "name": "SLES",
                   "isBaseProduct": true,
                   "arch": "x86_64",
                   "version": "15.7",
                   "friendlyName": "SUSE Linux Enterprise Server 15 SP7 x86_64"
-                },
-                {
+                }},
+                {{
                   "release": "0",
                   "name": "sle-module-basesystem",
                   "isBaseProduct": false,
                   "arch": "x86_64",
                   "version": "15.7",
                   "friendlyName": "Basesystem Module 15 SP7 x86_64"
-                }
+                }}
               ]
-            }
+            }}
         """
 
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
@@ -349,20 +349,20 @@ DYNAMIC_DESCRIPTION = f"""Gets the event/action history of the specified system.
 
         Example:
             [
-              {
+              {{
                 "id": 12,
                 "history_type": "System reboot",
                 "status": "Completed",
                 "summary": "System reboot scheduled by admin",
                 "completed": "2025-11-27T15:37:28Z"
-              },
-              {
+              }},
+              {{
                 "id": 357,
                 "history_type": "Patch Update",
                 "status": "Failed"
                 "summary": "Patch Update: Security update for the Linux Kernel",
                 "completed": "2025-11-28T13:11:49Z"
-              }
+              }}
             ]
         """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
@@ -424,20 +424,20 @@ DYNAMIC_DESCRIPTION = f"""Gets the details of the event associated with the espe
 
         Example:
             [
-              {
+              {{
                 "id": 12,
                 "history_type": "System reboot",
                 "status": "Completed",
                 "summary": "System reboot scheduled by admin",
                 "completed": "2025-11-27T15:37:28Z"
-              },
-              {
+              }},
+              {{
                 "id": 357,
                 "history_type": "Patch Update",
                 "status": "Failed"
                 "summary": "Patch Update: Security update for the Linux Kernel",
                 "completed": "2025-11-28T13:11:49Z"
-              }
+              }}
             ]
         """
 
@@ -480,8 +480,8 @@ DYNAMIC_DESCRIPTION = f"""
 
     Example:
         [
-            { "system_name": "ubuntu1.example.com", "system_id": 100010000 },
-            { "system_name": "ubuntu2.example.com", "system_id": 100010001 }
+            {{ "system_name": "ubuntu1.example.com", "system_id": 100010000 }},
+            {{ "system_name": "ubuntu2.example.com", "system_id": 100010001 }}
         ]
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
@@ -525,11 +525,11 @@ DYNAMIC_DESCRIPTION= f"""
 
     Example:
         [
-            {
+            {{
               "system_name": "ubuntu.example.com",
               "system_id": 100010000,
               "ip": "192.168.122.193"
-            }
+            }}
         ]
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
@@ -1571,18 +1571,18 @@ DYNAMIC_DESCRIPTION = f"""
 
         Example:
             [
-                {
+                {{
                     "id": "1",
                     "name": "Default Group",
                     "description": "Default group for all systems",
                     "system_count": "10"
-                },
-                {
+                }},
+                {{
                     "id": "2",
                     "name": "Test Group",
                     "description": "Group for testing purposes",
                     "system_count": "5"
-                }
+                }}
             ]
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
@@ -1679,14 +1679,14 @@ DYNAMIC_DESCRIPTION = f"""
 
         Example:
             [
-                {
+                {{
                     "system_id": "123456789",
                     "system_name": "my-system"
-                },
-                {
+                }},
+                {{
                     "system_id": "987654321",
                     "system_name": "my-other-system"
-                }
+                }}
             ]
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
