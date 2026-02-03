@@ -38,7 +38,7 @@ class ActivationKeySchema(BaseModel):
 
 base_url = f'http://{CONFIG["UYUNI_MCP_HOST"]}:{CONFIG["UYUNI_MCP_PORT"]}'
 auth_provider = AuthProvider(CONFIG["AUTH_SERVER"], base_url, CONFIG["UYUNI_MCP_WRITE_TOOLS_ENABLED"]) if CONFIG["AUTH_SERVER"] else None
-uyuni_product_name = CONFIG["UYUNI_PRODUCT_NAME"] if CONFIG["UYUNI_PRODUCT_NAME"] else "Uyuni" 
+product = CONFIG["UYUNI_PRODUCT_NAME"] if CONFIG["UYUNI_PRODUCT_NAME"] else "Uyuni" 
 mcp = FastMCP("mcp-server-uyuni", auth=auth_provider)
 
 logger = get_logger(
@@ -97,7 +97,7 @@ def _to_bool(value) -> bool:
     return str(value).lower() in ("true", "yes", "1")
 
 DYNAMIC_DESCRIPTION = f"""
-    Fetches a list of active systems from the {uyuni_product_name} server, returning their names and IDs.
+    Fetches a list of active systems from the {product} server, returning their names and IDs.
 
     The returned list contains system objects, each of which consists of a 'system_name'
     and a numerical 'system_id' field for an active system.
@@ -153,9 +153,9 @@ DYNAMIC_DESCRIPTION = f"""Gets details of the specified system.
 
     Returns:
         An object that contains the following attributes of the system:
-            - system_id: The numerical ID of the system within {uyuni_product_name} server
+            - system_id: The numerical ID of the system within {product} server
             - system_name: The registered system name, usually its main FQDN
-            - last_boot: The last boot time of the system known to {uyuni_product_name} server
+            - last_boot: The last boot time of the system known to {product} server
             - uuid: UUID of the system if it is a virtual instance, null otherwise.
             - cpu: An object with the following CPU attributes of the system:
                 - family: The CPU family
@@ -576,7 +576,7 @@ async def _resolve_system_id(system_identifier: Union[str, int], token: str) -> 
 
     Raises:
         NotFoundError: If no systems match the provided name.
-        UnexpectedResponse: If the {uyuni_product_name} API returns an unexpected payload (non-list, malformed items,
+        UnexpectedResponse: If the {product} API returns an unexpected payload (non-list, malformed items,
                             or multiple matches for a single name).
     """
     id_str = str(system_identifier)
@@ -663,7 +663,7 @@ async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str,
     return processed_cves
 
 DYNAMIC_DESCRIPTION = f"""
-    Checks if a specific system in the {uyuni_product_name} server has pending updates (relevant errata),
+    Checks if a specific system in the {product} server has pending updates (relevant errata),
     including associated CVEs for each update.
 
     Args:
@@ -768,7 +768,7 @@ async def _get_system_updates(system_identifier: Union[str, int], ctx: Context) 
         }
 
 DYNAMIC_DESCRIPTION = f"""
-    Checks all active systems in the {uyuni_product_name} server for pending updates.
+    Checks all active systems in the {product} server for pending updates.
 
     Returns a list containing information only for those systems that have
     one or more pending updates. Each update detail will include associated CVEs.
@@ -979,7 +979,7 @@ async def schedule_specific_update(system_identifier: Union[str, int], errata_id
             return msg
 
 DYNAMIC_DESCRIPTION = f"""
-    Adds a new system to be managed by {uyuni_product_name}.
+    Adds a new system to be managed by {product}.
 
     This tool remotely connects to the specified host using SSH to register it.
     It requires an SSH private key to be configured in the UYUNI_SSH_PRIV_KEY
@@ -990,7 +990,7 @@ DYNAMIC_DESCRIPTION = f"""
         activation_key: The activation key for registering the system.
         ssh_port: The SSH port on the target machine (default: 22).
         ssh_user: The user to connect with via SSH (default: 'root').
-        proxy_id: The system ID of a {uyuni_product_name} proxy to use (optional).
+        proxy_id: The system ID of a {product} proxy to use (optional).
         salt_ssh: Manage the system with Salt SSH (default: False).
         confirm: User confirmation is required to execute this action. This parameter
                  is `False` by default. To obtain the confirmation message that must
@@ -1044,13 +1044,13 @@ async def add_system(
     active_systems = await _list_systems(token)
     for system in active_systems:
         if system.get('system_name') == host:
-            message = f"System '{host}' already exists in {uyuni_product_name}. No action taken."
+            message = f"System '{host}' already exists in {product}. No action taken."
             logger.info(message)
             await ctx.info(message)
             return message
 
     if not is_confirmed:
-        return f"CONFIRMATION REQUIRED: This will add system {host} with activation key {activation_key} to {uyuni_product_name}. Do you confirm?"
+        return f"CONFIRMATION REQUIRED: This will add system {host} with activation key {activation_key} to {product}. Do you confirm?"
 
     ssh_priv_key_raw = os.environ.get('UYUNI_SSH_PRIV_KEY')
     if not ssh_priv_key_raw:
@@ -1090,7 +1090,7 @@ async def add_system(
 
     if api_result is TIMEOUT_HAPPENED:
         # The action was long-running and timed out, which is expected.
-        # The task is likely running in the background on uyuni_product_name.
+        # The task is likely running in the background on product.
         success_message = f"System {host} addition process started. It may take some time. Check the system list later for its status."
         logger.info(success_message)
         return success_message
@@ -1104,14 +1104,14 @@ async def add_system(
         return f"System {host} was NOT successfully scheduled to be added. Check server logs."
 
 DYNAMIC_DESCRIPTION = f"""
-    Removes/deletes a system from being managed by {uyuni_product_name}.
+    Removes/deletes a system from being managed by {product}.
 
     This is a destructive action and requires confirmation.
 
     Args:
         system_identifier: The unique identifier of the system to remove. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
-        cleanup: If True (default), {uyuni_product_name} will attempt to run cleanup scripts on the client before deletion.
-                 If False, the system is deleted from {uyuni_product_name} without attempting client-side cleanup.
+        cleanup: If True (default), {product} will attempt to run cleanup scripts on the client before deletion.
+                 If False, the system is deleted from {product} without attempting client-side cleanup.
         confirm: User confirmation is required to execute this action. This parameter
                  is `False` by default. To obtain the confirmation message that must
                  be presented to the user, the model must first call the tool with
@@ -1141,7 +1141,7 @@ async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanu
         return message
 
     if not is_confirmed:
-        return (f"CONFIRMATION REQUIRED: This will permanently remove system {system_id} from {uyuni_product_name}. "
+        return (f"CONFIRMATION REQUIRED: This will permanently remove system {system_id} from {product}. "
                 f"Client-side cleanup is currently {'ENABLED' if cleanup else 'DISABLED'}. Do you confirm?")
 
     cleanup_type = "FORCE_DELETE" if cleanup else "NO_CLEANUP"
@@ -1272,11 +1272,11 @@ async def list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context)
     return list(affected_systems_map.values())
 
 DYNAMIC_DESCRIPTION = f"""
-    Fetches a list of systems from the {uyuni_product_name} server that require a reboot.
+    Fetches a list of systems from the {product} server that require a reboot.
 
     The returned list contains dictionaries, each with 'system_id' (int),
     'system_name' (str), and 'reboot_status' (str, typically 'reboot_required')
-    for a system that has been identified by {uyuni_product_name} as needing a reboot.
+    for a system that has been identified by {product} as needing a reboot.
 
     Returns:
         List[Dict[str, Any]]: A list of system dictionaries (system_id, system_name, reboot_status)
@@ -1321,7 +1321,7 @@ async def list_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
     return systems_needing_reboot_list
 
 DYNAMIC_DESCRIPTION = f"""
-    Schedules an immediate reboot for a specific system on the {uyuni_product_name} server.
+    Schedules an immediate reboot for a specific system on the {product} server.
 
     Args:
         system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
@@ -1380,7 +1380,7 @@ async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context
             return "Unexpected API response format when scheduling reboot. Check server logs for details."
 
 DYNAMIC_DESCRIPTION = f"""
-    Fetches a list of all scheduled actions from the {uyuni_product_name} server.
+    Fetches a list of all scheduled actions from the {product} server.
 
     You can use this tool to check the status of a reboot. A reboot is finished when
     its related action is completed.
@@ -1429,7 +1429,7 @@ async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
     return processed_actions_list
 
 DYNAMIC_DESCRIPTION = f"""
-    Cancels a specified action on the {uyuni_product_name} server.
+    Cancels a specified action on the {product} server.
 
     Args:
         action_id: The integer ID of the action to be canceled.
@@ -1479,7 +1479,7 @@ async def cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] 
 
 
 DYNAMIC_DESCRIPTION = f"""
-    Fetches a list of activation keys from the {uyuni_product_name} server.
+    Fetches a list of activation keys from the {product} server.
 
     This tool retrieves all activation keys visible to the user and returns
     a list containing only the key identifier and its description.
@@ -1556,7 +1556,7 @@ async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str,
             return msg
 
 DYNAMIC_DESCRIPTION = f"""
-    Fetches a list of system groups from the {uyuni_product_name} server.
+    Fetches a list of system groups from the {product} server.
 
     This tool retrieves all system groups visible to the user and returns a list containing for
     each group the identifier, name, description and system count.
@@ -1611,7 +1611,7 @@ async def list_system_groups(ctx: Context) -> List[Dict[str, str]]:
     return filtered_groups
 
 DYNAMIC_DESCRIPTION = f"""
-    Creates a new system group in {uyuni_product_name}.
+    Creates a new system group in {product}.
 
     Args:
         name: The name of the new system group.
@@ -1814,7 +1814,7 @@ async def _manage_group_systems(group_name: str, system_identifiers: List[Union[
 
 def main_cli():
 
-    logger.info("Running {uyuni_product_name} MCP server.")
+    logger.info("Running {product} MCP server.")
 
     if CONFIG["UYUNI_MCP_TRANSPORT"] == Transport.HTTP.value:
         if CONFIG["AUTH_SERVER"]:
