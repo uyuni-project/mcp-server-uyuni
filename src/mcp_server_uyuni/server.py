@@ -38,6 +38,7 @@ class ActivationKeySchema(BaseModel):
 
 base_url = f'http://{CONFIG["UYUNI_MCP_HOST"]}:{CONFIG["UYUNI_MCP_PORT"]}'
 auth_provider = AuthProvider(CONFIG["AUTH_SERVER"], base_url, CONFIG["UYUNI_MCP_WRITE_TOOLS_ENABLED"]) if CONFIG["AUTH_SERVER"] else None
+product = CONFIG["UYUNI_PRODUCT_NAME"] if CONFIG["UYUNI_PRODUCT_NAME"] else "Uyuni" 
 mcp = FastMCP("mcp-server-uyuni", auth=auth_provider)
 
 logger = get_logger(
@@ -95,10 +96,8 @@ def _to_bool(value) -> bool:
     """
     return str(value).lower() in ("true", "yes", "1")
 
-@mcp.tool()
-async def list_systems(ctx: Context) -> List[Dict[str, Any]]:
-    """
-    Fetches a list of active systems from the Uyuni server, returning their names and IDs.
+DYNAMIC_DESCRIPTION = f"""
+    Fetches a list of active systems from the {product} server, returning their names and IDs.
 
     The returned list contains system objects, each of which consists of a 'system_name'
     and a numerical 'system_id' field for an active system.
@@ -111,10 +110,12 @@ async def list_systems(ctx: Context) -> List[Dict[str, Any]]:
 
     Example:
         [
-            { "system_name": "ubuntu.example.com", "system_id": 100010000 },
-            { "system_name": "opensuseleap15.example.com", "system_id": 100010001 }
+            {{ "system_name": "ubuntu.example.com", "system_id": 100010000 }},
+            {{ "system_name": "opensuseleap15.example.com", "system_id": 100010001 }}
         ]
     """
+@mcp.tool(description = DYNAMIC_DESCRIPTION)
+async def list_systems(ctx: Context) -> List[Dict[str, Any]]:
     log_string = "Getting list of active systems"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -144,9 +145,7 @@ async def _list_systems(token: str) -> List[Dict[str, Union[str, int]]]:
 
     return filtered_systems
 
-@mcp.tool()
-async def get_system_details(system_identifier: Union[str, int], ctx: Context):
-    """Gets details of the specified system.
+DYNAMIC_DESCRIPTION = f"""Gets details of the specified system.
 
     Args:
         system_identifier: The system name (e.g., "buildhost.example.com") or system ID (e.g., 1000010000).
@@ -154,9 +153,9 @@ async def get_system_details(system_identifier: Union[str, int], ctx: Context):
 
     Returns:
         An object that contains the following attributes of the system:
-            - system_id: The numerical ID of the system within Uyuni server
+            - system_id: The numerical ID of the system within {product} server
             - system_name: The registered system name, usually its main FQDN
-            - last_boot: The last boot time of the system known to Uyuni server
+            - last_boot: The last boot time of the system known to {product} server
             - uuid: UUID of the system if it is a virtual instance, null otherwise.
             - cpu: An object with the following CPU attributes of the system:
                 - family: The CPU family
@@ -172,43 +171,46 @@ async def get_system_details(system_identifier: Union[str, int], ctx: Context):
                 You can use this field to identify what OS the system is running.
 
         Example:
-            {
+            {{
               "system_id": "100010001",
               "system_name": "opensuse.example.local",
               "last_boot": "2025-04-01T15:21:56Z",
               "uuid": "a8c3f40d-c1ae-406e-9f9b-96e7d5fdf5a3",
-              "cpu": {
+              "cpu": {{
                 "family": "15",
                 "mhz": "1896.436",
                 "model": "QEMU Virtual CPU",
                 "vendor": "AuthenticAMD",
                 "arch": "x86_64"
-              },
-              "network": {
+              }},
+              "network": {{
                 "hostname": "opensuse.example.local",
                 "ip": "192.168.122.193",
                 "ip6": "fe80::5054:ff:fe12:3456"
-              },
+              }},
               "installed_products": [
-                {
+                {{
                   "release": "0",
                   "name": "SLES",
                   "isBaseProduct": true,
                   "arch": "x86_64",
                   "version": "15.7",
                   "friendlyName": "SUSE Linux Enterprise Server 15 SP7 x86_64"
-                },
-                {
+                }},
+                {{
                   "release": "0",
                   "name": "sle-module-basesystem",
                   "isBaseProduct": false,
                   "arch": "x86_64",
                   "version": "15.7",
                   "friendlyName": "Basesystem Module 15 SP7 x86_64"
-                }
+                }}
               ]
-            }
+            }}
         """
+
+@mcp.tool(description = DYNAMIC_DESCRIPTION)
+async def get_system_details(system_identifier: Union[str, int], ctx: Context):
     log_string = f"Getting details of system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -315,9 +317,7 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
         logger.error(details_result)
     return {}
 
-@mcp.tool()
-async def get_system_event_history(system_identifier: Union[str, int], ctx: Context, offset: int = 0, limit: int = 10, earliest_date: str = None):
-    """Gets the event/action history of the specified system.
+DYNAMIC_DESCRIPTION = f"""Gets the event/action history of the specified system.
 
     The output of this tool is paginated and can be controlled via 'offset' and 'limit' parameters.
 
@@ -349,22 +349,24 @@ async def get_system_event_history(system_identifier: Union[str, int], ctx: Cont
 
         Example:
             [
-              {
+              {{
                 "id": 12,
                 "history_type": "System reboot",
                 "status": "Completed",
                 "summary": "System reboot scheduled by admin",
                 "completed": "2025-11-27T15:37:28Z"
-              },
-              {
+              }},
+              {{
                 "id": 357,
                 "history_type": "Patch Update",
                 "status": "Failed"
                 "summary": "Patch Update: Security update for the Linux Kernel",
                 "completed": "2025-11-28T13:11:49Z"
-              }
+              }}
             ]
         """
+@mcp.tool(description = DYNAMIC_DESCRIPTION)
+async def get_system_event_history(system_identifier: Union[str, int], ctx: Context, offset: int = 0, limit: int = 10, earliest_date: str = None):
     log_string = f"Getting event history of system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -394,9 +396,7 @@ async def _get_system_event_history(system_identifier: Union[str, int], limit: i
         logger.error(result)
     return {}
 
-@mcp.tool()
-async def get_system_event_details(system_identifier: Union[str, int], event_id: int, ctx: Context):
-    """Gets the details of the event associated with the especified server and event ID.
+DYNAMIC_DESCRIPTION = f"""Gets the details of the event associated with the especified server and event ID.
 
     The event ID must be a value returned by the 'get_system_event_history' tool.
 
@@ -424,22 +424,25 @@ async def get_system_event_details(system_identifier: Union[str, int], event_id:
 
         Example:
             [
-              {
+              {{
                 "id": 12,
                 "history_type": "System reboot",
                 "status": "Completed",
                 "summary": "System reboot scheduled by admin",
                 "completed": "2025-11-27T15:37:28Z"
-              },
-              {
+              }},
+              {{
                 "id": 357,
                 "history_type": "Patch Update",
                 "status": "Failed"
                 "summary": "Patch Update: Security update for the Linux Kernel",
                 "completed": "2025-11-28T13:11:49Z"
-              }
+              }}
             ]
         """
+
+@mcp.tool(description = DYNAMIC_DESCRIPTION)
+async def get_system_event_details(system_identifier: Union[str, int], event_id: int, ctx: Context):
     log_string = f"Getting event history of system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -465,9 +468,7 @@ async def _get_system_event_details(system_identifier: Union[str, int], event_id
         logger.error(result)
     return {}
 
-@mcp.tool()
-async def find_systems_by_name(name: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
-    """
+DYNAMIC_DESCRIPTION = f"""
     Lists systems that match the provided hostname.
 
     Args:
@@ -479,10 +480,12 @@ async def find_systems_by_name(name: str, ctx: Context) -> List[Dict[str, Union[
 
     Example:
         [
-            { "system_name": "ubuntu1.example.com", "system_id": 100010000 },
-            { "system_name": "ubuntu2.example.com", "system_id": 100010001 }
+            {{ "system_name": "ubuntu1.example.com", "system_id": 100010000 }},
+            {{ "system_name": "ubuntu2.example.com", "system_id": 100010001 }}
         ]
     """
+@mcp.tool(description = DYNAMIC_DESCRIPTION)
+async def find_systems_by_name(name: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
     log_string = f"Finding systems with name {name}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -510,9 +513,7 @@ async def find_systems_by_name(name: str, ctx: Context) -> List[Dict[str, Union[
 
     return filtered_systems
 
-@mcp.tool()
-async def find_systems_by_ip(ip_address: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
-    """
+DYNAMIC_DESCRIPTION= f"""
     Lists systems that match the provided IP address.
 
     Args:
@@ -524,13 +525,15 @@ async def find_systems_by_ip(ip_address: str, ctx: Context) -> List[Dict[str, Un
 
     Example:
         [
-            {
+            {{
               "system_name": "ubuntu.example.com",
               "system_id": 100010000,
               "ip": "192.168.122.193"
-            }
+            }}
         ]
     """
+@mcp.tool(description = DYNAMIC_DESCRIPTION)
+async def find_systems_by_ip(ip_address: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
     log_string = f"Finding systems with IP address {ip_address}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -573,7 +576,7 @@ async def _resolve_system_id(system_identifier: Union[str, int], token: str) -> 
 
     Raises:
         NotFoundError: If no systems match the provided name.
-        UnexpectedResponse: If the Uyuni API returns an unexpected payload (non-list, malformed items,
+        UnexpectedResponse: If the {product} API returns an unexpected payload (non-list, malformed items,
                             or multiple matches for a single name).
     """
     id_str = str(system_identifier)
@@ -659,11 +662,8 @@ async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str,
 
     return processed_cves
 
-@mcp.tool()
-async def get_system_updates(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
-
-    """
-    Checks if a specific system in the Uyuni server has pending updates (relevant errata),
+DYNAMIC_DESCRIPTION = f"""
+    Checks if a specific system in the {product} server has pending updates (relevant errata),
     including associated CVEs for each update.
 
     Args:
@@ -680,6 +680,9 @@ async def get_system_updates(system_identifier: Union[str, int], ctx: Context) -
                         Returns a dictionary with 'has_pending_updates': False and empty 'updates'
                         if no pending updates are found.
     """
+@mcp.tool(description = DYNAMIC_DESCRIPTION)
+async def get_system_updates(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
+
     log_string = f"Checking pending updates for system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -764,10 +767,8 @@ async def _get_system_updates(system_identifier: Union[str, int], ctx: Context) 
             'updates': enriched_updates_list
         }
 
-@mcp.tool()
-async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
-    """
-    Checks all active systems in the Uyuni server for pending updates.
+DYNAMIC_DESCRIPTION = f"""
+    Checks all active systems in the {product} server for pending updates.
 
     Returns a list containing information only for those systems that have
     one or more pending updates. Each update detail will include associated CVEs.
@@ -785,6 +786,8 @@ async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
                               fetching the system list fails, or no systems have updates.
     """
 
+@mcp.tool(description = DYNAMIC_DESCRIPTION)
+async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
     log_string = "Checking all system for updates"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -830,10 +833,7 @@ async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
     await ctx.info(msg)
     return systems_with_updates
 
-@write_tool()
-async def schedule_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
-
-    """
+DYNAMIC_DESCRIPTION = f"""
     Checks for pending updates on a system, schedules all of them to be applied,
     and returns the action ID of the scheduled task.
 
@@ -853,6 +853,9 @@ async def schedule_pending_updates_to_system(system_identifier: Union[str, int],
         str: The action url if updates were successfully scheduled.
              Otherwise, returns an empty string.
     """
+@write_tool(description = DYNAMIC_DESCRIPTION)
+async def schedule_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
+
     msg = f"Attempting to apply pending updates for system ID: {system_identifier}"
     logger.info(msg)
     await ctx.info(msg)
@@ -908,10 +911,8 @@ async def schedule_pending_updates_to_system(system_identifier: Union[str, int],
             logger.error(msg)
             return msg
 
-@write_tool()
-async def schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
 
-    """
+DYNAMIC_DESCRIPTION = f"""
     Schedules a specific update (erratum) to be applied to a system.
 
     Args:
@@ -927,6 +928,9 @@ async def schedule_specific_update(system_identifier: Union[str, int], errata_id
         str: The action URL if the update was successfully scheduled.
              Otherwise, returns an empty string.
     """
+@write_tool(description = DYNAMIC_DESCRIPTION)
+async def schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
+
     log_string = f"Attempting to apply specific update (errata ID: {errata_id}) to system ID: {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -974,19 +978,8 @@ async def schedule_specific_update(system_identifier: Union[str, int], errata_id
             logger.error(msg)
             return msg
 
-@write_tool()
-async def add_system(
-    host: str,
-    ctx: Context,
-    activation_key: str = "",
-    ssh_port: int = 22,
-    ssh_user: str = "root",
-    proxy_id: int = None,
-    salt_ssh: bool = False,
-    confirm: Union[bool, str] = False,
-) -> str:
-    """
-    Adds a new system to be managed by Uyuni.
+DYNAMIC_DESCRIPTION = f"""
+    Adds a new system to be managed by {product}.
 
     This tool remotely connects to the specified host using SSH to register it.
     It requires an SSH private key to be configured in the UYUNI_SSH_PRIV_KEY
@@ -997,7 +990,7 @@ async def add_system(
         activation_key: The activation key for registering the system.
         ssh_port: The SSH port on the target machine (default: 22).
         ssh_user: The user to connect with via SSH (default: 'root').
-        proxy_id: The system ID of a Uyuni proxy to use (optional).
+        proxy_id: The system ID of a {product} proxy to use (optional).
         salt_ssh: Manage the system with Salt SSH (default: False).
         confirm: User confirmation is required to execute this action. This parameter
                  is `False` by default. To obtain the confirmation message that must
@@ -1011,6 +1004,17 @@ async def add_system(
         A success message if the system is scheduled for addition successfully.
         An error message if the operation fails.
     """
+@write_tool(description = DYNAMIC_DESCRIPTION)
+async def add_system(
+    host: str,
+    ctx: Context,
+    activation_key: str = "",
+    ssh_port: int = 22,
+    ssh_user: str = "root",
+    proxy_id: int = None,
+    salt_ssh: bool = False,
+    confirm: Union[bool, str] = False,
+) -> str:
     log_string = f"Attempting to add system ID: {host}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1040,13 +1044,13 @@ async def add_system(
     active_systems = await _list_systems(token)
     for system in active_systems:
         if system.get('system_name') == host:
-            message = f"System '{host}' already exists in Uyuni. No action taken."
+            message = f"System '{host}' already exists in {product}. No action taken."
             logger.info(message)
             await ctx.info(message)
             return message
 
     if not is_confirmed:
-        return f"CONFIRMATION REQUIRED: This will add system {host} with activation key {activation_key} to Uyuni. Do you confirm?"
+        return f"CONFIRMATION REQUIRED: This will add system {host} with activation key {activation_key} to {product}. Do you confirm?"
 
     ssh_priv_key_raw = os.environ.get('UYUNI_SSH_PRIV_KEY')
     if not ssh_priv_key_raw:
@@ -1086,7 +1090,7 @@ async def add_system(
 
     if api_result is TIMEOUT_HAPPENED:
         # The action was long-running and timed out, which is expected.
-        # The task is likely running in the background on Uyuni.
+        # The task is likely running in the background on product.
         success_message = f"System {host} addition process started. It may take some time. Check the system list later for its status."
         logger.info(success_message)
         return success_message
@@ -1099,18 +1103,15 @@ async def add_system(
         logger.info(f"api result was NOT 1 {api_result}")
         return f"System {host} was NOT successfully scheduled to be added. Check server logs."
 
-
-@write_tool()
-async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanup: bool = True, confirm: Union[bool, str] = False) -> str:
-    """
-    Removes/deletes a system from being managed by Uyuni.
+DYNAMIC_DESCRIPTION = f"""
+    Removes/deletes a system from being managed by {product}.
 
     This is a destructive action and requires confirmation.
 
     Args:
         system_identifier: The unique identifier of the system to remove. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
-        cleanup: If True (default), Uyuni will attempt to run cleanup scripts on the client before deletion.
-                 If False, the system is deleted from Uyuni without attempting client-side cleanup.
+        cleanup: If True (default), {product} will attempt to run cleanup scripts on the client before deletion.
+                 If False, the system is deleted from {product} without attempting client-side cleanup.
         confirm: User confirmation is required to execute this action. This parameter
                  is `False` by default. To obtain the confirmation message that must
                  be presented to the user, the model must first call the tool with
@@ -1121,6 +1122,8 @@ async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanu
         A confirmation message if 'confirm' is False.
         A success or error message string detailing the outcome.
     """
+@write_tool(description = DYNAMIC_DESCRIPTION)
+async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanup: bool = True, confirm: Union[bool, str] = False) -> str:
     log_string = f"Attempting to remove system with id {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1138,7 +1141,7 @@ async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanu
         return message
 
     if not is_confirmed:
-        return (f"CONFIRMATION REQUIRED: This will permanently remove system {system_id} from Uyuni. "
+        return (f"CONFIRMATION REQUIRED: This will permanently remove system {system_id} from {product}. "
                 f"Client-side cleanup is currently {'ENABLED' if cleanup else 'DISABLED'}. Do you confirm?")
 
     cleanup_type = "FORCE_DELETE" if cleanup else "NO_CLEANUP"
@@ -1162,9 +1165,7 @@ async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanu
         logger.error(error_message)
         return error_message
 
-@mcp.tool()
-async def list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context) -> List[Dict[str, Any]]:
-    """
+DYNAMIC_DESCRIPTION = f"""
     Finds systems requiring a security update for a specific CVE identifier.
 
     This tool identifies systems that are vulnerable to a given Common
@@ -1184,6 +1185,8 @@ async def list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context)
                               the CVE is not found, no systems are affected,
                               or an API error occurs.
     """
+@mcp.tool(description = DYNAMIC_DESCRIPTION)
+async def list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context) -> List[Dict[str, Any]]:
 
     log_string = f"Getting systems that need to apply CVE {cve_identifier}"
     logger.info(log_string)
@@ -1268,20 +1271,20 @@ async def list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context)
 
     return list(affected_systems_map.values())
 
-@mcp.tool()
-async def list_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
-    """
-    Fetches a list of systems from the Uyuni server that require a reboot.
+DYNAMIC_DESCRIPTION = f"""
+    Fetches a list of systems from the {product} server that require a reboot.
 
     The returned list contains dictionaries, each with 'system_id' (int),
     'system_name' (str), and 'reboot_status' (str, typically 'reboot_required')
-    for a system that has been identified by Uyuni as needing a reboot.
+    for a system that has been identified by {product} as needing a reboot.
 
     Returns:
         List[Dict[str, Any]]: A list of system dictionaries (system_id, system_name, reboot_status)
                               for systems requiring a reboot. Returns an empty list
                               if no systems require a reboot.
     """
+@mcp.tool(description = DYNAMIC_DESCRIPTION)
+async def list_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
 
     log_string = "Fetch list of system that require a reboot."
     logger.info(log_string)
@@ -1317,11 +1320,8 @@ async def list_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
 
     return systems_needing_reboot_list
 
-@write_tool()
-async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context, confirm: Union[bool, str] = False) -> str:
-
-    """
-    Schedules an immediate reboot for a specific system on the Uyuni server.
+DYNAMIC_DESCRIPTION = f"""
+    Schedules an immediate reboot for a specific system on the {product} server.
 
     Args:
         system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
@@ -1338,6 +1338,9 @@ async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context
              e.g., "System reboot successfully scheduled. Action URL: ...".
              Returns an empty string if scheduling fails or an error occurs.
     """
+@write_tool(description = DYNAMIC_DESCRIPTION)
+async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context, confirm: Union[bool, str] = False) -> str:
+
     log_string = f"Schedule system reboot for system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1366,7 +1369,7 @@ async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context
             token=token
         )
 
-        # Uyuni's scheduleReboot API returns an integer action ID directly in 'result'
+        # uyuni's scheduleReboot API returns an integer action ID directly in 'result'
         if isinstance(api_result, int):
             action_id = api_result
             action_detail_url = f"{CONFIG['UYUNI_SERVER']}/rhn/schedule/ActionDetails.do?aid={action_id}"
@@ -1376,10 +1379,8 @@ async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context
         else:
             return "Unexpected API response format when scheduling reboot. Check server logs for details."
 
-@mcp.tool()
-async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
-    """
-    Fetches a list of all scheduled actions from the Uyuni server.
+DYNAMIC_DESCRIPTION = f"""
+    Fetches a list of all scheduled actions from the {product} server.
 
     You can use this tool to check the status of a reboot. A reboot is finished when
     its related action is completed.
@@ -1394,6 +1395,8 @@ async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
         List[Dict[str, Any]]: A list of action dictionaries.
                               Returns an empty list if no actions are found.
     """
+@mcp.tool(description = DYNAMIC_DESCRIPTION)
+async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
 
     log_string = "Listing all scheduled actions"
     logger.info(log_string)
@@ -1425,10 +1428,8 @@ async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
             logger.warning(f"Expected a list for all scheduled actions, but received: {type(api_result)}")
     return processed_actions_list
 
-@write_tool()
-async def cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] = False) -> str:
-    """
-    Cancels a specified action on the Uyuni server.
+DYNAMIC_DESCRIPTION = f"""
+    Cancels a specified action on the {product} server.
 
     Args:
         action_id: The integer ID of the action to be canceled.
@@ -1445,6 +1446,8 @@ async def cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] 
              e.g., "Failed to cancel action 123. Please check the action ID and server logs."
     """
 
+@write_tool(description = DYNAMIC_DESCRIPTION)
+async def cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] = False) -> str:
     log_string = f"Cancel action {action_id}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1474,10 +1477,9 @@ async def cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] 
         else:
             return f"Failed to cancel action: {action_id}. The API did not return success (expected 1, got {api_result}). Check server logs for details."
 
-@mcp.tool()
-async def list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
-    """
-    Fetches a list of activation keys from the Uyuni server.
+
+DYNAMIC_DESCRIPTION = f"""
+    Fetches a list of activation keys from the {product} server.
 
     This tool retrieves all activation keys visible to the user and returns
     a list containing only the key identifier and its description.
@@ -1488,6 +1490,8 @@ async def list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
                               'description' fields. Returns an empty list
                               if no keys are found.
     """
+@mcp.tool(description = DYNAMIC_DESCRIPTION)
+async def list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
     list_keys_path = '/rhn/manager/api/activationkey/listActivationKeys'
 
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
@@ -1510,9 +1514,7 @@ async def list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
                 await ctx.warning(msg)
     return filtered_keys
 
-@mcp.tool()
-async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str, Any]]:
-    """
+DYNAMIC_DESCRIPTION = f"""
     Provides a list of errata that are applicable to the system with the system_id
     passed as parameter and have not been scheduled yet. All elements in the result are patches that are applicable
     for the system.
@@ -1525,6 +1527,8 @@ async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str,
                             to the system given as a parameter.
                             Returns an empty dictionary if no applicable errata for the system are found.
     """
+@mcp.tool(description = DYNAMIC_DESCRIPTION)
+async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str, Any]]:
     log_string = f"Getting list of unscheduled errata for system {system_id}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1551,10 +1555,8 @@ async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str,
             logger.error(msg)
             return msg
 
-@mcp.tool()
-async def list_system_groups(ctx: Context) -> List[Dict[str, str]]:
-    """
-    Fetches a list of system groups from the Uyuni server.
+DYNAMIC_DESCRIPTION = f"""
+    Fetches a list of system groups from the {product} server.
 
     This tool retrieves all system groups visible to the user and returns a list containing for
     each group the identifier, name, description and system count.
@@ -1569,20 +1571,22 @@ async def list_system_groups(ctx: Context) -> List[Dict[str, str]]:
 
         Example:
             [
-                {
+                {{
                     "id": "1",
                     "name": "Default Group",
                     "description": "Default group for all systems",
                     "system_count": "10"
-                },
-                {
+                }},
+                {{
                     "id": "2",
                     "name": "Test Group",
                     "description": "Group for testing purposes",
                     "system_count": "5"
-                }
+                }}
             ]
     """
+@mcp.tool(description = DYNAMIC_DESCRIPTION)
+async def list_system_groups(ctx: Context) -> List[Dict[str, str]]:
     list_groups_path = '/rhn/manager/api/systemgroup/listAllGroups'
 
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
@@ -1606,10 +1610,8 @@ async def list_system_groups(ctx: Context) -> List[Dict[str, str]]:
                 await ctx.warning(msg)
     return filtered_groups
 
-@write_tool()
-async def create_system_group(name: str, ctx: Context, description: str = "", confirm: Union[bool, str] = False) -> str:
-    """
-    Creates a new system group in Uyuni.
+DYNAMIC_DESCRIPTION = f"""
+    Creates a new system group in {product}.
 
     Args:
         name: The name of the new system group.
@@ -1627,6 +1629,8 @@ async def create_system_group(name: str, ctx: Context, description: str = "", co
         Example:
             Successfully created system group 'my-group'.
     """
+@write_tool(description = DYNAMIC_DESCRIPTION)
+async def create_system_group(name: str, ctx: Context, description: str = "", confirm: Union[bool, str] = False) -> str:
     log_string = f"Creating system group '{name}'"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1661,9 +1665,7 @@ async def create_system_group(name: str, ctx: Context, description: str = "", co
             logger.error(msg)
         return msg
 
-@mcp.tool()
-async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, Any]]:
-    """
+DYNAMIC_DESCRIPTION = f"""
     Lists the systems in a system group.
 
     Args:
@@ -1677,16 +1679,18 @@ async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, An
 
         Example:
             [
-                {
+                {{
                     "system_id": "123456789",
                     "system_name": "my-system"
-                },
-                {
+                }},
+                {{
                     "system_id": "987654321",
                     "system_name": "my-other-system"
-                }
+                }}
             ]
     """
+@mcp.tool(description = DYNAMIC_DESCRIPTION)
+async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, Any]]:
     log_string = f"Listing systems in group '{group_name}'"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1717,9 +1721,7 @@ async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, An
                 await ctx.warning(msg)
     return filtered_systems
 
-@write_tool()
-async def add_systems_to_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context, confirm: Union[bool, str] = False) -> str:
-    """
+DYNAMIC_DESCRIPTION = f"""
     Adds systems to a system group.
 
     Args:
@@ -1737,11 +1739,11 @@ async def add_systems_to_group(group_name: str, system_identifiers: List[Union[s
         Example:
             Successfully added 1 systems to/from group 'test-group'.
     """
+@write_tool(description = DYNAMIC_DESCRIPTION)
+async def add_systems_to_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context, confirm: Union[bool, str] = False) -> str:
     return await _manage_group_systems(group_name, system_identifiers, True, ctx, confirm)
 
-@write_tool()
-async def remove_systems_from_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context, confirm: Union[bool, str] = False) -> str:
-    """
+DYNAMIC_DESCRIPTION = f"""
     Removes systems from a system group.
 
     Args:
@@ -1759,6 +1761,8 @@ async def remove_systems_from_group(group_name: str, system_identifiers: List[Un
         Example:
             Successfully removed 1 systems to/from group 'test-group'.
     """
+@write_tool(description = DYNAMIC_DESCRIPTION)
+async def remove_systems_from_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context, confirm: Union[bool, str] = False) -> str:
     return await _manage_group_systems(group_name, system_identifiers, False, ctx, confirm)
 
 async def _manage_group_systems(group_name: str, system_identifiers: List[Union[str, int]], add: bool, ctx: Context, confirm: Union[bool, str] = False) -> str:
@@ -1810,7 +1814,7 @@ async def _manage_group_systems(group_name: str, system_identifiers: List[Union[
 
 def main_cli():
 
-    logger.info("Running Uyuni MCP server.")
+    logger.info("Running {product} MCP server.")
 
     if CONFIG["UYUNI_MCP_TRANSPORT"] == Transport.HTTP.value:
         if CONFIG["AUTH_SERVER"]:

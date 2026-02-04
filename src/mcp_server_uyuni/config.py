@@ -30,6 +30,7 @@ UYUNI_MCP_LOG_FILE_PATH = os.environ.get('UYUNI_MCP_LOG_FILE_PATH')
 log_level_str = os.environ.get('UYUNI_MCP_LOG_LEVEL', 'info').upper()
 UYUNI_MCP_LOG_LEVEL = getattr(logging, log_level_str, logging.INFO)
 
+UYUNI_PRODUCT_NAME= os.environ.get("UYUNI_PRODUCT_NAME", "Uyuni")
 
 
 CONFIG = {
@@ -43,5 +44,6 @@ CONFIG = {
     "UYUNI_MCP_LOG_LEVEL": UYUNI_MCP_LOG_LEVEL,
     "UYUNI_MCP_HOST": UYUNI_MCP_HOST,
     "UYUNI_MCP_PORT": UYUNI_MCP_PORT,
-    "AUTH_SERVER": UYUNI_AUTH_SERVER
+    "AUTH_SERVER": UYUNI_AUTH_SERVER,
+    "UYUNI_PRODUCT_NAME": UYUNI_PRODUCT_NAME
 }

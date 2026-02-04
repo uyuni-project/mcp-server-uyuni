@@ -1,0 +1,18 @@
+<services>
+	<service mode="buildtime" name="kiwi_metainfo_helper"/>
+	<service mode="buildtime" name="replace_using_package_version">
+		<param name="file">Dockerfile</param>
+		<param name="regex">%PKG_VERSION%</param>
+		<param name="parse-version">patch</param>
+		<!-- Fill with the main package of the container.
+		     It determines the version of the container image. -->
+		<param name="package">python313-mcp-server-mlm</param>
+	</service>
+	<service mode="buildtime" name="docker_label_helper"/>
+	<service mode="buildtime" name="replace_using_package_version">
+ 		<param name="file">Dockerfile</param>
+ 		<param name="package">python313-mcp-server-mlm</param>
+ 		<param name="regex">%COMMIT_HASH%</param>
+ 		<param name="parse-version">offset</param>
+	</service>
+</services>
