@@ -32,7 +32,6 @@ Summary:        Model Context Protocol Server for Uyuni Server API
 License:        Apache-2.0
 URL:            https://github.com/uyuni-project/mcp-server-uyuni
 Source:         mcp-server-uyuni-%{p_version}.tar.gz
-Patch0:         review-pydeps.patch  
 
 BuildRequires:  %{python_module pip}
 BuildRequires:  %{python_module setuptools}
