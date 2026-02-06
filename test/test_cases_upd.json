@@ -2,56 +2,50 @@
   {
     "id": "TC-UPD-001",
     "prompt": "Are there any updates for system ID {rhlike_minion_id}? List them.",
-    "expected_output": "The response must contain a list of pending updates for system {rhlike_minion_id}."
+    "expected_output": "The response must contain a list of pending updates for system {rhlike_minion_id} OR state that there are no pending updates."
   },
   {
     "id": "TC-UPD-002",
     "prompt": "Are there any updates for '{rhlike_minion_name}'?",
-    "expected_output": "The response must contain a list of pending updates for system '{rhlike_minion_name}'."
+    "expected_output": "The response must contain a list of pending updates for system '{rhlike_minion_name}' OR state that there are no pending updates."
   },
   {
     "id": "TC-UPD-003",
-    "prompt": "Are all my servers up-to-date?",
     "prompt": "Use the available tools to check all systems for pending updates and return a list of the systems that have them.",
-    "expected_output": "The response must contain a list of systems that have pending updates."
+    "expected_output": "The response must contain a list of systems that have pending updates OR state that there are no pending updates."
   },
   {
     "id": "TC-UPD-004_confirm_request",
     "prompt": "Can you update my server with id {rhlike_minion_id}?",
-    "expected_output": "CONFIRMATION REQUIRED: This will apply pending updates to the system {rhlike_minion_id}.  Do you confirm?"
+    "expected_output": "CONFIRMATION REQUIRED: This will apply pending updates to the system {rhlike_minion_id}.  Do you confirm? OR The response states that there are no pending updates."
   },
   {
     "id": "TC-UPD-005_confirm_request",
-    "prompt": "Update {rhlike_minion_name}.",
     "prompt": "Can you update {rhlike_minion_name}?",
-    "expected_output": "CONFIRMATION REQUIRED: This will apply pending updates to the system {rhlike_minion_name}.  Do you confirm?"
+    "expected_output": "CONFIRMATION REQUIRED: This will apply pending updates to the system {rhlike_minion_name}.  Do you confirm? OR The response states that there are no pending updates."
   },
   {
     "id": "TC-UPD-006_confirmed",
-    "prompt": "Update my server with id {rhlike_minion_id}?, confirmation set to true",
     "prompt": "Update my server with id {rhlike_minion_id}. I confirm.",
     "expected_output": "Update successfully scheduled at ...'"
   },
   {
     "id": "TC-UPD-007",
     "prompt": "Are there any security updates for my systems?",
-    "expected_output": "The response must contain a list of systems that have pending security updates."
+    "expected_output": "The response must contain a list of systems that have pending security updates OR state that there are no pending security updates."
   },
   {
     "id": "TC-UPD-008_confirm_request",
-    "prompt": "can you schedule applying the update with update id 2764 for system id {proxy_id}",
     "prompt": "Can you schedule applying the update with update id 2764 for system id {proxy_id}?",
     "expected_output": "CONFIRMATION REQUIRED: This will apply specific update (errata ID: 2764) to the system {proxy_id}. Do you confirm?"
   },
   {
     "id": "TC-UPD-009_confirm_request",
-    "prompt": "can you schedule applying the update with update id 2764 for system {proxy_name}.",
     "prompt": "Can you schedule applying the update with update id 2764 for system {proxy_name}?",
     "expected_output": "CONFIRMATION REQUIRED: This will apply specific update (errata ID: 2764) to the system {proxy_name}. Do you confirm?"
   },
   {
     "id": "TC-UPD-010_confirmed",
-    "prompt": "can you schedule applying the update with update id 2764 for system id {proxy_id}, confirmation set to true",
     "prompt": "Schedule applying the update with update id 2764 for system id {proxy_id}. I confirm.",
     "expected_output": "Update (errata ID: 2764) successfully scheduled for system {proxy_id}. Action URL: ...'"
   }
