@@ -1,7 +1,7 @@
 [
   {
     "id": "TC-SCH-001",
-    "prompt": "List all scheduled actions in Uyuni.",
+    "prompt": "List all scheduled actions in {product_name}.",
     "expected_output": "Returns a list of action dictionaries, or an empty list if none. Example fields: id, name, type, earliest."
   },
   {

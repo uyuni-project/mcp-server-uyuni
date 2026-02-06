@@ -1,6 +1,6 @@
 [
   { "id": "TC-OPS-Pre",
-    "prompt": "Is system with name {new_system_host} in uyuni?",
+    "prompt": "Is system with name {new_system_host} in {product_name}?",
     "expected_output": "Return a message stating it is not"
   },
   {

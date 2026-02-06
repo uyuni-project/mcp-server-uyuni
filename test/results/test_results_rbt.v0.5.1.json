@@ -1,0 +1,34 @@
+[
+  {
+    "id": "TC-RBT-001",
+    "prompt": "Do any of my systems require reboot?",
+    "expected_output": "Return a message that suma-test-ai-rhlike-minion.mgr.suse.de require a reboot.",
+    "actual_output": "Yes, the following systems require a reboot:\n- suma-test-ai-proxy.mgr.suse.de (ID: 1000010000)\n- suma-test-ai-rhlike-minion.mgr.suse.de (ID: 1000010001)\n- suma-test-ai-build-host.mgr.suse.de (ID: 1000010003)",
+    "status": "PASS",
+    "reason": "The actual output semantically confirms that 'suma-test-ai-rhlike-minion.mgr.suse.de' requires a reboot, fulfilling the expected output, even though it lists other systems as well."
+  },
+  {
+    "id": "TC-RBT-002_confirm_request",
+    "prompt": "Can you schedule a reboot for system suma-test-ai-rhlike-minion.mgr.suse.de?",
+    "expected_output": "Return a message requiring confirmation",
+    "actual_output": "I am going to schedule a reboot for suma-test-ai-rhlike-minion.mgr.suse.de. Do you want to continue?",
+    "status": "PASS",
+    "reason": "The actual output semantically asks for confirmation, which matches the expected output."
+  },
+  {
+    "id": "TC-RBT-003_confirmed",
+    "prompt": "Can you schedule a reboot for system suma-test-ai-rhlike-minion.mgr.suse.de?, confirmation set to true",
+    "expected_output": "Return a message that system reboot has been successfully scheduled and give the URL of the action details.",
+    "actual_output": "System reboot successfully scheduled. Action URL: https://suma-test-ai-server.mgr.suse.de/rhn/schedule/ActionDetails.do?aid=43",
+    "status": "PASS",
+    "reason": "The actual output semantically matches the expected output by confirming the system reboot was successfully scheduled and providing an action URL."
+  },
+  {
+    "id": "TC-RBT-004",
+    "prompt": "Schedule a reboot for system 999999999 with confirmation.",
+    "expected_output": "Returns an empty string or error message; no action scheduled.",
+    "actual_output": "I am sorry, but I was unable to schedule a reboot for the system with ID 999999999. The system could not be found. Please check the system ID and try again.",
+    "status": "PASS",
+    "reason": "The actual output is an error message, which is consistent with the expected output."
+  }
+]

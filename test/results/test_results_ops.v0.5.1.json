@@ -1,0 +1,26 @@
+[
+  {
+    "id": "TC-OPS-Pre",
+    "prompt": "Is system with name 10.145.211.247 in Uyuni?",
+    "expected_output": "Return a message stating it is not",
+    "actual_output": "I can't find a system with the name \"10.145.211.247\". Did you mean to search by IP address?",
+    "status": "PASS",
+    "reason": "The actual output semantically conveys that the system was not found, which aligns with the expected output of 'a message stating it is not'."
+  },
+  {
+    "id": "TC-OPS-001_confirm_request",
+    "prompt": "Add a new system at host 10.145.211.247 with activation key '1-DEBLIKE-KEY'?",
+    "expected_output": "Return a message requiring confirmation.",
+    "actual_output": "This will add system 10.145.211.247 with activation key 1-DEBLIKE-KEY to MLM. Do you confirm?",
+    "status": "PASS",
+    "reason": "The actual output semantically asks for confirmation, which matches the expected output."
+  },
+  {
+    "id": "TC-OPS-001_confirmed",
+    "prompt": "Add a new system at host 10.145.211.247 with activation key '1-DEBLIKE-KEY', confirmation set to true",
+    "expected_output": "Return a message stating that the addition process started, and instructing the user to check the system list later for its status.",
+    "actual_output": "An error occurred while adding the system. It seems there was an issue establishing an SSH connection to the host \"10.145.211.247\". Please ensure the host is reachable and the SSH private key is correctly configured on the Uyuni server.",
+    "status": "FAIL",
+    "reason": "The actual output indicates an error during system addition, which contradicts the expected output of a message stating the addition process started successfully."
+  }
+]

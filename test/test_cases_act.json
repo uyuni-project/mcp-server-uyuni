@@ -1,7 +1,7 @@
 [
   {
     "id": "TC-ACT-001",
-    "prompt": "List activation keys",
+    "prompt": "List activation keys in {product_name}",
     "expected_output": "The return message includes the activation keys {key_suse}, {key_rhlike}, {key_deblike}, {key_suse_ssh}, {key_suse_ssh_tunnel}, {key_proxy}, {key_build_host}, and {key_terminal}. It can optionally include descriptions of the keys."
   }
 ]

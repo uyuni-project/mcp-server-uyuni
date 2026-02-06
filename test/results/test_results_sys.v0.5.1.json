@@ -1,0 +1,66 @@
+[
+  {
+    "id": "TC-SYS-001",
+    "prompt": "Get the name and system id of all systems in the Uyuni server.",
+    "expected_output": "The response must contain the following system and ID pairs: \n* suma-test-ai-build-host.mgr.suse.de: 1000010003 \n* suma-test-ai-deblike-minion.mgr.suse.de: 1000010002 \n* suma-test-ai-proxy.mgr.suse.de: 1000010000 \n* suma-test-ai-rhlike-minion.mgr.suse.de: 1000010001 \n* suma-test-ai-suse-minion.mgr.suse.de: 1000010004 \n* suma-test-ai-suse-sshminion.mgr.suse.de: 1000010006",
+    "actual_output": "Here are the systems registered with the Uyuni server:\n\n*   **suma-test-ai-build-host.mgr.suse.de** (ID: 1000010003)\n*   **suma-test-ai-deblike-minion.mgr.suse.de** (ID: 1000010002)\n*   **suma-test-ai-proxy.mgr.suse.de** (ID: 1000010000)\n*   **suma-test-ai-rhlike-minion.mgr.suse.de** (ID: 1000010001)\n*   **suma-test-ai-suse-minion.mgr.suse.de** (ID: 1000010004)\n*   **suma-test-ai-suse-sshminion.mgr.suse.de** (ID: 1000010005)",
+    "status": "FAIL",
+    "reason": "The system 'suma-test-ai-suse-sshminion.mgr.suse.de' in the actual output has an ID of '1000010005', but the expected output requires '1000010006'."
+  },
+  {
+    "id": "TC-SYS-002",
+    "prompt": "Get CPU details for system ID 1000010000.",
+    "expected_output": "Returns a message with CPU attributes. Among those attributes there is the model name AMD EPYC.",
+    "actual_output": "The CPU details for system ID 1000010000 are:\n- **Family:** 25\n- **MHz:** 3099.998\n- **Model:** AMD EPYC-Genoa Processor\n- **Vendor:** AuthenticAMD\n- **Architecture:** x86_64",
+    "status": "PASS",
+    "reason": "The actual output returns CPU attributes and includes 'AMD EPYC' within the model name, matching the expected output."
+  },
+  {
+    "id": "TC-SYS-003",
+    "prompt": "Get CPU details for system ID 999999999.",
+    "expected_output": "EXPECTED: The response must indicate that the system (ID 999999999) either does not exist OR that no CPU details could be found for it.",
+    "actual_output": "I'm sorry, I was unable to retrieve CPU details for system ID 999999999. The system was not found. Please double check the system ID and try again.",
+    "status": "PASS",
+    "reason": "The actual output indicates that the system was not found and that CPU details could not be retrieved, fulfilling the 'either/or' condition of the expected output."
+  },
+  {
+    "id": "TC-SYS-004",
+    "prompt": "Show me the CPU information for all my systems.",
+    "expected_output": "Returns a message with the CPU information of each system. Except for the proxy (AMD EPYC), all the rest are QEMU Virtual CPU.",
+    "actual_output": "I can only show you the CPU information for one system at a time. Please, tell me the name or ID of the system you want to know the CPU information for.",
+    "status": "FAIL",
+    "reason": "The actual output indicates that it cannot provide CPU information for multiple systems, which contradicts the expected output of returning CPU information for each system."
+  },
+  {
+    "id": "TC-SYS-005",
+    "prompt": "Do all active servers have the same CPU? Use available tools to answer.",
+    "expected_output": "No. All have QEMU Virtual CPU except proxy, which has AMD EPYC.",
+    "actual_output": "No, not all active servers have the same CPU. The server `suma-test-ai-proxy.mgr.suse.de` (ID: 1000010000) has a CPU with family '25' and model 'AMD EPYC-Genoa Processor', while all other active servers have a CPU with family '15' and model 'QEMU Virtual CPU version 2.5+'.",
+    "status": "PASS",
+    "reason": "The actual output semantically matches the expected output, providing additional detail without contradicting the core information."
+  },
+  {
+    "id": "TC-SYS-006",
+    "prompt": "Get CPU details for system 'suma-test-ai-build-host.mgr.suse.de'.",
+    "expected_output": "Returns a message with CPU attributes of model QEMU Virtual CPU.",
+    "actual_output": "The CPU details for 'suma-test-ai-build-host.mgr.suse.de' are:\n  - Family: 15\n  - MHz: 3099.998\n  - Model: QEMU Virtual CPU version 2.5+\n  - Vendor: AuthenticAMD\n  - Architecture: x86_64",
+    "status": "PASS",
+    "reason": "The actual output contains the CPU attributes, including the model 'QEMU Virtual CPU', as expected."
+  },
+  {
+    "id": "TC-SYS-007",
+    "prompt": "Create a new system group named 'test-group' with description 'Test Group Description'.",
+    "expected_output": "CONFIRMATION REQUIRED: This will create a new system group named 'test-group' with description 'Test Group Description'. Do you confirm?",
+    "actual_output": "I am about to create a new system group named 'test-group' with the description 'Test Group Description'. Do you want to continue?",
+    "status": "PASS",
+    "reason": "The actual output semantically asks for confirmation and contains the same information as the expected output, fulfilling rule 5."
+  },
+  {
+    "id": "TC-SYS-008",
+    "prompt": "Create a new system group named 'test-group' with description 'Test Group Description'. Confirm yes.",
+    "expected_output": "Successfully created system group 'test-group'.",
+    "actual_output": "The system group 'test-group' already exists. I cannot create a new group with the same name.",
+    "status": "FAIL",
+    "reason": "The actual output indicates that the system group already exists, which contradicts the expected output of successful group creation."
+  }
+]
