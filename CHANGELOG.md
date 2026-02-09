@@ -1,3 +1,9 @@
+## 0.5.2 (2026-02-09)
+
+### Bug Fixes
+
+* **system**: Fix schedule update
+
 ## 0.5.1 (2026-02-05)
 
 ### Release

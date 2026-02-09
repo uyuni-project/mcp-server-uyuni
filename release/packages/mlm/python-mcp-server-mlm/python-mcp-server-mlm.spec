@@ -22,11 +22,11 @@
 %else
 %bcond_with libalternatives
 %endif
-%global p_version 0.5.1
+%global p_version 0.5.2
 %global git_revision %(tar xfO %{SOURCE0} mcp-server-uyuni-%{p_version}/last-commit)
 
 Name:           python-mcp-server-mlm
-Version:        0.5.1+git%{git_revision}
+Version:        %{p_version}+git%{git_revision}
 Release:        0
 Summary:        Model Context Protocol Server for Uyuni Server API
 License:        Apache-2.0
