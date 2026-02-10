@@ -8,11 +8,19 @@
 		     It determines the version of the container image. -->
 		<param name="package">python313-mcp-server-mlm</param>
 	</service>
-	<service mode="buildtime" name="docker_label_helper"/>
 	<service mode="buildtime" name="replace_using_package_version">
- 		<param name="file">Dockerfile</param>
- 		<param name="package">python313-mcp-server-mlm</param>
- 		<param name="regex">%COMMIT_HASH%</param>
- 		<param name="parse-version">offset</param>
+		<param name="file">Dockerfile</param>
+		<param name="regex">%PKG_VERSION_MINOR%</param>
+		<param name="parse-version">minor</param>
+		<!-- Fill with the main package of the container.
+		     It determines the version of the container image. -->
+		<param name="package">python313-mcp-server-mlm</param>
 	</service>
+	<service mode="buildtime" name="docker_label_helper"/>
+	<service mode="buildtime" name="replace_using_env">
+                <param name="file">Dockerfile</param>
+                <param name="var">COMMIT_HASH</param>
+                <param name="eval">COMMIT_HASH=$(rpm -qp --qf "%{VERSION}\n" $(find ./repos/ -name python313-mcp-server-mlm*.rpm) | grep -oP '\+git\K[a-f0-9]{40}')</param>
+                <param name="verbose">1</param>
+        </service>
 </services>
