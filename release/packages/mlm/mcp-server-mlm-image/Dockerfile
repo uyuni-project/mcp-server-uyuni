@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-#!BuildTag: suse/agentic/mcp/multi-linux-manager:latest suse/agentic/mcp/multi-linux-manager:%PKG_VERSION% suse/agentic/mcp/multi-linux-manager:%PKG_VERSION%.%RELEASE%
+#!BuildTag: suse/agentic/mcp/multi-linux-manager:latest suse/agentic/mcp/multi-linux-manager:%PKG_VERSION% suse/agentic/mcp/multi-linux-manager:%PKG_VERSION_MINOR% suse/agentic/mcp/multi-linux-manager:%PKG_VERSION%.%RELEASE%
 FROM bci/python:3.13
 
 # Define labels according to https://en.opensuse.org/Building_derived_containers
@@ -12,7 +12,7 @@ LABEL org.openbuildservice.disturl="%DISTURL%"
 LABEL org.opencontainers.image.created="%BUILDTIME%"
 LABEL org.opencontainers.image.source="https://github.com/uyuni-project/mcp-server-uyuni"
 LABEL org.opencontainers.image.version="%PKG_VERSION%"
-LABEL org.opencontainers.image.revision="%COMMIT_HASH%"
+LABEL org.opencontainers.image.revision="%%COMMIT_HASH%%"
 LABEL com.suse.supportlevel="techpreview"
 
 # Workaround for https://github.com/openSUSE/obs-build/issues/487

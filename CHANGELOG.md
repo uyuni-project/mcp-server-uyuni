@@ -1,3 +1,24 @@
+## 0.5.2 (2026-02-09)
+
+### Bug Fixes
+
+* **system**: Fix schedule update
+
+## 0.5.1 (2026-02-05)
+
+### Release
+ Prepare release in registry.suse.com
+ * Review python dependencies
+ * Add traceability (last commit id)
+ * Add product name
+ * Add packaging files for mlm (RPM and container)
+
+### Docs
+ * Update README with additional sections
+
+# Development
+ * Allow debug level change by setting a new environment variable
+
 ## 0.5.0 (2025-12-30)
 
 ### Features

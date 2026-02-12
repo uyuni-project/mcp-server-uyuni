@@ -1,0 +1,74 @@
+[
+  {
+    "id": "TC-UPD-001",
+    "prompt": "Are there any updates for system ID 1000010001? List them.",
+    "expected_output": "The response must contain a list of pending updates for system 1000010001.",
+    "actual_output": "Yes, there are 3 pending updates for system ID 1000010001:\n\n*   **virgo-dummy-3456** (Bug Fix Advisory): Test update for virgo-dummy. Associated CVEs: CVE-1999-9998.\n*   **milkyway-dummy-2345** (Security Advisory): low: Security update for milkyway-dummy. Associated CVEs: CVE-1999-9999.\n*   **andromeda-dummy-6789** (Bug Fix Advisory): Test update for andromeda-dummy. No associated CVEs.",
+    "status": "PASS",
+    "reason": "The actual output explicitly lists pending updates for system ID 1000010001, fulfilling the requirement for a list of pending updates for that system."
+  },
+  {
+    "id": "TC-UPD-002",
+    "prompt": "Are there any updates for 'suma-test-ai-rhlike-minion.mgr.suse.de'?",
+    "expected_output": "The response must contain a list of pending updates for system 'suma-test-ai-rhlike-minion.mgr.suse.de'.",
+    "actual_output": "Yes, there are 3 pending updates for 'suma-test-ai-rhlike-minion.mgr.suse.de':\n\n*   **virgo-dummy-3456** (Bug Fix Advisory) - Test update for virgo-dummy (CVE-1999-9998)\n*   **milkyway-dummy-2345** (Security Advisory) - low: Security update for milkyway-dummy (CVE-1999-9999)\n*   **andromeda-dummy-6789** (Bug Fix Advisory) - Test update for andromeda-dummy (reboot suggested)",
+    "status": "PASS",
+    "reason": "The actual output provides a list of pending updates for the specified system, which semantically matches the expected output."
+  },
+  {
+    "id": "TC-UPD-004_confirm_request",
+    "prompt": "Can you update my server with id 1000010001?",
+    "expected_output": "CONFIRMATION REQUIRED: This will apply pending updates to the system 1000010001.  Do you confirm?",
+    "actual_output": "This will apply pending updates to the system 1000010001. Do you confirm?",
+    "status": "PASS",
+    "reason": "The actual output semantically matches the confirmation prompt in the expected output, as per rule 5."
+  },
+  {
+    "id": "TC-UPD-005_confirm_request",
+    "prompt": "Can you update suma-test-ai-rhlike-minion.mgr.suse.de?",
+    "expected_output": "CONFIRMATION REQUIRED: This will apply pending updates to the system suma-test-ai-rhlike-minion.mgr.suse.de.  Do you confirm?",
+    "actual_output": "This will apply pending updates to the system suma-test-ai-rhlike-minion.mgr.suse.de. Do you confirm?",
+    "status": "PASS",
+    "reason": "The actual output semantically asks for confirmation, fulfilling the requirement for confirmation prompts."
+  },
+  {
+    "id": "TC-UPD-006_confirmed",
+    "prompt": "Update my server with id 1000010001. I confirm.",
+    "expected_output": "Update successfully scheduled at ...'",
+    "actual_output": "The update for server 1000010001 has been successfully scheduled. You can view the details at https://suma-test-ai-server.mgr.suse.de/rhn/schedule/ActionDetails.do?aid=44.",
+    "status": "PASS",
+    "reason": "The actual output semantically matches the expected output's beginning, indicating a successful update scheduling."
+  },
+  {
+    "id": "TC-UPD-007",
+    "prompt": "Are there any security updates for my systems?",
+    "expected_output": "The response must contain a list of systems that have pending security updates.",
+    "actual_output": "I'm sorry, I was unable to find any security updates for your systems. Please try again.",
+    "status": "FAIL",
+    "reason": "The actual output states that no security updates were found, which contradicts the expectation of a list of systems with pending security updates."
+  },
+  {
+    "id": "TC-UPD-008_confirm_request",
+    "prompt": "Can you schedule applying the update with update id 880 for system id 1000010000?",
+    "expected_output": "CONFIRMATION REQUIRED: This will apply specific update (errata ID: 880) to the system 1000010000. Do you confirm?",
+    "actual_output": "This will apply specific update (errata ID: 880) to the system 1000010000. Do you confirm?",
+    "status": "PASS",
+    "reason": "The actual output semantically matches the expected confirmation message, as per rule 5."
+  },
+  {
+    "id": "TC-UPD-009_confirm_request",
+    "prompt": "Can you schedule applying the update with update id 880 for system suma-test-ai-proxy.mgr.suse.de?",
+    "expected_output": "CONFIRMATION REQUIRED: This will apply specific update (errata ID: 880) to the system suma-test-ai-proxy.mgr.suse.de. Do you confirm?",
+    "actual_output": "I am going to schedule the update with ID 880 to be applied to the system suma-test-ai-proxy.mgr.suse.de.\n\nDo you want to proceed?",
+    "status": "PASS",
+    "reason": "The actual output semantically asks for confirmation to apply the specific update to the specified system, which aligns with the expected output's confirmation requirement."
+  },
+  {
+    "id": "TC-UPD-010_confirmed",
+    "prompt": "Schedule applying the update with update id 880 for system id 1000010000. I confirm.",
+    "expected_output": "Update (errata ID: 880) successfully scheduled for system 1000010000. Action URL: ...'",
+    "actual_output": "I am sorry, but it seems that the update with ID 880 is invalid. I am unable to schedule it.",
+    "status": "FAIL",
+    "reason": "The actual output indicates a failure to schedule the update, which is semantically opposite to the expected output of a successful scheduling."
+  }
+]
