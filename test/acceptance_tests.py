@@ -33,6 +33,8 @@ Your task is to determine if the 'Actual Output' from the tool meets the criteri
 
 7.  **Skip thinking:** Skip any reasoning or thinking process in your response. Skip any content between <think> and </think>.
 
+8.  **Ignore Thinking Steps in Actual Output:** If the 'Actual Output' contains thinking steps (e.g., content within <think>...</think> tags), ignore them. Evaluate the test based only on the final output.
+
 **Input for Evaluation:**
 
 [Expected Output]:
@@ -49,28 +51,45 @@ Respond with a single, valid JSON object containing two keys and nothing else:
 """
 
 
-def _run_mcphost_command(prompt, config_path, model):
-    """Runs a prompt through the mcphost command and returns the output.
+def _run_command(runner, prompt, config_path, model, debug=False):
+    """Runs a prompt through the specified runner command and returns the output.
 
     Args:
+        runner (str): The command to run ('mcphost' or 'gemini').
         prompt (str): The prompt to send to the model.
-        config_path (str): Path to the mcphost config file.
+        config_path (str): Path to the config file.
         model (str): The model to use for the test.
+        debug (bool): Whether to print debug information.
 
     Returns:
         str: The actual output from the command, or an error message.
     """
-    command = [
-        "mcphost",
-        "--config",
-        config_path,
-        "--prompt",
-        prompt,
-        "--quiet",
-        "--compact",
-        "-m",
-        model,
-    ]
+    if runner == "mcphost":
+        command = [
+            "mcphost",
+            "--config",
+            config_path,
+            "--prompt",
+            prompt,
+            "--quiet",
+            "--compact",
+            "-m",
+            model,
+        ]
+    elif runner == "gemini":
+        command = [
+            "gemini",
+            "--yolo",
+            "--prompt",
+            prompt,
+            "--model",
+            model,
+        ]
+    else:
+        return f"Error: Unsupported runner '{runner}'"
+
+    if debug:
+        print(f"DEBUG: Running command: {command}")
 
     try:
         # By providing `stdin=subprocess.DEVNULL`, we prevent the subprocess
@@ -89,7 +108,7 @@ def _run_mcphost_command(prompt, config_path, model):
         return cleaned_output
     except FileNotFoundError:
         print(
-            "Error: 'mcphost' command not found. Make sure it's installed and in your PATH.",
+            f"Error: '{runner}' command not found. Make sure it's installed and in your PATH.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -106,31 +125,35 @@ def _run_mcphost_command(prompt, config_path, model):
         return f"UNEXPECTED_ERROR: {str(e)}"
 
 
-def run_test_case(prompt, config_path, model):
-    """Runs a single test case using the mcphost command.
+def run_test_case(prompt, config_path, model, runner, debug=False):
+    """Runs a single test case using the specified runner.
 
     Args:
         prompt (str): The prompt to send to the model.
-        config_path (str): Path to the mcphost config file.
+        config_path (str): Path to the config file.
         model (str): The model to use for the test.
+        runner (str): The tool to use for running the test.
+        debug (bool): Whether to print debug information.
 
     Returns:
         str: The actual output from the command, or an error message.
     """
     if not prompt:
         return "Error: 'prompt' not found in test case"
-    return _run_mcphost_command(prompt, config_path, model)
+    return _run_command(runner, prompt, config_path, model, debug=debug)
 
 
-def evaluate_test_case(expected, actual, config_path, judge_model):
+def evaluate_test_case(expected, actual, config_path, judge_model, runner, debug=False):
     """
     Uses an LLM judge to compare the actual output with the expected output.
 
     Args:
         expected (str): The expected output from the test case.
-        actual (str): The actual output from the mcphost command.
-        config_path (str): Path to the mcphost config file.
+        actual (str): The actual output from the runner command.
+        config_path (str): Path to the config file.
         judge_model (str): The model to use for the evaluation.
+        runner (str): The tool to use for running the judge.
+        debug (bool): Whether to print debug information.
 
     Returns:
         tuple: A tuple containing the status ('PASS' or 'FAIL') and a reason string.
@@ -140,7 +163,7 @@ def evaluate_test_case(expected, actual, config_path, judge_model):
 
     judge_prompt = JUDGE_PROMPT_TEMPLATE.format(expected=expected, actual=actual)
 
-    judge_response_str = _run_mcphost_command(judge_prompt, config_path, judge_model)
+    judge_response_str = _run_command(runner, judge_prompt, config_path, judge_model, debug=debug)
 
     try:
         # The mcphost command can sometimes append a "file already closed" error
@@ -222,10 +245,28 @@ def main():
         help="Model to use for the tests (e.g., 'google:gemini-2.5-flash').",
     )
     parser.add_argument(
+        "--runner",
+        type=str,
+        choices=["mcphost", "gemini"],
+        default="gemini",
+        help="Tool to run the prompts. Defaults to 'gemini'.",
+    )
+    parser.add_argument(
         "--judge-model",
         type=str,
         default=None,
         help="Model to use for judging the test results. Defaults to the test model if not specified.",
+    )
+    parser.add_argument(
+        "--test-id",
+        type=str,
+        default=None,
+        help="ID of a specific test case to run.",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug output (prints the exact command being run).",
     )
     args = parser.parse_args()
 
@@ -260,9 +301,16 @@ def main():
     judge_model = args.judge_model if args.judge_model else args.model
     print(f"Using model for tests: {args.model}")
     print(f"Using model for judging: {judge_model}\n")
+    print(f"Using runner: {args.runner}\n")
 
     with open(args.test_cases_file, "r", encoding="utf-8") as f:
         test_cases = json.load(f)
+
+    if args.test_id:
+        test_cases = [tc for tc in test_cases if tc.get("id") == args.test_id]
+        if not test_cases:
+            print(f"Error: Test case '{args.test_id}' not found.", file=sys.stderr)
+            sys.exit(1)
 
     results = []
     passed_count = 0
@@ -279,12 +327,12 @@ def main():
         expected_output = _substitute_placeholders(tc.get("expected_output"), placeholders)
 
         print(f"  PROMPT  : {prompt}")
-        actual_output = run_test_case(prompt, args.config, args.model)
+        actual_output = run_test_case(prompt, args.config, args.model, args.runner, debug=args.debug)
         print(f"  EXPECTED: {expected_output}")
         print(f"  ACTUAL  : {actual_output}")
 
         print(f"  JUDGING with {judge_model}...")
-        status, reason = evaluate_test_case(expected_output, actual_output, args.config, judge_model)
+        status, reason = evaluate_test_case(expected_output, actual_output, args.config, judge_model, args.runner, debug=args.debug)
 
         if status == "PASS":
             passed_count += 1
