@@ -22,7 +22,7 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --frozen
 
       - name: Run tests
         run: uv run --with pytest --with pytest-asyncio --with respx pytest test/test_tools.py
