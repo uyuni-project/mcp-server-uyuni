@@ -70,6 +70,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.uv]
-dev-dependencies = []
+dev-dependencies = [
+    "pytest>=8.3.5",
+    "pytest-asyncio>=0.26.0",
+    "respx>=0.22.0",
+]
 # For a flat layout with mcp_server_uyuni.py in the root,
 # Hatchling's auto-detection will find it when 'packages' is omitted.
