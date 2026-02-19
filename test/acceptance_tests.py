@@ -403,7 +403,13 @@ def main():
         if not test_cases:
             print(f"Error: Test case '{args.test_id}' not found.", file=sys.stderr)
             sys.exit(1)
-
+    if args.model != "google:gemini-2.5-flash-lite" && args.model != "gemini-2.5-flash-lite":
+        print("\n" + "!" * 60)
+        print(f"⚠️  COST WARNING: You are using '{model_name}'.")
+        print(f"This is NOT Gemini 2.5 Flash-Lite.")
+        print(f"Costs could be up to 12x higher for input and 25x for output.")
+        print("!" * 60 + "\n")
+    
     results = []
     passed_count = 0
     failed_count = 0
