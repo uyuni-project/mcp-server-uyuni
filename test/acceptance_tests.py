@@ -3,7 +3,9 @@ import json
 import subprocess
 import sys
 import time
+import os
 from pathlib import Path
+import google.generativeai as genai
 
 # ANSI escape codes for colors
 class Colors:
@@ -13,6 +15,12 @@ class Colors:
     BOLD = '\033[1m'
     WARN = '\033[93m'
 
+# Initialize Gemini API using environment variable
+API_KEY = os.environ.get("GOOGLE_API_KEY")
+if API_KEY:
+    genai.configure(api_key=API_KEY)
+else:
+    print(f"{Colors.WARN}Warning: GOOGLE_API_KEY environment variable not found.{Colors.ENDC}")
 
 JUDGE_PROMPT_TEMPLATE = """
 You are an expert quality assurance engineer evaluating test case results for a command-line tool.
@@ -50,6 +58,33 @@ Respond with a single, valid JSON object containing two keys and nothing else:
 - "reason": A brief, one-sentence string explaining your decision.
 """
 
+def _run_gemini_api(prompt, model_name):
+    """
+    Runs the prompt using the native Google Generative AI SDK 
+    and extracts detailed token usage metadata.
+    """
+    if not API_KEY:
+        return "ERROR: GOOGLE_API_KEY not set.", {}
+
+    try:
+        # Clean model name (removes 'google:' prefix if present)
+        clean_model_name = model_name.split(':')[-1]
+        model = genai.GenerativeModel(model_name=clean_model_name)
+        
+        response = model.generate_content(prompt)
+        
+        # Extract token usage metadata
+        usage = response.usage_metadata
+        token_info = {
+            "prompt_tokens": usage.prompt_token_count,
+            "completion_tokens": usage.candidates_token_count,
+            "total_tokens": usage.total_token_count,
+            "cached_tokens": getattr(usage, "cached_content_token_count", 0)
+        }
+        
+        return response.text.strip(), token_info
+    except Exception as e:
+        return f"API_ERROR: {str(e)}", {"error": str(e)}
 
 def _run_command(runner, prompt, config_path, model, debug=False):
     """Runs a prompt through the specified runner command and returns the output.
@@ -64,6 +99,8 @@ def _run_command(runner, prompt, config_path, model, debug=False):
     Returns:
         str: The actual output from the command, or an error message.
     """
+    if runner == "gemini":
+        return _run_gemini_api(prompt, model)
     if runner == "mcphost":
         command = [
             "mcphost",
@@ -74,15 +111,6 @@ def _run_command(runner, prompt, config_path, model, debug=False):
             "--quiet",
             "--compact",
             "-m",
-            model,
-        ]
-    elif runner == "gemini":
-        command = [
-            "gemini",
-            "--yolo",
-            "--prompt",
-            prompt,
-            "--model",
             model,
         ]
     else:
@@ -156,14 +184,15 @@ def evaluate_test_case(expected, actual, config_path, judge_model, runner, debug
         debug (bool): Whether to print debug information.
 
     Returns:
-        tuple: A tuple containing the status ('PASS' or 'FAIL') and a reason string.
+        tuple: A tuple containing the status ('PASS' or 'FAIL'), a reason string and tokens consumed.
     """
+    tokens = 0
     if actual.startswith("COMMAND_FAILED") or actual.startswith("UNEXPECTED_ERROR"):
-        return "FAIL", f"Command execution failed: {actual}"
+        return "FAIL", f"Command execution failed: {actual}", tokens
 
     judge_prompt = JUDGE_PROMPT_TEMPLATE.format(expected=expected, actual=actual)
 
-    judge_response_str = _run_command(runner, judge_prompt, config_path, judge_model, debug=debug)
+    judge_response_str, tokens = _run_command(runner, judge_prompt, config_path, judge_model, debug=debug)
 
     try:
         # The mcphost command can sometimes append a "file already closed" error
@@ -184,22 +213,22 @@ def evaluate_test_case(expected, actual, config_path, judge_model, runner, debug
         status = judge_result.get("status", "FAIL").upper()
         reason = judge_result.get("reason", "LLM judge did not provide a reason.")
         if status not in ["PASS", "FAIL"]:
-            return "FAIL", f"LLM judge returned an invalid status: '{status}'"
-        return status, reason
+            return "FAIL", f"LLM judge returned an invalid status: '{status}'", tokens
+        return status, reason, tokens
     except json.JSONDecodeError as e:
         # Fallback for when the LLM fails to produce valid JSON but might have
         # produced a string containing the status.
         response_upper = judge_response_str.upper()
         if "PASS" in response_upper:
-            return "PASS", f"LLM judge returned non-JSON output but contained 'PASS': '{judge_response_str}'"
+            return "PASS", f"LLM judge returned non-JSON output but contained 'PASS': '{judge_response_str}'", tokens
         if "FAIL" in response_upper:
-            return "FAIL", f"LLM judge returned non-JSON output but contained 'FAIL': '{judge_response_str}'"
+            return "FAIL", f"LLM judge returned non-JSON output but contained 'FAIL': '{judge_response_str}'", tokens
 
         return "FAIL", (
-            f"LLM judge returned non-JSON output: '{judge_response_str}' (Error: {e})"
+            f"LLM judge returned non-JSON output: '{judge_response_str}' (Error: {e})", tokens
         )
     except (AttributeError, KeyError):
-        return "FAIL", f"LLM judge returned malformed JSON: '{judge_response_str}'"
+        return "FAIL", f"LLM judge returned malformed JSON: '{judge_response_str}'", tokens
 
 
 def _substitute_placeholders(text, placeholders):
@@ -319,6 +348,10 @@ def main():
     print(f"Found {total_tests} test cases. Starting execution...")
 
     total_start_time = time.monotonic()
+    # Initialize token accumulators
+    total_prompt_tokens = 0
+    total_completion_tokens = 0
+    total_cached_tokens = 0
 
     for i, tc in enumerate(test_cases, 1):
         test_start_time = time.monotonic()
@@ -327,13 +360,17 @@ def main():
         expected_output = _substitute_placeholders(tc.get("expected_output"), placeholders)
 
         print(f"  PROMPT  : {prompt}")
-        actual_output = run_test_case(prompt, args.config, args.model, args.runner, debug=args.debug)
+        actual_output, test_usage = run_test_case(prompt, args.config, args.model, args.runner, debug=args.debug)
         print(f"  EXPECTED: {expected_output}")
         print(f"  ACTUAL  : {actual_output}")
 
         print(f"  JUDGING with {judge_model}...")
-        status, reason = evaluate_test_case(expected_output, actual_output, args.config, judge_model, args.runner, debug=args.debug)
-
+        status, reason, judge_usage = evaluate_test_case(expected_output, actual_output, args.config, judge_model, args.runner, debug=args.debug)
+        # Accumulate tokens from both the test run and the judge run
+        for usage in [test_usage, judge_usage]:
+            total_prompt_tokens += usage.get("prompt_tokens", 0)
+            total_completion_tokens += usage.get("completion_tokens", 0)
+            total_cached_tokens += usage.get("cached_tokens", 0)
         if status == "PASS":
             passed_count += 1
             print(f"  STATUS  : {Colors.OKGREEN}{status}{Colors.ENDC} ({reason})")
@@ -354,6 +391,17 @@ def main():
                 "actual_output": actual_output,
                 "status": status,
                 "reason": reason,
+                "duration_seconds": round(test_duration, 2),
+                "usage": {
+                    "test_run": test_usage,
+                    "judge_run": judge_usage,
+                    "combined_total": {
+                        "prompt": test_usage.get("prompt_tokens", 0) + judge_usage.get("prompt_tokens", 0),
+                        "completion": test_usage.get("candidates_token_count", 0) + judge_usage.get("candidates_token_count", 0) if "candidates_token_count" in test_usage else test_usage.get("completion_tokens", 0) + judge_usage.get("completion_tokens", 0),
+                        "total": test_usage.get("total_tokens", 0) + judge_usage.get("total_tokens", 0),
+                        "cached": test_usage.get("cached_tokens", 0) + judge_usage.get("cached_tokens", 0)
+                    }
+                }
             }
         )
 
@@ -365,6 +413,11 @@ def main():
     print(f"  {Colors.OKGREEN}Passed: {passed_count}{Colors.ENDC}")
     print(f"  {Colors.FAIL}Failed: {failed_count}{Colors.ENDC}")
     print(f"Total Time : {total_duration:.2f}s")
+    print("--- TOKEN USAGE ---")
+    print(f"Prompt Tokens     : {total_prompt_tokens}")
+    print(f"Completion Tokens : {total_completion_tokens}")
+    print(f"Cached Tokens     : {total_cached_tokens}")
+    print(f"Total Tokens      : {total_prompt_tokens + total_completion_tokens}")
     print("--------------------")
 
     print(
