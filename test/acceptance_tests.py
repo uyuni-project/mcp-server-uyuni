@@ -308,8 +308,9 @@ def main():
     parser.add_argument(
         "--test-cases-file",
         type=Path,
-        default=Path(__file__).parent / "test_cases.json",
-        help="Path to the JSON file with test cases. Defaults to 'test_cases.json' in the same directory.",
+        nargs="+", # Change this to '+' to accept 1 or more files
+        default=[Path(__file__).parent / "test_cases.json"], # Wrap default in a list
+        help="Path to one or more JSON files with test cases.",
     )
     parser.add_argument(
         "--output-file",
@@ -395,8 +396,29 @@ def main():
     print(f"Using model for judging: {judge_model}\n")
     print(f"Using runner: {args.runner}\n")
 
-    with open(args.test_cases_file, "r", encoding="utf-8") as f:
-        test_cases = json.load(f)
+test_cases = []
+for file_path in args.test_cases_file:
+    if not file_path.is_file():
+        print(f"Error: Test cases file not found at '{file_path}'", file=sys.stderr)
+        continue # Or sys.exit(1) if you want it to be strict
+        
+    with open(file_path, "r", encoding="utf-8") as f:
+        try:
+            data = json.load(f)
+            # If the JSON is a list of tests, extend our main list
+            if isinstance(data, list):
+                test_cases.extend(data)
+            # If the JSON is a single test object, just append it
+            else:
+                test_cases.append(data)
+        except json.JSONDecodeError:
+            print(f"Error: Could not parse JSON in '{file_path}'", file=sys.stderr)
+
+if not test_cases:
+    print("Error: No valid test cases loaded. Exiting.", file=sys.stderr)
+    sys.exit(1)
+
+print(f"Loaded a total of {len(test_cases)} test cases from {len(args.test_cases_file)} files.")
 
     if args.test_id:
         test_cases = [tc for tc in test_cases if tc.get("id") == args.test_id]
