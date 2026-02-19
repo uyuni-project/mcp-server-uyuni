@@ -237,6 +237,69 @@ def _substitute_placeholders(text, placeholders):
         return text
     return text.format(**placeholders)
 
+def calculate_gemini_cost_with_savings(model_name, usage_metadata):
+    """
+    Calculates cost and savings from context caching for Gemini 2.5 models.
+    """
+    # 1. Extract token counts
+    prompt_tokens = usage_metadata.prompt_token_count
+    completion_tokens = usage_metadata.candidates_token_count
+    cached_tokens = usage_metadata.cached_content_token_count or 0
+    
+    # Total input for tier checking (cached + current prompt)
+    total_input = prompt_tokens + cached_tokens
+    
+    # 2. Pricing Rates (2026)
+    rates = {
+        "google:gemini-2.5-pro": {
+            "input_small": 1.25 / 1_000_000,
+            "input_large": 2.50 / 1_000_000,
+            "output": 10.00 / 1_000_000,
+            "cache_read": 0.125 / 1_000_000,  # 90% discount
+            "threshold": 200_000
+        },
+        "google:gemini-2.5-flash": {
+            "input_small": 0.30 / 1_000_000,
+            "input_large": 0.30 / 1_000_000,
+            "output": 2.50 / 1_000_000,
+            "cache_read": 0.03 / 1_000_000,   # 90% discount
+            "threshold": float('inf')
+        },
+        "google:gemini-2.5-flash-lite": {
+            "input_small": 0.10 / 1_000_000,
+            "input_large": 0.10 / 1_000_000,
+            "output": 0.40 / 1_000_000,
+            "cache_read": 0.01 / 1_000_000,   # 90% discount
+            "threshold": float('inf')
+        }
+    }
+
+    model_rate = rates.get(model_name)
+    if not model_rate:
+        return "Model not supported."
+
+    # 3. Determine current input tier (Small vs Large context)
+    input_rate = model_rate["input_large"] if total_input > model_rate["threshold"] else model_rate["input_small"]
+
+    # 4. Cost Calculations
+    cost_prompt = prompt_tokens * input_rate
+    cost_completion = completion_tokens * model_rate["output"]
+    cost_cached_actual = cached_tokens * model_rate["cache_read"]
+    
+    # What the cached tokens WOULD have cost as regular prompt tokens
+    cost_cached_potential = cached_tokens * input_rate
+    
+    # 5. Totals
+    actual_total = cost_prompt + cost_completion + cost_cached_actual
+    savings = cost_cached_potential - cost_cached_actual
+    
+    return {
+        "model": model_name,
+        "total_cost_usd": round(actual_total, 6),
+        "savings_usd": round(savings, 6),
+        "savings_percentage": f"{round((savings / (actual_total + savings)) * 100, 2)}%" if (actual_total + savings) > 0 else "0%"
+    }
+
 def main():
     """Main function to run acceptance tests."""
     parser = argparse.ArgumentParser(
@@ -407,7 +470,8 @@ def main():
 
     total_end_time = time.monotonic()
     total_duration = total_end_time - total_start_time
-
+    cost = calculate_gemini_cost("google:gemini-2.5-pro", response.usage_metadata)
+    
     print("--- TEST SUMMARY ---")
     print(f"Total Tests: {total_tests}")
     print(f"  {Colors.OKGREEN}Passed: {passed_count}{Colors.ENDC}")
@@ -418,6 +482,9 @@ def main():
     print(f"Completion Tokens : {total_completion_tokens}")
     print(f"Cached Tokens     : {total_cached_tokens}")
     print(f"Total Tokens      : {total_prompt_tokens + total_completion_tokens}")
+    print("--- COST ---")
+    print(f"Cost: ${cost['total_cost_usd']} USD")
+    print(f"You saved (by using implicit cache): ${cost['savings_usd']} (${cost['savings_percentage']}) USD")
     print("--------------------")
 
     print(
