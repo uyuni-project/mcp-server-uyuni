@@ -6,16 +6,16 @@
   {
     "id": "TC-SCH-001",
     "prompt": "List all scheduled actions in {product_name}.",
-    "expected_output": "Returns a list of action dictionaries, including the system reboot schduled for {rhlike_minion_name}. Example fields: id, name, type, earliest."
+    "expected_output": "Returns a list of action dictionaries, it should include a system reboot scheduled as the action with the highest action id. Example fields: id, name, type, earliest."
   },
   {
     "id": "TC-SCH-002_confirm_request",
-    "prompt": "Can you cancel the action for scheduling a reboot for the system {rhlike_minion_name}?",
+    "prompt": "Can you cancel the latest action for scheduling a reboot of a system?",
     "expected_output": "Returns a message the requires confirmation"
   },
   {
     "id": "TC-SCH-002_confirmed",
-    "prompt": "Can you cancel the action for scheduling a reboot for the system {rhlike_minion_name}, with confirmation set to true?",
+    "prompt": "Can you cancel the latest action for scheduling a reboot of a system, with confirmation set to true?",
     "expected_output": "A message stating that the action was successfully canceled."
   }
 ]
