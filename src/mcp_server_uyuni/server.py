@@ -1135,26 +1135,13 @@ async def _add_system(
         logger.info(f"api result was NOT 1 {api_result}")
         return f"System {host} was NOT successfully scheduled to be added. Check server logs."
 
-DYNAMIC_DESCRIPTION = f"""
-    Removes/deletes a system from being managed by {product}.
-
-    This is a destructive action and requires confirmation.
-
-    Args:
-        system_identifier: The unique identifier of the system to remove. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
-        cleanup: If True (default), {product} will attempt to run cleanup scripts on the client before deletion.
-                 If False, the system is deleted from {product} without attempting client-side cleanup.
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    Returns:
-        A confirmation message if 'confirm' is False.
-        A success or error message string detailing the outcome.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+@write_tool(description=f"""
+    Remove a system from {product}.
+    Inputs: `system_identifier` (`system_name` or `system_id`); optional `cleanup`, `confirm`.
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
+    This is a destructive operation.
+    """)
 async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanup: bool = True, confirm: Union[bool, str] = False) -> str:
     return await _remove_system(system_identifier, ctx, cleanup, confirm)
 
@@ -1163,7 +1150,7 @@ async def _remove_system(system_identifier: Union[str, int], ctx: Context, clean
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = _to_bool(confirm)
+    is_confirmed = to_bool(confirm)
 
     token = ctx.get_state('token')
     system_id = await _resolve_system_id(system_identifier, token)
@@ -1200,36 +1187,37 @@ async def _remove_system(system_identifier: Union[str, int], ctx: Context, clean
         logger.error(error_message)
         return error_message
 
-DYNAMIC_DESCRIPTION = f"""
-    Finds systems requiring a security update for a specific CVE identifier.
+@mcp.tool()
+async def list_systems_needing_update_for_cve(
+    cve_identifier: str,
+    ctx: Context,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """List systems affected by a CVE.
 
-    This tool identifies systems that are vulnerable to a given Common
-    Vulnerabilities and Exposures (CVE) identifier. It first looks up the
-    security errata (patches/updates) associated with the CVE. Then, for each
-    relevant erratum, it retrieves the list of systems that are affected by
-    that erratum's advisory and thus require the security update.
-
-    Args:
-        cve_identifier: The CVE identifier string (e.g., "CVE-2008-3270").
-
-    Returns:
-        List[Dict[str, Any]]: A list of unique systems affected by the specified CVE.
-                              Each dictionary contains 'system_id' (int) and
-                              'system_name' (str), and 'cve_identifier' (str)
-                              (the CVE for which the system needs an update). Returns an empty list if
-                              the CVE is not found, no systems are affected,
-                              or an API error occurs.
+    Inputs: `cve_identifier`; optional `limit`, `offset`.
+    `limit` is capped at 500.
+    Returns: `items` with unique affected systems (`system_id`, `system_name`) and `meta`.
     """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
-async def list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context) -> List[Dict[str, Any]]:
-    return await _list_systems_needing_update_for_cve(cve_identifier, ctx)
+    return await _list_systems_needing_update_for_cve(cve_identifier, ctx, limit, offset)
 
-async def _list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context) -> List[Dict[str, Any]]:
+async def _list_systems_needing_update_for_cve(
+    cve_identifier: str,
+    ctx: Context,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
     log_string = f"Getting systems that need to apply CVE {cve_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
 
     affected_systems_map = {}  # Use a dict to store unique systems by ID {system_id: {details}}
+    normalized_limit, normalized_offset = normalize_pagination(limit=limit, offset=offset, default_limit=50, max_limit=500)
+    empty_result = {
+        'items': [],
+        'meta': build_list_meta(total_count=0, returned_count=0, limit=normalized_limit, offset=normalized_offset)
+    }
 
     find_by_cve_path = '/rhn/manager/api/errata/findByCve'
     list_affected_systems_path = '/rhn/manager/api/errata/listAffectedSystems'
@@ -1248,17 +1236,17 @@ async def _list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context
         )
 
         if errata_list is None: # API call failed
-            return []
+            return empty_result
         if not isinstance(errata_list, list):
             msg = f"Expected a list of errata for CVE {cve_identifier}, but received: {type(errata_list)}"
             logger.error(msg)
             await ctx.error(msg)
-            return []
+            return empty_result
         if not errata_list:
             msg = f"No errata found for CVE {cve_identifier}."
             logger.info(msg)
             await ctx.info(msg)
-            return []
+            return empty_result
 
         # 2. For each erratum, call listAffectedSystems
         for erratum in errata_list:
@@ -1299,32 +1287,43 @@ async def _list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context
                 else:
                     logger.warning(f"Unexpected item format in affected systems list for advisory {advisory_name}: {system_info}")
 
-    if not affected_systems_map:
+    affected_systems_list = list(affected_systems_map.values())
+
+    if not affected_systems_list:
         msg = f"No systems found affected by CVE {cve_identifier} after checking all related errata."
         logger.info(msg)
         await ctx.info(msg)
     else:
-        logger.info(f"Found {len(affected_systems_map)} unique system(s) affected by CVE {cve_identifier}.")
+        logger.info(f"Found {len(affected_systems_list)} unique system(s) affected by CVE {cve_identifier}.")
 
-    return list(affected_systems_map.values())
+    paged_items, meta = paginate_items(affected_systems_list, limit=normalized_limit, offset=normalized_offset)
+    meta['filters'] = {
+        'cve_identifier': cve_identifier,
+    }
+    return {
+        'items': paged_items,
+        'meta': meta,
+    }
 
-DYNAMIC_DESCRIPTION = f"""
-    Fetches a list of systems from the {product} server that require a reboot.
+@mcp.tool()
+async def list_systems_needing_reboot(
+    ctx: Context,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """List systems that require reboot.
 
-    The returned list contains dictionaries, each with 'system_id' (int),
-    'system_name' (str), and 'reboot_status' (str, typically 'reboot_required')
-    for a system that has been identified by {product} as needing a reboot.
-
-    Returns:
-        List[Dict[str, Any]]: A list of system dictionaries (system_id, system_name, reboot_status)
-                              for systems requiring a reboot. Returns an empty list
-                              if no systems require a reboot.
+    Inputs: optional `limit`, `offset`.
+    `limit` is capped at 500.
+    Returns: `items` with systems requiring reboot (`system_id`, `system_name`, `reboot_status`) and `meta`.
     """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
-async def list_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
-    return await _list_systems_needing_reboot(ctx)
+    return await _list_systems_needing_reboot(ctx, limit, offset)
 
-async def _list_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
+async def _list_systems_needing_reboot(
+    ctx: Context,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
     log_string = "Fetch list of system that require a reboot."
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1357,28 +1356,22 @@ async def _list_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
         elif reboot_data_result: # Log if not default empty list but also not a list
             logger.warning(f"Expected a list for systems needing reboot, but received: {type(reboot_data_result)}")
 
-    return systems_needing_reboot_list
+    normalized_limit, normalized_offset = normalize_pagination(limit=limit, offset=offset, default_limit=50, max_limit=500)
+    paged_items, meta = paginate_items(systems_needing_reboot_list, limit=normalized_limit, offset=normalized_offset)
+    return {
+        'items': paged_items,
+        'meta': meta,
+    }
 
-DYNAMIC_DESCRIPTION = f"""
-    Schedules an immediate reboot for a specific system on the {product} server.
-
-    Args:
-        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    The reboot is scheduled to occur as soon as possible (effectively "now").
-
-    Returns:
-        str: A message indicating the action ID if the reboot was successfully scheduled,
-             e.g., "System reboot successfully scheduled. Action URL: ...".
-             Returns an empty string if scheduling fails or an error occurs.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+@write_tool()
 async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context, confirm: Union[bool, str] = False) -> str:
+    """Schedule an immediate reboot for one system.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`); optional `confirm`.
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise reboot action URL or error text.
+    Call once with `confirm=false`, then call again with `confirm=true`.
+    """
     return await _schedule_system_reboot(system_identifier, ctx, confirm)
 
 async def _schedule_system_reboot(system_identifier: Union[str, int], ctx:Context, confirm: Union[bool, str] = False) -> str:
@@ -1386,7 +1379,7 @@ async def _schedule_system_reboot(system_identifier: Union[str, int], ctx:Contex
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = _to_bool(confirm)
+    is_confirmed = to_bool(confirm)
 
     token = ctx.get_state('token')
     system_id = await _resolve_system_id(system_identifier, token)
@@ -1420,33 +1413,44 @@ async def _schedule_system_reboot(system_identifier: Union[str, int], ctx:Contex
         else:
             return "Unexpected API response format when scheduling reboot. Check server logs for details."
 
-DYNAMIC_DESCRIPTION = f"""
-    Fetches a list of all scheduled actions from the {product} server.
+@mcp.tool()
+async def list_all_scheduled_actions(
+    ctx: Context,
+    limit: int = 50,
+    offset: int = 0,
+    action_types: Optional[List[str]] = None,
+    scheduler: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Query scheduled actions.
 
-    You can use this tool to check the status of a reboot. A reboot is finished when
-    its related action is completed.
-
-    This includes completed, in-progress, failed, and archived actions.
-    Each action in the list is a dictionary containing details such as
-    action_id, name, type, scheduler, earliest execution time,
-    prerequisite action ID (if any), and counts of systems in
-    completed, failed, or in-progress states.
-
-    Returns:
-        List[Dict[str, Any]]: A list of action dictionaries.
-                              Returns an empty list if no actions are found.
+    Inputs: optional `limit`, `offset`, `action_types`, `scheduler`.
+    `action_types` and `scheduler` are optional exact-match filters; prefer values from `meta.observed_action_types` and `meta.observed_schedulers`.
+    `limit` is capped at 500; use `meta.next_offset` to page.
+    Returns: `items` with scheduled actions and `meta`.
     """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
-async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
-    return await _list_all_scheduled_actions(ctx)
+    return await _list_all_scheduled_actions(
+        ctx=ctx,
+        limit=limit,
+        offset=offset,
+        action_types=action_types,
+        scheduler=scheduler,
+    )
 
-async def _list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
+async def _list_all_scheduled_actions(
+    ctx: Context,
+    limit: int = 50,
+    offset: int = 0,
+    action_types: Optional[List[str]] = None,
+    scheduler: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Fetch scheduled actions, apply optional filters, and return paged results.
+    """
     log_string = "Listing all scheduled actions"
     logger.info(log_string)
     await ctx.info(log_string)
 
     list_actions_path = '/rhn/manager/api/schedule/listAllActions'
-    processed_actions_list = []
+    processed_actions_list: List[Dict[str, Any]] = []
 
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
         api_result = await call_uyuni_api(
@@ -1469,27 +1473,40 @@ async def _list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
                     logger.warning(f"Unexpected item format in actions list: {action_dict}")
         elif api_result: # Log if not default empty list but also not a list
             logger.warning(f"Expected a list for all scheduled actions, but received: {type(api_result)}")
-    return processed_actions_list
+    action_types_filter = {str(item).lower() for item in action_types} if action_types else None
+    observed_action_types = sorted({str(action.get('type')) for action in processed_actions_list if action.get('type')})
+    observed_schedulers = sorted({str(action.get('scheduler')) for action in processed_actions_list if action.get('scheduler')})
 
-DYNAMIC_DESCRIPTION = f"""
-    Cancels a specified action on the {product} server.
+    filtered_actions: List[Dict[str, Any]] = []
+    for action in processed_actions_list:
+        if not matches_optional_filter(action.get('type'), action_types_filter):
+            continue
+        if scheduler and str(action.get('scheduler', '')).lower() != str(scheduler).lower():
+            continue
+        filtered_actions.append(action)
 
-    Args:
-        action_id: The integer ID of the action to be canceled.
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
+    normalized_limit, normalized_offset = normalize_pagination(limit=limit, offset=offset, default_limit=50, max_limit=500)
+    paged_items, meta = paginate_items(filtered_actions, limit=normalized_limit, offset=normalized_offset)
+    meta['filters'] = {
+        'action_types': action_types or [],
+        'scheduler': scheduler,
+    }
+    meta['observed_action_types'] = observed_action_types
+    meta['observed_schedulers'] = observed_schedulers
 
-    Returns:
-        str: A success message if the action was canceled,
-             e.g., "Successfully canceled action: 123".
-             Returns an error message if the cancellation failed for any reason,
-             e.g., "Failed to cancel action 123. Please check the action ID and server logs."
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+    return {
+        'items': paged_items,
+        'meta': meta,
+    }
+
+@write_tool()
 async def cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] = False) -> str:
+    """Cancel a scheduled action.
+
+    Inputs: `action_id`; optional `confirm`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
+    Call once with `confirm=false`, then call again with `confirm=true`.
+    """
     return await _cancel_action(action_id, ctx, confirm)
 
 async def _cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] = False) -> str:
@@ -1497,10 +1514,10 @@ async def _cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str]
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = _to_bool(confirm)
+    is_confirmed = to_bool(confirm)
 
     cancel_actions_path = '/rhn/manager/api/schedule/cancelActions'
- 
+
     if not isinstance(action_id, int): # Basic type check, though FastMCP might handle this
         return "Invalid action ID provided. Must be an integer."
 
@@ -1523,20 +1540,13 @@ async def _cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str]
             return f"Failed to cancel action: {action_id}. The API did not return success (expected 1, got {api_result}). Check server logs for details."
 
 
-DYNAMIC_DESCRIPTION = f"""
-    Fetches a list of activation keys from the {product} server.
-
-    This tool retrieves all activation keys visible to the user and returns
-    a list containing only the key identifier and its description.
-
-    Returns:
-        List[Dict[str, str]]: A list of dictionaries, where each dictionary
-                              represents an activation key with 'key' and
-                              'description' fields. Returns an empty list
-                              if no keys are found.
-    """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
+    """List activation keys available to the current user.
+
+    Inputs: none.
+    Returns: list of objects with `key` and `description`.
+    """
     return await _list_activation_keys(ctx)
 
 async def _list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
@@ -1562,21 +1572,14 @@ async def _list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
                 await ctx.warning(msg)
     return filtered_keys
 
-DYNAMIC_DESCRIPTION = f"""
-    Provides a list of errata that are applicable to the system with the system_id
-    passed as parameter and have not been scheduled yet. All elements in the result are patches that are applicable
-    for the system.
-
-    Args:
-        system_id: The integer ID of the system for which we want to know the list of applicable errata.
-
-    Returns:
-        List[Dict[str, Any]]: A list of dictionaries with each dictionary defining a errata applicable
-                            to the system given as a parameter.
-                            Returns an empty dictionary if no applicable errata for the system are found.
-    """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str, Any]]:
+    """List unscheduled errata for one system.
+
+    Inputs: `system_id`.
+    This tool accepts numeric `system_id` only.
+    Returns: errata list for that system.
+    """
     return await _get_unscheduled_errata(system_id, ctx)
 
 async def _get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str, Any]]:
@@ -1604,40 +1607,15 @@ async def _get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str
         else:
             msg = f"Failed to retrieve unscheduled errata for system ID {system_id}. Unexpected API result format. Result: {unscheduled_errata_result}"
             logger.error(msg)
-            return msg
+            return []
 
-DYNAMIC_DESCRIPTION = f"""
-    Fetches a list of system groups from the {product} server.
-
-    This tool retrieves all system groups visible to the user and returns a list containing for
-    each group the identifier, name, description and system count.
-
-    Returns:
-        A list of dictionaries, where each dictionary represents a system group with 'id', 'name',
-        'description' and 'system_count' fields. The 'system_count' refers to the number of systems
-        assigned to each group.
-
-        Returns an empty list if the API call fails, the response is not in the expected format,
-        or no groups are found.
-
-        Example:
-            [
-                {{
-                    "id": "1",
-                    "name": "Default Group",
-                    "description": "Default group for all systems",
-                    "system_count": "10"
-                }},
-                {{
-                    "id": "2",
-                    "name": "Test Group",
-                    "description": "Group for testing purposes",
-                    "system_count": "5"
-                }}
-            ]
-    """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def list_system_groups(ctx: Context) -> List[Dict[str, str]]:
+    """List system groups.
+
+    Inputs: none.
+    Returns: list with `id`, `name`, `description`, and `system_count`.
+    """
     return await _list_system_groups(ctx)
 
 async def _list_system_groups(ctx: Context) -> List[Dict[str, str]]:
@@ -1664,26 +1642,14 @@ async def _list_system_groups(ctx: Context) -> List[Dict[str, str]]:
                 await ctx.warning(msg)
     return filtered_groups
 
-DYNAMIC_DESCRIPTION = f"""
-    Creates a new system group in {product}.
+@write_tool(description=f"""
+    Create a new system group in {product}.
 
-    Args:
-        name: The name of the new system group.
-        description: An optional description for the system group.
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    Returns:
-        A success message if the group was created, e.g., "Successfully created system group 'my-group'".
-        Returns an error message if the creation failed.
-
-        Example:
-            Successfully created system group 'my-group'.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+    Inputs: `name`; optional `description`, `confirm`.
+    System groups in {product} are flat (no nesting).
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
+    Call once with `confirm=false`, then call again with `confirm=true`.
+    """)
 async def create_system_group(name: str, ctx: Context, description: str = "", confirm: Union[bool, str] = False) -> str:
     return await _create_system_group(name, ctx, description, confirm)
 
@@ -1692,7 +1658,7 @@ async def _create_system_group(name: str, ctx: Context, description: str = "", c
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = _to_bool(confirm)
+    is_confirmed = to_bool(confirm)
 
     if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will create a new system group named '{name}' with description '{description}'. Do you confirm?"
@@ -1722,32 +1688,13 @@ async def _create_system_group(name: str, ctx: Context, description: str = "", c
             logger.error(msg)
         return msg
 
-DYNAMIC_DESCRIPTION = f"""
-    Lists the systems in a system group.
-
-    Args:
-        group_name: The name of the system group.
-
-    Returns:
-        A list of dictionaries, where each dictionary represents a system with 'system_id' and
-        'system_name' fields.
-
-        Returns an empty list if the API call fails or no systems are found.
-
-        Example:
-            [
-                {{
-                    "system_id": "123456789",
-                    "system_name": "my-system"
-                }},
-                {{
-                    "system_id": "987654321",
-                    "system_name": "my-other-system"
-                }}
-            ]
-    """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, Any]]:
+    """List systems in one group.
+
+    Inputs: `group_name`.
+    Returns: list of `system_id` and `system_name`.
+    """
     log_string = f"Listing systems in group '{group_name}'"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1779,48 +1726,24 @@ async def _list_group_systems(group_name: str, token: str) -> List[Dict[str, Any
                 logger.warning(msg)
     return filtered_systems
 
-DYNAMIC_DESCRIPTION = f"""
-    Adds systems to a system group.
-
-    Args:
-        group_name: The name of the system group.
-        system_identifiers: A list of system names or IDs to add to the group.
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    Returns:
-        A success message if the systems were added.
-
-        Example:
-            Successfully added 1 systems to/from group 'test-group'.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+@write_tool()
 async def add_systems_to_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context, confirm: Union[bool, str] = False) -> str:
+    """Add systems to a group.
+
+    Inputs: `group_name`, `system_identifiers`; optional `confirm`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
+    Call once with `confirm=false`, then call again with `confirm=true`.
+    """
     return await _manage_group_systems(group_name, system_identifiers, True, ctx, confirm)
 
-DYNAMIC_DESCRIPTION = f"""
-    Removes systems from a system group.
-
-    Args:
-        group_name: The name of the system group.
-        system_identifiers: A list of system names or IDs to remove from the group.
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    Returns:
-        A success message if the systems were removed.
-
-        Example:
-            Successfully removed 1 systems to/from group 'test-group'.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+@write_tool()
 async def remove_systems_from_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context, confirm: Union[bool, str] = False) -> str:
+    """Remove systems from a group.
+
+    Inputs: `group_name`, `system_identifiers`; optional `confirm`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
+    Call once with `confirm=false`, then call again with `confirm=true`.
+    """
     return await _manage_group_systems(group_name, system_identifiers, False, ctx, confirm)
 
 async def _manage_group_systems(group_name: str, system_identifiers: List[Union[str, int]], add: bool, ctx: Context, confirm: Union[bool, str] = False) -> str:
@@ -1832,21 +1755,18 @@ async def _manage_group_systems(group_name: str, system_identifiers: List[Union[
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = _to_bool(confirm)
+    is_confirmed = to_bool(confirm)
 
     if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will {action_str[0]} {len(system_identifiers)} systems {action_str[1]} group '{group_name}'. Do you confirm?"
 
     token = ctx.get_state('token')
 
-    # Resolve all system IDs
-    resolved_ids = []
-    for identifier in system_identifiers:
-        sid = await _resolve_system_id(identifier, token)
-        if sid:
-            resolved_ids.append(int(sid))
-        else:
-            print(f"Warning: Could not resolve system identifier '{identifier}'. Skipping.")
+    # Resolve all system IDs in parallel
+    resolved_sid_values = await asyncio.gather(
+        *[_resolve_system_id(identifier, token) for identifier in system_identifiers]
+    )
+    resolved_ids = [int(sid) for sid in resolved_sid_values]
 
     if not resolved_ids:
         return "No valid system identifiers found. Aborting."
