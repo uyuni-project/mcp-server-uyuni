@@ -159,7 +159,126 @@ async def test_get_system_updates(mock_uyuni, mock_ctx):
     assert result['has_pending_updates'] is True
     assert result['update_count'] == 1
     assert result['updates'][0]['advisory_name'] == "SUSE-RU-2023:1234"
+    assert result['updates'][0]['cves'] == []
+    assert result['meta']['include_cves'] is False
+
+
+@pytest.mark.asyncio
+async def test_get_system_updates_with_cves_and_pagination(mock_uyuni, mock_ctx):
+    base_url = server.CONFIG["UYUNI_SERVER"]
+    system_id = 1001
+
+    mock_relevant = [
+        {"id": 501, "advisory_name": "ADV-1", "advisory_type": "Security", "advisory_synopsis": "Fix 1"},
+        {"id": 502, "advisory_name": "ADV-2", "advisory_type": "Bugfix", "advisory_synopsis": "Fix 2"},
+    ]
+    mock_unscheduled = []
+    mock_cves = ["CVE-2023-0001"]
+
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/getRelevantErrata").mock(return_value=Response(200, json={"success": True, "result": mock_relevant}))
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/getUnscheduledErrata").mock(return_value=Response(200, json={"success": True, "result": mock_unscheduled}))
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/errata/listCves").mock(return_value=Response(200, json={"success": True, "result": mock_cves}))
+
+    result = await server._get_system_updates(system_id, mock_ctx, include_cves=True, limit=1, offset=0)
+
+    assert result['meta']['include_cves'] is True
+    assert result['meta']['returned_count'] == 1
+    assert result['meta']['truncated'] is True
     assert result['updates'][0]['cves'] == ["CVE-2023-0001"]
+
+
+@pytest.mark.asyncio
+async def test_get_system_updates_tool_compact_default(mock_uyuni, mock_ctx):
+    base_url = server.CONFIG["UYUNI_SERVER"]
+    system_id = 1001
+
+    mock_relevant = [
+        {
+            "id": 501,
+            "advisory_name": "ADV-1",
+            "advisory_type": "Security",
+            "advisory_synopsis": "Fix 1",
+            "extra_field": "should_not_be_in_compact",
+        }
+    ]
+    mock_unscheduled = []
+
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/getRelevantErrata").mock(return_value=Response(200, json={"success": True, "result": mock_relevant}))
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/getUnscheduledErrata").mock(return_value=Response(200, json={"success": True, "result": mock_unscheduled}))
+
+    result = await server._get_system_updates(
+        system_identifier=system_id,
+        ctx=mock_ctx,
+        include_cves=False,
+        limit=None,
+        offset=0,
+        compact_updates=True,
+    )
+
+    assert result['meta']['include_cves'] is False
+    assert result['update_count'] == 1
+    assert 'cves' not in result['updates'][0]
+    assert 'extra_field' not in result['updates'][0]
+    assert result['updates'][0]['update_id'] == 501
+
+
+@pytest.mark.parametrize(
+    "limit,offset,expected_limit,expected_offset",
+    [
+        (None, -5, None, 0),
+        (0, -1, 0, 0),
+        (-3, 2, 0, 2),
+        (999, 0, 200, 0),
+    ],
+)
+def test_normalize_pagination_edge_cases(limit, offset, expected_limit, expected_offset):
+    normalized_limit, normalized_offset = server.normalize_pagination(limit=limit, offset=offset)
+    assert normalized_limit == expected_limit
+    assert normalized_offset == expected_offset
+
+
+@pytest.mark.asyncio
+async def test_get_system_updates_type_filter_and_counts(mock_uyuni, mock_ctx):
+    base_url = server.CONFIG["UYUNI_SERVER"]
+    system_id = 1001
+
+    mock_relevant = [
+        {
+            "id": 501,
+            "advisory_name": "ADV-SEC",
+            "advisory_type": "Security Advisory",
+            "advisory_synopsis": "Security fix",
+        },
+        {
+            "id": 502,
+            "advisory_name": "ADV-BUG",
+            "advisory_type": "Bug Fix Advisory",
+            "advisory_synopsis": "Bug fix",
+        },
+    ]
+    mock_unscheduled = [
+        {"advisory_name": "ADV-SEC"}
+    ]
+
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/getRelevantErrata").mock(
+        return_value=Response(200, json={"success": True, "result": mock_relevant})
+    )
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/getUnscheduledErrata").mock(
+        return_value=Response(200, json={"success": True, "result": mock_unscheduled})
+    )
+
+    result = await server._get_system_updates(
+        system_identifier=system_id,
+        ctx=mock_ctx,
+        include_cves=False,
+        advisory_types=["security advisory"],
+    )
+
+    assert result["update_count"] == 1
+    assert result["pending_update_count"] == 1
+    assert result["queued_update_count"] == 0
+    assert result["updates"][0]["advisory_name"] == "ADV-SEC"
+    assert result["updates"][0]["application_status"] == "Pending"
 
 @pytest.mark.asyncio
 async def test_get_system_event_history(mock_uyuni):
@@ -458,10 +577,63 @@ async def test_check_all_systems_for_updates(mock_uyuni, mock_ctx):
 
     result = await server._check_all_systems_for_updates(mock_ctx)
 
-    assert len(result) == 1
-    assert result[0]['system_id'] == 1001
-    assert result[0]['update_count'] == 1
-    assert result[0]['updates'][0]['cves'] == ["CVE-1"]
+    assert 'items' in result
+    assert 'meta' in result
+    assert len(result['items']) == 1
+    assert result['items'][0]['system_id'] == 1001
+    assert result['items'][0]['update_count'] == 1
+    assert result['meta']['include_updates'] is False
+    assert result['meta']['include_cves'] is False
+
+
+@pytest.mark.asyncio
+async def test_check_all_systems_for_updates_expanded(mock_uyuni, mock_ctx):
+    base_url = server.CONFIG["UYUNI_SERVER"]
+
+    mock_systems = [{"id": 1001, "name": "system1"}]
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/listSystems").mock(
+        return_value=Response(200, json={"success": True, "result": mock_systems})
+    )
+
+    mock_relevant = [{"id": 501, "advisory_name": "ADV-1"}]
+    mock_unscheduled = []
+
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/getRelevantErrata").mock(
+        return_value=Response(200, json={"success": True, "result": mock_relevant})
+    )
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/getUnscheduledErrata").mock(
+        return_value=Response(200, json={"success": True, "result": mock_unscheduled})
+    )
+
+    result = await server._check_all_systems_for_updates(
+        mock_ctx,
+        include_updates=True,
+        include_cves=False,
+        updates_per_system=10,
+    )
+
+    assert len(result['items']) == 1
+    assert 'updates' in result['items'][0]
+    assert result['items'][0]['updates_truncated'] is False
+    assert result['meta']['include_updates'] is True
+    assert result['meta']['updates_per_system'] == 10
+
+
+@pytest.mark.asyncio
+async def test_check_all_systems_for_updates_no_active_systems(mock_uyuni, mock_ctx):
+    base_url = server.CONFIG["UYUNI_SERVER"]
+
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/listSystems").mock(
+        return_value=Response(200, json={"success": True, "result": []})
+    )
+
+    result = await server._check_all_systems_for_updates(mock_ctx)
+
+    assert result["items"] == []
+    assert result["meta"]["total_count"] == 0
+    assert result["meta"]["returned_count"] == 0
+    assert result["meta"]["limit"] == 25
+    assert result["meta"]["offset"] == 0
 
 @pytest.mark.asyncio
 async def test_list_systems_needing_update_for_cve(mock_uyuni, mock_ctx):
@@ -480,9 +652,13 @@ async def test_list_systems_needing_update_for_cve(mock_uyuni, mock_ctx):
 
     result = await server._list_systems_needing_update_for_cve(cve, mock_ctx)
 
-    assert len(result) == 1
-    assert result[0]['system_id'] == 1001
-    assert result[0]['cve_identifier'] == cve
+    assert 'items' in result
+    assert 'meta' in result
+    assert len(result['items']) == 1
+    assert result['items'][0]['system_id'] == 1001
+    assert result['items'][0]['cve_identifier'] == cve
+    assert result['meta']['returned_count'] == 1
+    assert result['meta']['filters']['cve_identifier'] == cve
 
 @pytest.mark.asyncio
 async def test_list_systems_needing_reboot(mock_uyuni, mock_ctx):
@@ -496,9 +672,12 @@ async def test_list_systems_needing_reboot(mock_uyuni, mock_ctx):
 
     result = await server._list_systems_needing_reboot(mock_ctx)
 
-    assert len(result) == 1
-    assert result[0]['system_id'] == 1001
-    assert result[0]['reboot_status'] == 'reboot_required'
+    assert 'items' in result
+    assert 'meta' in result
+    assert len(result['items']) == 1
+    assert result['items'][0]['system_id'] == 1001
+    assert result['items'][0]['reboot_status'] == 'reboot_required'
+    assert result['meta']['returned_count'] == 1
     assert route.called
 
 @pytest.mark.asyncio
@@ -513,9 +692,44 @@ async def test_list_all_scheduled_actions(mock_uyuni, mock_ctx):
 
     result = await server._list_all_scheduled_actions(mock_ctx)
 
-    assert len(result) == 1
-    assert result[0]['action_id'] == 123
+    assert 'items' in result
+    assert 'meta' in result
+    assert len(result['items']) == 1
+    assert result['items'][0]['action_id'] == 123
+    assert result['meta']['returned_count'] == 1
     assert route.called
+
+
+@pytest.mark.asyncio
+async def test_list_all_scheduled_actions_filters_and_pagination(mock_uyuni, mock_ctx):
+    base_url = server.CONFIG["UYUNI_SERVER"]
+
+    mock_data = [
+        {"id": 1, "name": "A", "type": "Apply states", "scheduler": "admin"},
+        {"id": 2, "name": "B", "type": "Build an Image Profile", "scheduler": "admin"},
+        {"id": 3, "name": "C", "type": "Apply states", "scheduler": "system"},
+    ]
+
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/schedule/listAllActions").mock(
+        return_value=Response(200, json={"success": True, "result": mock_data})
+    )
+
+    result = await server._list_all_scheduled_actions(
+        mock_ctx,
+        limit=1,
+        offset=0,
+        action_types=["Apply states"],
+        scheduler="admin",
+    )
+
+    assert len(result['items']) == 1
+    assert result['items'][0]['type'] == "Apply states"
+    assert result['items'][0]['scheduler'] == "admin"
+    assert result['meta']['truncated'] is False
+    assert result['meta']['filters']['action_types'] == ["Apply states"]
+    assert 'statuses' not in result['meta']['filters']
+    assert "Apply states" in result['meta']['observed_action_types']
+    assert "admin" in result['meta']['observed_schedulers']
 
 @pytest.mark.asyncio
 async def test_list_activation_keys(mock_uyuni, mock_ctx):

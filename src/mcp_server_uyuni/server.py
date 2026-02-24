@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import os
-import sys
 import asyncio
 from typing import Any, List, Dict, Optional, Union, Coroutine
 import httpx
@@ -22,15 +21,23 @@ from pydantic import BaseModel
 
 from fastmcp.server.middleware import Middleware, MiddlewareContext
 from fastmcp import FastMCP, Context
-from mcp import LoggingLevel, ServerSession, types
+from mcp import types
 
-from .logging_config import get_logger, Transport
+from .constants import Transport, AdvisoryType
+from .logging_config import get_logger
 from .uyuni_api import call as call_uyuni_api, TIMEOUT_HAPPENED
 from .config import CONFIG
 from .auth import AuthProvider
 from .errors import (
     UnexpectedResponse,
     NotFoundError
+)
+from .utils import (
+    to_bool,
+    normalize_pagination,
+    build_list_meta,
+    paginate_items,
+    matches_optional_filter,
 )
 
 class ActivationKeySchema(BaseModel):
@@ -39,7 +46,11 @@ class ActivationKeySchema(BaseModel):
 base_url = f'http://{CONFIG["UYUNI_MCP_HOST"]}:{CONFIG["UYUNI_MCP_PORT"]}'
 auth_provider = AuthProvider(CONFIG["AUTH_SERVER"], base_url, CONFIG["UYUNI_MCP_WRITE_TOOLS_ENABLED"]) if CONFIG["AUTH_SERVER"] else None
 product = CONFIG["UYUNI_PRODUCT_NAME"] if CONFIG["UYUNI_PRODUCT_NAME"] else "Uyuni" 
-mcp = FastMCP("mcp-server-uyuni", auth=auth_provider)
+mcp = FastMCP(
+    "mcp-server-uyuni",
+    auth=auth_provider,
+    instructions=f"MCP tools for {product}: manage mixed Linux systems, groups, patches/updates, and scheduled actions via API tools.",
+)
 
 logger = get_logger(
     log_file=CONFIG["UYUNI_MCP_LOG_FILE_PATH"],
@@ -89,38 +100,25 @@ def write_tool(*decorator_args, **decorator_kwargs):
     # 1. The factory returns the decorator.
     return decorator
 
-def _to_bool(value) -> bool:
-    """
-    Convert truthy string/boolean/integer values to a boolean.
-    Accepts: True, 'true', 'yes', '1', 1, etc.
-    """
-    return str(value).lower() in ("true", "yes", "1")
-
-DYNAMIC_DESCRIPTION = f"""
-    Fetches a list of active systems from the {product} server, returning their names and IDs.
-
-    The returned list contains system objects, each of which consists of a 'system_name'
-    and a numerical 'system_id' field for an active system.
-
-    You SHOULD use the 'system_id' to call other system related tools.
-
-    Returns:
-        A list of system objects (system_name and system_id).
-        Returns an empty list if no systems are found.
-
-    Example:
-        [
-            {{ "system_name": "ubuntu.example.com", "system_id": 100010000 }},
-            {{ "system_name": "opensuseleap15.example.com", "system_id": 100010001 }}
-        ]
-    """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
-async def list_systems(ctx: Context) -> List[Dict[str, Any]]:
+@mcp.tool(description=f"""
+    List active systems in {product}.
+    Inputs: optional `limit`, `offset`.
+    `limit` is capped at 500.
+    Returns: `items` with active systems (`system_name`, `system_id`) and `meta`.
+    Note: use `system_id` for other system tools.
+    """)
+async def list_systems(ctx: Context, limit: int = 50, offset: int = 0) -> Dict[str, Any]:
     log_string = "Getting list of active systems"
     logger.info(log_string)
     await ctx.info(log_string)
 
-    return await _list_systems(ctx.get_state('token'))
+    systems = await _list_systems(ctx.get_state('token'))
+    normalized_limit, normalized_offset = normalize_pagination(limit=limit, offset=offset, default_limit=50, max_limit=500)
+    paged_items, meta = paginate_items(systems, limit=normalized_limit, offset=normalized_offset)
+    return {
+        'items': paged_items,
+        'meta': meta,
+    }
 
 async def _list_systems(token: str) -> List[Dict[str, Union[str, int]]]:
 
@@ -145,72 +143,15 @@ async def _list_systems(token: str) -> List[Dict[str, Union[str, int]]]:
 
     return filtered_systems
 
-DYNAMIC_DESCRIPTION = f"""Gets details of the specified system.
-
-    Args:
-        system_identifier: The system name (e.g., "buildhost.example.com") or system ID (e.g., 1000010000).
-            Prefer using numerical system IDs instead of system names when possible.
-
-    Returns:
-        An object that contains the following attributes of the system:
-            - system_id: The numerical ID of the system within {product} server
-            - system_name: The registered system name, usually its main FQDN
-            - last_boot: The last boot time of the system known to {product} server
-            - uuid: UUID of the system if it is a virtual instance, null otherwise.
-            - cpu: An object with the following CPU attributes of the system:
-                - family: The CPU family
-                - mhz: The CPU clock speed
-                - model: The CPU model
-                - vendor: The CPU vendor
-                - arch: The CPU architecture
-            - network: Network addresses and the hostname of the system.
-                - hostname: The hostname of the system
-                - ip: The IPv4 address of the system
-                - ip6: The IPv6 address of the system
-            - installed_products: List of installed products on the system.
-                You can use this field to identify what OS the system is running.
-
-        Example:
-            {{
-              "system_id": "100010001",
-              "system_name": "opensuse.example.local",
-              "last_boot": "2025-04-01T15:21:56Z",
-              "uuid": "a8c3f40d-c1ae-406e-9f9b-96e7d5fdf5a3",
-              "cpu": {{
-                "family": "15",
-                "mhz": "1896.436",
-                "model": "QEMU Virtual CPU",
-                "vendor": "AuthenticAMD",
-                "arch": "x86_64"
-              }},
-              "network": {{
-                "hostname": "opensuse.example.local",
-                "ip": "192.168.122.193",
-                "ip6": "fe80::5054:ff:fe12:3456"
-              }},
-              "installed_products": [
-                {{
-                  "release": "0",
-                  "name": "SLES",
-                  "isBaseProduct": true,
-                  "arch": "x86_64",
-                  "version": "15.7",
-                  "friendlyName": "SUSE Linux Enterprise Server 15 SP7 x86_64"
-                }},
-                {{
-                  "release": "0",
-                  "name": "sle-module-basesystem",
-                  "isBaseProduct": false,
-                  "arch": "x86_64",
-                  "version": "15.7",
-                  "friendlyName": "Basesystem Module 15 SP7 x86_64"
-                }}
-              ]
-            }}
-        """
-
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def get_system_details(system_identifier: Union[str, int], ctx: Context):
+    """Get details for one system.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`).
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Returns: `system_id`, `system_name`, `last_boot`, `uuid`, `cpu`, `network`, `installed_products`.
+    Use system_id when possible.
+    """
     log_string = f"Getting details of system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -317,62 +258,21 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
         logger.error(details_result)
     return {}
 
-DYNAMIC_DESCRIPTION = f"""Gets the event/action history of the specified system.
+@mcp.tool()
+async def get_system_event_history(system_identifier: Union[str, int], ctx: Context, offset: int = 0, limit: int = 10, earliest_date: Optional[str] = None):
+    """List events for one system.
 
-    The output of this tool is paginated and can be controlled via 'offset' and 'limit' parameters.
-
-    Optionally, the 'earliest_date' parameter can be set to an ISO-8601 date to specify the earliest date
-    for the events to be returned.
-
-    You SHOULD use 'get_system_event_details' tool with an event ID to get the details of an event.
-
-    You SHOULD use this tool to check the status of a reboot. A reboot is finished when
-    its related action is completed.
-
-    Args:
-        system_identifier: The system name (e.g., "buildhost.example.com") or system ID (e.g., 1000010000).
-            Prefer using numerical system IDs instead of system names when possible.
-        offset: Number of results to skip
-        limit: Maximum number of results
-        earliest_date: The earliest ISO-8601 date-time string to filter the events (optional)
-
-    Returns:
-        A list of event/action status, newest to oldest.
-
-        A single event object contains the following attributes:
-
-            - id: The ID of the event
-            - history_type: The type of the event
-            - status: Event's status (completed, failed, etc.)
-            - summary: A short summary of the event
-            - completed: ISO-8601 date & time of the event's completion timestamp
-
-        Example:
-            [
-              {{
-                "id": 12,
-                "history_type": "System reboot",
-                "status": "Completed",
-                "summary": "System reboot scheduled by admin",
-                "completed": "2025-11-27T15:37:28Z"
-              }},
-              {{
-                "id": 357,
-                "history_type": "Patch Update",
-                "status": "Failed"
-                "summary": "Patch Update: Security update for the Linux Kernel",
-                "completed": "2025-11-28T13:11:49Z"
-              }}
-            ]
-        """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
-async def get_system_event_history(system_identifier: Union[str, int], ctx: Context, offset: int = 0, limit: int = 10, earliest_date: str = None):
-    log_string = f"Getting event history of system {system_identifier}"
+    Inputs: `system_identifier` (`system_name` or `system_id`); optional `offset`, `limit`, `earliest_date`.
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Returns: newest-first event list with `id`, `history_type`, `status`, `summary`, `completed`.
+    Use `get_system_event_details` for one event.
+    """
+    log_string = f"Getting event history of system {system_identifier} with offset {offset} and limit {limit}"
     logger.info(log_string)
     await ctx.info(log_string)
     return await _get_system_event_history(system_identifier, limit, offset, earliest_date, ctx.get_state('token'))
 
-async def _get_system_event_history(system_identifier: Union[str, int], limit: int, offset: int, earliest_date: str, token: str) -> list[Any]:
+async def _get_system_event_history(system_identifier: Union[str, int], limit: int, offset: int, earliest_date: Optional[str], token: str) -> list[Any]:
     system_id = await _resolve_system_id(system_identifier, token)
 
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
@@ -394,55 +294,17 @@ async def _get_system_event_history(system_identifier: Union[str, int], limit: i
     else:
         logger.error(f"Unexpected API response when getting event history for system {system_id}")
         logger.error(result)
-    return {}
+    return []
 
-DYNAMIC_DESCRIPTION = f"""Gets the details of the event associated with the especified server and event ID.
-
-    The event ID must be a value returned by the 'get_system_event_history' tool.
-
-    Args:
-        system_identifier: The system name (e.g., "buildhost.example.com") or system ID (e.g., 1000010000).
-            Prefer using numerical system IDs instead of system names when possible.
-        event_id: The ID of the event
-
-    Returns:
-        An object that contains the details of the associated event.
-
-        The event object contains the following attributes:
-
-            - id: The ID of the event
-            - history_type: The type of the event
-            - status: Event's status (completed, failed, etc.)
-            - summary: A short summary of the event
-            - created: ISO-8601 date & time of the event's creation timestamp
-            - picked_up: ISO-8601 date & time when the event was picked up by the system
-            - completed: ISO-8601 date & time of the event's completion timestamp
-            - earliest_action: The earliest ISO-8601 date & time this action should occur
-            - result_msg: The result string of the action executed on the system
-            - result_code: The result code of the action executed on the system
-            - additional_info: Additional information on the event, if available
-
-        Example:
-            [
-              {{
-                "id": 12,
-                "history_type": "System reboot",
-                "status": "Completed",
-                "summary": "System reboot scheduled by admin",
-                "completed": "2025-11-27T15:37:28Z"
-              }},
-              {{
-                "id": 357,
-                "history_type": "Patch Update",
-                "status": "Failed"
-                "summary": "Patch Update: Security update for the Linux Kernel",
-                "completed": "2025-11-28T13:11:49Z"
-              }}
-            ]
-        """
-
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def get_system_event_details(system_identifier: Union[str, int], event_id: int, ctx: Context):
+    """Get one event detail.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`), `event_id`.
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Returns: event object including status, timestamps, result fields, and optional additional_info.
+    `event_id` should come from `get_system_event_history`.
+    """
     log_string = f"Getting event history of system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -468,25 +330,28 @@ async def _get_system_event_details(system_identifier: Union[str, int], event_id
         logger.error(result)
     return {}
 
-DYNAMIC_DESCRIPTION = f"""
-    Lists systems that match the provided hostname.
+@mcp.tool()
+async def find_systems_by_name(
+    name: str,
+    ctx: Context,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """Find systems by hostname.
 
-    Args:
-        name: The system name (e.g., "buildhost.example.com").
-
-    Returns:
-        A list of system objects (system_name and system_id) that match the provided name.
-        Returns an empty list if no systems are found.
-
-    Example:
-        [
-            {{ "system_name": "ubuntu1.example.com", "system_id": 100010000 }},
-            {{ "system_name": "ubuntu2.example.com", "system_id": 100010001 }}
-        ]
+    Inputs: `name`; optional `limit`, `offset`.
+    Use this first when user input is a partial hostname.
+    If multiple systems match, ask the user to choose one `system_id`.
+    `limit` is capped at 500.
+    Returns: `items` with matching systems (`system_name`, `system_id`) and `meta`.
     """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
-async def find_systems_by_name(name: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
-    return await _find_systems_by_name(name, ctx)
+    systems = await _find_systems_by_name(name, ctx)
+    normalized_limit, normalized_offset = normalize_pagination(limit=limit, offset=offset, default_limit=50, max_limit=500)
+    paged_items, meta = paginate_items(systems, limit=normalized_limit, offset=normalized_offset)
+    return {
+        'items': paged_items,
+        'meta': meta,
+    }
 
 async def _find_systems_by_name(name: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
     log_string = f"Finding systems with name {name}"
@@ -516,28 +381,26 @@ async def _find_systems_by_name(name: str, ctx: Context) -> List[Dict[str, Union
 
     return filtered_systems
 
-DYNAMIC_DESCRIPTION= f"""
-    Lists systems that match the provided IP address.
+@mcp.tool()
+async def find_systems_by_ip(
+    ip_address: str,
+    ctx: Context,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """Find systems by IP address.
 
-    Args:
-        ip_address: The system IP address (e.g., "192.168.122.193").
-
-    Returns:
-        A list of system objects (system_name, system_id and ip) that match the provided IP address.
-        Returns an empty list if no systems are found.
-
-    Example:
-        [
-            {{
-              "system_name": "ubuntu.example.com",
-              "system_id": 100010000,
-              "ip": "192.168.122.193"
-            }}
-        ]
+    Inputs: `ip_address`; optional `limit`, `offset`.
+    `limit` is capped at 500.
+    Returns: `items` with matching systems (`system_name`, `system_id`, `ip`) and `meta`.
     """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
-async def find_systems_by_ip(ip_address: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
-    return await _find_systems_by_ip(ip_address, ctx)
+    systems = await _find_systems_by_ip(ip_address, ctx)
+    normalized_limit, normalized_offset = normalize_pagination(limit=limit, offset=offset, default_limit=50, max_limit=500)
+    paged_items, meta = paginate_items(systems, limit=normalized_limit, offset=normalized_offset)
+    return {
+        'items': paged_items,
+        'meta': meta,
+    }
 
 async def _find_systems_by_ip(ip_address: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
     log_string = f"Finding systems with IP address {ip_address}"
@@ -668,33 +531,41 @@ async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str,
 
     return processed_cves
 
-DYNAMIC_DESCRIPTION = f"""
-    Checks if a specific system in the {product} server has pending updates (relevant errata),
-    including associated CVEs for each update.
-
-    Args:
-        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
-
-    Returns:
-        Dict[str, Any]: A dictionary containing:
-                        - 'system_identifier' (Union[str, int]): The original system identifier used in the request.
-                        - 'has_pending_updates' (bool): True if there are pending updates, False otherwise.
-                        - 'update_count' (int): The number of pending updates.
-                        - 'updates' (List[Dict[str, Any]]): A list of pending update details.
-                          Each update dictionary will also include a 'cves' key
-                          containing a list of CVE identifiers associated with that update.
-                        Returns a dictionary with 'has_pending_updates': False and empty 'updates'
-                        if no pending updates are found.
-    """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def get_system_updates(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
+    """Get pending updates for one system.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`; prefer `system_id`).
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Best for compact default update view.
+    Returns: compact update list plus counts and `meta`.
+    Default behavior omits CVEs for lower token usage.
+    For pagination and CVE expansion, use `query_system_updates`.
+    """
 
     log_string = f"Checking pending updates for system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
-    return await _get_system_updates(system_identifier, ctx)
+    return await _get_system_updates(
+        system_identifier=system_identifier,
+        ctx=ctx,
+        include_cves=False,
+        limit=25,
+        offset=0,
+        compact_updates=True,
+    )
 
-async def _get_system_updates(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
+async def _get_system_updates(
+    system_identifier: Union[str, int],
+    ctx: Context,
+    include_cves: bool = False,
+    limit: Optional[int] = 25,
+    offset: int = 0,
+    advisory_types: Optional[List[AdvisoryType]] = None,
+    compact_updates: bool = False,
+    counts_only: bool = False,
+) -> Dict[str, Any]:
+    """Fetch, enrich, filter, and paginate updates for a single system."""
     token = ctx.get_state('token')
     system_id = await _resolve_system_id(system_identifier, token)
 
@@ -725,89 +596,221 @@ async def _get_system_updates(system_identifier: Union[str, int], ctx: Context) 
         )
         relevant_updates_list, unscheduled_updates_list = results
 
+        if not isinstance(relevant_updates_list, list):
+            relevant_updates_list = []
+        if not isinstance(unscheduled_updates_list, list):
+            unscheduled_updates_list = []
+
         unscheduled_advisory_names = {erratum.get('advisory_name') for erratum in unscheduled_updates_list}
 
+        advisory_type_filter = {str(item).lower() for item in advisory_types} if advisory_types else None
+
+        if counts_only:
+            filtered_relevant_updates = [
+                update for update in relevant_updates_list
+                if matches_optional_filter(update.get("advisory_type"), advisory_type_filter)
+            ]
+            pending_count = sum(
+                1 for update in filtered_relevant_updates
+                if update.get('advisory_name') in unscheduled_advisory_names
+            )
+            queued_count = len(filtered_relevant_updates) - pending_count
+
+            normalized_limit, normalized_offset = normalize_pagination(limit=limit, offset=offset)
+            _, meta = paginate_items(filtered_relevant_updates, limit=normalized_limit, offset=normalized_offset)
+
+            return {
+                'system_identifier': system_identifier,
+                'has_pending_updates': len(filtered_relevant_updates) > 0,
+                'update_count': len(filtered_relevant_updates),
+                'pending_update_count': pending_count,
+                'queued_update_count': queued_count,
+                'updates': [],
+                'meta': {
+                    **meta,
+                    'include_cves': include_cves,
+                    'filters': {
+                        'advisory_types': advisory_types or [],
+                    }
+                }
+            }
+
         enriched_updates_list = []
-        cve_fetch_tasks = []
 
         for erratum_api_data in relevant_updates_list:
-            update_details = dict(erratum_api_data)
+            advisory_name = erratum_api_data.get('advisory_name')
 
-            # Rename 'id' to 'update_id'
-            if 'id' in update_details:
-                update_details['update_id'] = update_details.pop('id')
+            if compact_updates:
+                update_details = {
+                    'update_id': erratum_api_data.get('id'),
+                    'advisory_name': advisory_name,
+                    'advisory_type': erratum_api_data.get('advisory_type'),
+                    'advisory_synopsis': erratum_api_data.get('advisory_synopsis'),
+                }
             else:
-                # This case is unlikely for errata from the API but good for robustness
-                update_details['update_id'] = None
-            advisory_name = update_details.get('advisory_name')
+                update_details = dict(erratum_api_data)
+                if 'id' in update_details:
+                    update_details['update_id'] = update_details.pop('id')
+                else:
+                    update_details['update_id'] = None
 
             if advisory_name in unscheduled_advisory_names:
                 update_details['application_status'] = 'Pending'
             else:
                 update_details['application_status'] = 'Queued'
 
-            # Initialize and fetch CVEs
-            update_details['cves'] = []
-            if advisory_name:
-                # Call the helper function to fetch CVEs
-                task = _fetch_cves_for_erratum(client, advisory_name, system_id, list_cves_api_path, ctx)
-                cve_fetch_tasks.append(task)
+            if include_cves or not compact_updates:
+                update_details['cves'] = []
 
             enriched_updates_list.append(update_details)
 
-        all_cve_results = await asyncio.gather(*cve_fetch_tasks)
+        filtered_updates = [
+            update for update in enriched_updates_list
+            if matches_optional_filter(update.get("advisory_type"), advisory_type_filter)
+        ]
+        normalized_limit, normalized_offset = normalize_pagination(limit=limit, offset=offset)
+        paged_updates, meta = paginate_items(filtered_updates, limit=normalized_limit, offset=normalized_offset)
 
-        if cve_fetch_tasks:
-            cve_iterator = iter(all_cve_results)
-            for update in enriched_updates_list:
-                # If the update had an advisory name, it has a corresponding CVE result.
-                if update.get("advisory_name"):
-                    update['cves'] = next(cve_iterator)
-                else:
-                    update['cves'] = [] # Ensure the 'cves' key always exists
+        if include_cves and paged_updates:
+            cve_fetch_updates = [update for update in paged_updates if update.get("advisory_name")]
+            cve_fetch_tasks = [
+                _fetch_cves_for_erratum(client, update.get("advisory_name"), system_id, list_cves_api_path, ctx)
+                for update in cve_fetch_updates
+            ]
+
+            all_cve_results = await asyncio.gather(*cve_fetch_tasks)
+            for update, cves in zip(cve_fetch_updates, all_cve_results):
+                update['cves'] = cves
+
+        pending_count = sum(1 for update in filtered_updates if update.get("application_status") == "Pending")
+        queued_count = sum(1 for update in filtered_updates if update.get("application_status") == "Queued")
 
         return {
             'system_identifier': system_identifier,
-            'has_pending_updates': len(enriched_updates_list) > 0,
-            'update_count': len(enriched_updates_list),
-            'updates': enriched_updates_list
+            'has_pending_updates': len(filtered_updates) > 0,
+            'update_count': len(filtered_updates),
+            'pending_update_count': pending_count,
+            'queued_update_count': queued_count,
+            'updates': paged_updates,
+            'meta': {
+                **meta,
+                'include_cves': include_cves,
+                'filters': {
+                    'advisory_types': advisory_types or [],
+                }
+            }
         }
 
-DYNAMIC_DESCRIPTION = f"""
-    Checks all active systems in the {product} server for pending updates.
 
-    Returns a list containing information only for those systems that have
-    one or more pending updates. Each update detail will include associated CVEs.
+@mcp.tool()
+async def summarize_system_updates(
+    system_identifier: Union[str, int],
+    ctx: Context,
+    advisory_types: Optional[List[AdvisoryType]] = None,
+) -> Dict[str, Any]:
+    """Summarize pending updates for one system.
 
-    Returns:
-        List[Dict[str, Any]]: A list of dictionaries. Each dictionary represents
-                              a system with pending updates and includes:
-                              - 'system_name' (str): The name of the system.
-                              - 'system_id' (int): The unique ID of the system.
-                              - 'update_count' (int): The number of pending updates.
-                              - 'updates' (List[Dict[str, Any]]): A list of pending update details.
-                                Each update dictionary in this list will also contain a 'cves' key
-                                with a list of associated CVE identifiers.
-                              Returns an empty list if no systems are found,
-                              fetching the system list fails, or no systems have updates.
+    Inputs: `system_identifier` (`system_name` or `system_id`); optional `advisory_types`.
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Best for counts only.
+    `advisory_types` accepts: `Security Advisory`, `Product Enhancement Advisory`, `Bug Fix Advisory`.
+    Returns: update counts and `meta`.
     """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
-async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
-    return await _check_all_systems_for_updates(ctx)
+    result = await _get_system_updates(
+        system_identifier=system_identifier,
+        ctx=ctx,
+        include_cves=False,
+        limit=0,
+        offset=0,
+        advisory_types=advisory_types,
+        counts_only=True,
+    )
+    return {
+        'system_identifier': result['system_identifier'],
+        'has_pending_updates': result['has_pending_updates'],
+        'update_count': result['update_count'],
+        'pending_update_count': result['pending_update_count'],
+        'queued_update_count': result['queued_update_count'],
+        'meta': result.get('meta', {})
+    }
 
-async def _check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
+
+@mcp.tool()
+async def query_system_updates(
+    system_identifier: Union[str, int],
+    ctx: Context,
+    limit: int = 25,
+    offset: int = 0,
+    include_cves: bool = False,
+    advisory_types: Optional[List[AdvisoryType]] = None,
+) -> Dict[str, Any]:
+    """Query pending updates for one system.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`); optional `limit`, `offset`, `include_cves`, `advisory_types`.
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Best for pagination and optional CVE expansion.
+    Pagination behavior: `limit <= 0` returns no items (counts still available);
+    positive `limit` is capped at 200.
+    Returns: `updates` with pending updates for the system and `meta`.
+    """
+    return await _get_system_updates(
+        system_identifier=system_identifier,
+        ctx=ctx,
+        include_cves=include_cves,
+        limit=limit,
+        offset=offset,
+        advisory_types=advisory_types,
+    )
+
+@mcp.tool()
+async def check_all_systems_for_updates(
+    ctx: Context,
+    include_updates: bool = False,
+    include_cves: bool = False,
+    system_limit: int = 25,
+    system_offset: int = 0,
+    updates_per_system: int = 10,
+) -> Dict[str, Any]:
+    """Check all active systems for pending updates.
+
+    Inputs: optional `include_updates`, `include_cves`, `system_limit`, `system_offset`, `updates_per_system`.
+    Best for fleet scan; set `include_updates=true` to include per-system update items.
+    `system_limit` is capped at 200 for response paging.
+    Returns: `items` with systems that have pending updates (plus optional update details) and `meta`.
+    """
+    return await _check_all_systems_for_updates(
+        ctx=ctx,
+        include_updates=include_updates,
+        include_cves=include_cves,
+        system_limit=system_limit,
+        system_offset=system_offset,
+        updates_per_system=updates_per_system,
+    )
+
+async def _check_all_systems_for_updates(
+    ctx: Context,
+    include_updates: bool = False,
+    include_cves: bool = False,
+    system_limit: int = 25,
+    system_offset: int = 0,
+    updates_per_system: int = 10,
+) -> Dict[str, Any]:
+    """Scan active systems and return a paged list of systems with pending updates."""
     log_string = "Checking all system for updates"
     logger.info(log_string)
     await ctx.info(log_string)
 
-    systems_with_updates = []
+    systems_with_updates: List[Dict[str, Any]] = []
     active_systems = await _list_systems(ctx.get_state('token')) # Get the list of all systems
 
     if not active_systems:
         msg = "No active systems found."
         logger.warning(msg)
         await ctx.warning(msg)
-        return []
+        return {
+            'items': [],
+            'meta': build_list_meta(total_count=0, returned_count=0, limit=system_limit, offset=system_offset)
+        }
 
     msg = f"Checking {len(active_systems)} systems for updates..."
     logger.info(msg)
@@ -823,46 +826,75 @@ async def _check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
         logger.info(msg)
         await ctx.info(msg)
         # Use the existing get_system_updates tool
-        update_check_result = await _get_system_updates(system_id, ctx)
+        update_check_result = await _get_system_updates(
+            system_id,
+            ctx,
+            include_cves=include_cves,
+            limit=updates_per_system if include_updates else 0,
+            offset=0,
+            counts_only=not include_updates,
+        )
 
         if update_check_result.get('has_pending_updates', False):
-            # If the system has updates, add its info and update details to the result list
-            systems_with_updates.append({
+            system_result = {
                 'system_name': system_name,
                 'system_id': system_id,
                 'update_count': update_check_result.get('update_count', 0),
-                'updates': update_check_result.get('updates', [])
-            })
-        # else: System has no updates, do nothing for this system
+                'pending_update_count': update_check_result.get('pending_update_count', 0),
+                'queued_update_count': update_check_result.get('queued_update_count', 0),
+            }
+            if include_updates:
+                system_result['updates'] = update_check_result.get('updates', [])
+                update_meta = update_check_result.get('meta', {})
+                system_result['updates_truncated'] = bool(update_meta.get('truncated', False))
+            systems_with_updates.append(system_result)
+
     await ctx.report_progress(total_systems, total_systems)
 
     msg = f"Finished checking systems. Found {len(systems_with_updates)} systems with updates."
     logger.info(msg)
     await ctx.info(msg)
-    return systems_with_updates
+    normalized_limit, normalized_offset = normalize_pagination(limit=system_limit, offset=system_offset, default_limit=25, max_limit=200)
+    paged_items, meta = paginate_items(systems_with_updates, limit=normalized_limit, offset=normalized_offset)
+    meta['include_updates'] = include_updates
+    meta['include_cves'] = include_cves
+    meta['updates_per_system'] = updates_per_system if include_updates else 0
+    return {
+        'items': paged_items,
+        'meta': meta
+    }
 
-DYNAMIC_DESCRIPTION = f"""
-    Checks for pending updates on a system, schedules all of them to be applied,
-    and returns the action ID of the scheduled task.
 
-    This tool first calls 'get_system_updates' to determine relevant errata.
-    If updates are found, it then calls the 'system/scheduleApplyErrata' API
-    endpoint to apply all found errata.
+@mcp.tool()
+async def summarize_fleet_updates(
+    ctx: Context,
+    system_limit: int = 25,
+    system_offset: int = 0,
+) -> Dict[str, Any]:
+    """Summarize fleet update status.
 
-    Args:
-        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    Returns:
-        str: The action url if updates were successfully scheduled.
-             Otherwise, returns an empty string.
+    Inputs: optional `system_limit`, `system_offset`.
+    `system_limit` is capped at 200.
+    Returns: paged list of systems with update counts in `items` and `meta`.
     """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+    return await _check_all_systems_for_updates(
+        ctx=ctx,
+        include_updates=False,
+        include_cves=False,
+        system_limit=system_limit,
+        system_offset=system_offset,
+        updates_per_system=0,
+    )
+
+@write_tool()
 async def schedule_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
+    """Schedule all pending updates for one system.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`); optional `confirm`.
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise scheduled action URL or error text.
+    Call once with `confirm=false`, then call again with `confirm=true`.
+    """
     return await _schedule_pending_updates_to_system(system_identifier, ctx, confirm)
 
 async def _schedule_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
@@ -870,12 +902,18 @@ async def _schedule_pending_updates_to_system(system_identifier: Union[str, int]
     logger.info(msg)
     await ctx.info(msg)
 
-    is_confirmed = _to_bool(confirm)
+    is_confirmed = to_bool(confirm)
     if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will apply pending updates to the system {system_identifier}.  Do you confirm?"
 
     token = ctx.get_state('token')
-    update_info = await _get_system_updates(system_identifier, ctx)
+    update_info = await _get_system_updates(
+        system_identifier=system_identifier,
+        ctx=ctx,
+        include_cves=False,
+        limit=None,
+        offset=0,
+    )
 
     if not update_info or not update_info.get('has_pending_updates'):
         msg = f"No pending updates found for system {system_identifier}."
@@ -922,24 +960,15 @@ async def _schedule_pending_updates_to_system(system_identifier: Union[str, int]
             return msg
 
 
-DYNAMIC_DESCRIPTION = f"""
-    Schedules a specific update (erratum) to be applied to a system.
-
-    Args:
-        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
-        errata_id: The unique identifier of the erratum (also referred to as update ID) to be applied. It must be an integer.
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    Returns:
-        str: The action URL if the update was successfully scheduled.
-             Otherwise, returns an empty string.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+@write_tool()
 async def schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
+    """Schedule one specific update for one system.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`), `errata_id`; optional `confirm`.
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise scheduled action URL or error text.
+    Call once with `confirm=false`, then call again with `confirm=true`.
+    """
     return await _schedule_specific_update(system_identifier, errata_id, ctx, confirm)
 
 async def _schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
@@ -947,7 +976,7 @@ async def _schedule_specific_update(system_identifier: Union[str, int], errata_i
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = _to_bool(confirm)
+    is_confirmed = to_bool(confirm)
 
     try:
         errata_id_int = int(errata_id)
@@ -990,33 +1019,12 @@ async def _schedule_specific_update(system_identifier: Union[str, int], errata_i
             logger.error(msg)
             return msg
 
-DYNAMIC_DESCRIPTION = f"""
-    Adds a new system to be managed by {product}.
-
-    This tool remotely connects to the specified host using SSH to register it.
-    It requires an SSH private key to be configured in the UYUNI_SSH_PRIV_KEY
-    environment variable for authentication.
-
-    Args:
-        host: Hostname or IP address of the target system to add.
-        activation_key: The activation key for registering the system.
-        ssh_port: The SSH port on the target machine (default: 22).
-        ssh_user: The user to connect with via SSH (default: 'root').
-        proxy_id: The system ID of a {product} proxy to use (optional).
-        salt_ssh: Manage the system with Salt SSH (default: False).
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    Returns:
-        A confirmation message if 'confirm' is False.
-        An error message if the UYUNI_SSH_PRIV_KEY environment variable is not set.
-        A success message if the system is scheduled for addition successfully.
-        An error message if the operation fails.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+@write_tool(description=f"""
+    Register a new system in {product} via SSH bootstrap.
+    Inputs: `host`; optional `activation_key`, `ssh_port`, `ssh_user`, `proxy_id`, `salt_ssh`, `confirm`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
+    Requires `UYUNI_SSH_PRIV_KEY` on the server.
+    """)
 async def add_system(
     host: str,
     ctx: Context,
@@ -1043,7 +1051,7 @@ async def _add_system(
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = _to_bool(confirm)
+    is_confirmed = to_bool(confirm)
 
     if ctx.session.check_client_capability(types.ClientCapabilities(elicitation=types.ElicitationCapability())):
         # Check for activation key
@@ -1127,26 +1135,13 @@ async def _add_system(
         logger.info(f"api result was NOT 1 {api_result}")
         return f"System {host} was NOT successfully scheduled to be added. Check server logs."
 
-DYNAMIC_DESCRIPTION = f"""
-    Removes/deletes a system from being managed by {product}.
-
-    This is a destructive action and requires confirmation.
-
-    Args:
-        system_identifier: The unique identifier of the system to remove. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
-        cleanup: If True (default), {product} will attempt to run cleanup scripts on the client before deletion.
-                 If False, the system is deleted from {product} without attempting client-side cleanup.
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    Returns:
-        A confirmation message if 'confirm' is False.
-        A success or error message string detailing the outcome.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+@write_tool(description=f"""
+    Remove a system from {product}.
+    Inputs: `system_identifier` (`system_name` or `system_id`); optional `cleanup`, `confirm`.
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
+    This is a destructive operation.
+    """)
 async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanup: bool = True, confirm: Union[bool, str] = False) -> str:
     return await _remove_system(system_identifier, ctx, cleanup, confirm)
 
@@ -1155,7 +1150,7 @@ async def _remove_system(system_identifier: Union[str, int], ctx: Context, clean
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = _to_bool(confirm)
+    is_confirmed = to_bool(confirm)
 
     token = ctx.get_state('token')
     system_id = await _resolve_system_id(system_identifier, token)
@@ -1192,36 +1187,37 @@ async def _remove_system(system_identifier: Union[str, int], ctx: Context, clean
         logger.error(error_message)
         return error_message
 
-DYNAMIC_DESCRIPTION = f"""
-    Finds systems requiring a security update for a specific CVE identifier.
+@mcp.tool()
+async def list_systems_needing_update_for_cve(
+    cve_identifier: str,
+    ctx: Context,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """List systems affected by a CVE.
 
-    This tool identifies systems that are vulnerable to a given Common
-    Vulnerabilities and Exposures (CVE) identifier. It first looks up the
-    security errata (patches/updates) associated with the CVE. Then, for each
-    relevant erratum, it retrieves the list of systems that are affected by
-    that erratum's advisory and thus require the security update.
-
-    Args:
-        cve_identifier: The CVE identifier string (e.g., "CVE-2008-3270").
-
-    Returns:
-        List[Dict[str, Any]]: A list of unique systems affected by the specified CVE.
-                              Each dictionary contains 'system_id' (int) and
-                              'system_name' (str), and 'cve_identifier' (str)
-                              (the CVE for which the system needs an update). Returns an empty list if
-                              the CVE is not found, no systems are affected,
-                              or an API error occurs.
+    Inputs: `cve_identifier`; optional `limit`, `offset`.
+    `limit` is capped at 500.
+    Returns: `items` with unique affected systems (`system_id`, `system_name`) and `meta`.
     """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
-async def list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context) -> List[Dict[str, Any]]:
-    return await _list_systems_needing_update_for_cve(cve_identifier, ctx)
+    return await _list_systems_needing_update_for_cve(cve_identifier, ctx, limit, offset)
 
-async def _list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context) -> List[Dict[str, Any]]:
+async def _list_systems_needing_update_for_cve(
+    cve_identifier: str,
+    ctx: Context,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
     log_string = f"Getting systems that need to apply CVE {cve_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
 
     affected_systems_map = {}  # Use a dict to store unique systems by ID {system_id: {details}}
+    normalized_limit, normalized_offset = normalize_pagination(limit=limit, offset=offset, default_limit=50, max_limit=500)
+    empty_result = {
+        'items': [],
+        'meta': build_list_meta(total_count=0, returned_count=0, limit=normalized_limit, offset=normalized_offset)
+    }
 
     find_by_cve_path = '/rhn/manager/api/errata/findByCve'
     list_affected_systems_path = '/rhn/manager/api/errata/listAffectedSystems'
@@ -1240,17 +1236,17 @@ async def _list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context
         )
 
         if errata_list is None: # API call failed
-            return []
+            return empty_result
         if not isinstance(errata_list, list):
             msg = f"Expected a list of errata for CVE {cve_identifier}, but received: {type(errata_list)}"
             logger.error(msg)
             await ctx.error(msg)
-            return []
+            return empty_result
         if not errata_list:
             msg = f"No errata found for CVE {cve_identifier}."
             logger.info(msg)
             await ctx.info(msg)
-            return []
+            return empty_result
 
         # 2. For each erratum, call listAffectedSystems
         for erratum in errata_list:
@@ -1291,32 +1287,43 @@ async def _list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context
                 else:
                     logger.warning(f"Unexpected item format in affected systems list for advisory {advisory_name}: {system_info}")
 
-    if not affected_systems_map:
+    affected_systems_list = list(affected_systems_map.values())
+
+    if not affected_systems_list:
         msg = f"No systems found affected by CVE {cve_identifier} after checking all related errata."
         logger.info(msg)
         await ctx.info(msg)
     else:
-        logger.info(f"Found {len(affected_systems_map)} unique system(s) affected by CVE {cve_identifier}.")
+        logger.info(f"Found {len(affected_systems_list)} unique system(s) affected by CVE {cve_identifier}.")
 
-    return list(affected_systems_map.values())
+    paged_items, meta = paginate_items(affected_systems_list, limit=normalized_limit, offset=normalized_offset)
+    meta['filters'] = {
+        'cve_identifier': cve_identifier,
+    }
+    return {
+        'items': paged_items,
+        'meta': meta,
+    }
 
-DYNAMIC_DESCRIPTION = f"""
-    Fetches a list of systems from the {product} server that require a reboot.
+@mcp.tool()
+async def list_systems_needing_reboot(
+    ctx: Context,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """List systems that require reboot.
 
-    The returned list contains dictionaries, each with 'system_id' (int),
-    'system_name' (str), and 'reboot_status' (str, typically 'reboot_required')
-    for a system that has been identified by {product} as needing a reboot.
-
-    Returns:
-        List[Dict[str, Any]]: A list of system dictionaries (system_id, system_name, reboot_status)
-                              for systems requiring a reboot. Returns an empty list
-                              if no systems require a reboot.
+    Inputs: optional `limit`, `offset`.
+    `limit` is capped at 500.
+    Returns: `items` with systems requiring reboot (`system_id`, `system_name`, `reboot_status`) and `meta`.
     """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
-async def list_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
-    return await _list_systems_needing_reboot(ctx)
+    return await _list_systems_needing_reboot(ctx, limit, offset)
 
-async def _list_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
+async def _list_systems_needing_reboot(
+    ctx: Context,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
     log_string = "Fetch list of system that require a reboot."
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1349,28 +1356,22 @@ async def _list_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
         elif reboot_data_result: # Log if not default empty list but also not a list
             logger.warning(f"Expected a list for systems needing reboot, but received: {type(reboot_data_result)}")
 
-    return systems_needing_reboot_list
+    normalized_limit, normalized_offset = normalize_pagination(limit=limit, offset=offset, default_limit=50, max_limit=500)
+    paged_items, meta = paginate_items(systems_needing_reboot_list, limit=normalized_limit, offset=normalized_offset)
+    return {
+        'items': paged_items,
+        'meta': meta,
+    }
 
-DYNAMIC_DESCRIPTION = f"""
-    Schedules an immediate reboot for a specific system on the {product} server.
-
-    Args:
-        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    The reboot is scheduled to occur as soon as possible (effectively "now").
-
-    Returns:
-        str: A message indicating the action ID if the reboot was successfully scheduled,
-             e.g., "System reboot successfully scheduled. Action URL: ...".
-             Returns an empty string if scheduling fails or an error occurs.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+@write_tool()
 async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context, confirm: Union[bool, str] = False) -> str:
+    """Schedule an immediate reboot for one system.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`); optional `confirm`.
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise reboot action URL or error text.
+    Call once with `confirm=false`, then call again with `confirm=true`.
+    """
     return await _schedule_system_reboot(system_identifier, ctx, confirm)
 
 async def _schedule_system_reboot(system_identifier: Union[str, int], ctx:Context, confirm: Union[bool, str] = False) -> str:
@@ -1378,7 +1379,7 @@ async def _schedule_system_reboot(system_identifier: Union[str, int], ctx:Contex
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = _to_bool(confirm)
+    is_confirmed = to_bool(confirm)
 
     token = ctx.get_state('token')
     system_id = await _resolve_system_id(system_identifier, token)
@@ -1412,33 +1413,44 @@ async def _schedule_system_reboot(system_identifier: Union[str, int], ctx:Contex
         else:
             return "Unexpected API response format when scheduling reboot. Check server logs for details."
 
-DYNAMIC_DESCRIPTION = f"""
-    Fetches a list of all scheduled actions from the {product} server.
+@mcp.tool()
+async def list_all_scheduled_actions(
+    ctx: Context,
+    limit: int = 50,
+    offset: int = 0,
+    action_types: Optional[List[str]] = None,
+    scheduler: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Query scheduled actions.
 
-    You can use this tool to check the status of a reboot. A reboot is finished when
-    its related action is completed.
-
-    This includes completed, in-progress, failed, and archived actions.
-    Each action in the list is a dictionary containing details such as
-    action_id, name, type, scheduler, earliest execution time,
-    prerequisite action ID (if any), and counts of systems in
-    completed, failed, or in-progress states.
-
-    Returns:
-        List[Dict[str, Any]]: A list of action dictionaries.
-                              Returns an empty list if no actions are found.
+    Inputs: optional `limit`, `offset`, `action_types`, `scheduler`.
+    `action_types` and `scheduler` are optional exact-match filters; prefer values from `meta.observed_action_types` and `meta.observed_schedulers`.
+    `limit` is capped at 500; use `meta.next_offset` to page.
+    Returns: `items` with scheduled actions and `meta`.
     """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
-async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
-    return await _list_all_scheduled_actions(ctx)
+    return await _list_all_scheduled_actions(
+        ctx=ctx,
+        limit=limit,
+        offset=offset,
+        action_types=action_types,
+        scheduler=scheduler,
+    )
 
-async def _list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
+async def _list_all_scheduled_actions(
+    ctx: Context,
+    limit: int = 50,
+    offset: int = 0,
+    action_types: Optional[List[str]] = None,
+    scheduler: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Fetch scheduled actions, apply optional filters, and return paged results.
+    """
     log_string = "Listing all scheduled actions"
     logger.info(log_string)
     await ctx.info(log_string)
 
     list_actions_path = '/rhn/manager/api/schedule/listAllActions'
-    processed_actions_list = []
+    processed_actions_list: List[Dict[str, Any]] = []
 
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
         api_result = await call_uyuni_api(
@@ -1461,27 +1473,40 @@ async def _list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
                     logger.warning(f"Unexpected item format in actions list: {action_dict}")
         elif api_result: # Log if not default empty list but also not a list
             logger.warning(f"Expected a list for all scheduled actions, but received: {type(api_result)}")
-    return processed_actions_list
+    action_types_filter = {str(item).lower() for item in action_types} if action_types else None
+    observed_action_types = sorted({str(action.get('type')) for action in processed_actions_list if action.get('type')})
+    observed_schedulers = sorted({str(action.get('scheduler')) for action in processed_actions_list if action.get('scheduler')})
 
-DYNAMIC_DESCRIPTION = f"""
-    Cancels a specified action on the {product} server.
+    filtered_actions: List[Dict[str, Any]] = []
+    for action in processed_actions_list:
+        if not matches_optional_filter(action.get('type'), action_types_filter):
+            continue
+        if scheduler and str(action.get('scheduler', '')).lower() != str(scheduler).lower():
+            continue
+        filtered_actions.append(action)
 
-    Args:
-        action_id: The integer ID of the action to be canceled.
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
+    normalized_limit, normalized_offset = normalize_pagination(limit=limit, offset=offset, default_limit=50, max_limit=500)
+    paged_items, meta = paginate_items(filtered_actions, limit=normalized_limit, offset=normalized_offset)
+    meta['filters'] = {
+        'action_types': action_types or [],
+        'scheduler': scheduler,
+    }
+    meta['observed_action_types'] = observed_action_types
+    meta['observed_schedulers'] = observed_schedulers
 
-    Returns:
-        str: A success message if the action was canceled,
-             e.g., "Successfully canceled action: 123".
-             Returns an error message if the cancellation failed for any reason,
-             e.g., "Failed to cancel action 123. Please check the action ID and server logs."
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+    return {
+        'items': paged_items,
+        'meta': meta,
+    }
+
+@write_tool()
 async def cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] = False) -> str:
+    """Cancel a scheduled action.
+
+    Inputs: `action_id`; optional `confirm`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
+    Call once with `confirm=false`, then call again with `confirm=true`.
+    """
     return await _cancel_action(action_id, ctx, confirm)
 
 async def _cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] = False) -> str:
@@ -1489,10 +1514,10 @@ async def _cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str]
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = _to_bool(confirm)
+    is_confirmed = to_bool(confirm)
 
     cancel_actions_path = '/rhn/manager/api/schedule/cancelActions'
- 
+
     if not isinstance(action_id, int): # Basic type check, though FastMCP might handle this
         return "Invalid action ID provided. Must be an integer."
 
@@ -1515,20 +1540,13 @@ async def _cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str]
             return f"Failed to cancel action: {action_id}. The API did not return success (expected 1, got {api_result}). Check server logs for details."
 
 
-DYNAMIC_DESCRIPTION = f"""
-    Fetches a list of activation keys from the {product} server.
-
-    This tool retrieves all activation keys visible to the user and returns
-    a list containing only the key identifier and its description.
-
-    Returns:
-        List[Dict[str, str]]: A list of dictionaries, where each dictionary
-                              represents an activation key with 'key' and
-                              'description' fields. Returns an empty list
-                              if no keys are found.
-    """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
+    """List activation keys available to the current user.
+
+    Inputs: none.
+    Returns: list of objects with `key` and `description`.
+    """
     return await _list_activation_keys(ctx)
 
 async def _list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
@@ -1554,21 +1572,14 @@ async def _list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
                 await ctx.warning(msg)
     return filtered_keys
 
-DYNAMIC_DESCRIPTION = f"""
-    Provides a list of errata that are applicable to the system with the system_id
-    passed as parameter and have not been scheduled yet. All elements in the result are patches that are applicable
-    for the system.
-
-    Args:
-        system_id: The integer ID of the system for which we want to know the list of applicable errata.
-
-    Returns:
-        List[Dict[str, Any]]: A list of dictionaries with each dictionary defining a errata applicable
-                            to the system given as a parameter.
-                            Returns an empty dictionary if no applicable errata for the system are found.
-    """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str, Any]]:
+    """List unscheduled errata for one system.
+
+    Inputs: `system_id`.
+    This tool accepts numeric `system_id` only.
+    Returns: errata list for that system.
+    """
     return await _get_unscheduled_errata(system_id, ctx)
 
 async def _get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str, Any]]:
@@ -1596,40 +1607,15 @@ async def _get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str
         else:
             msg = f"Failed to retrieve unscheduled errata for system ID {system_id}. Unexpected API result format. Result: {unscheduled_errata_result}"
             logger.error(msg)
-            return msg
+            return []
 
-DYNAMIC_DESCRIPTION = f"""
-    Fetches a list of system groups from the {product} server.
-
-    This tool retrieves all system groups visible to the user and returns a list containing for
-    each group the identifier, name, description and system count.
-
-    Returns:
-        A list of dictionaries, where each dictionary represents a system group with 'id', 'name',
-        'description' and 'system_count' fields. The 'system_count' refers to the number of systems
-        assigned to each group.
-
-        Returns an empty list if the API call fails, the response is not in the expected format,
-        or no groups are found.
-
-        Example:
-            [
-                {{
-                    "id": "1",
-                    "name": "Default Group",
-                    "description": "Default group for all systems",
-                    "system_count": "10"
-                }},
-                {{
-                    "id": "2",
-                    "name": "Test Group",
-                    "description": "Group for testing purposes",
-                    "system_count": "5"
-                }}
-            ]
-    """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def list_system_groups(ctx: Context) -> List[Dict[str, str]]:
+    """List system groups.
+
+    Inputs: none.
+    Returns: list with `id`, `name`, `description`, and `system_count`.
+    """
     return await _list_system_groups(ctx)
 
 async def _list_system_groups(ctx: Context) -> List[Dict[str, str]]:
@@ -1656,26 +1642,14 @@ async def _list_system_groups(ctx: Context) -> List[Dict[str, str]]:
                 await ctx.warning(msg)
     return filtered_groups
 
-DYNAMIC_DESCRIPTION = f"""
-    Creates a new system group in {product}.
+@write_tool(description=f"""
+    Create a new system group in {product}.
 
-    Args:
-        name: The name of the new system group.
-        description: An optional description for the system group.
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    Returns:
-        A success message if the group was created, e.g., "Successfully created system group 'my-group'".
-        Returns an error message if the creation failed.
-
-        Example:
-            Successfully created system group 'my-group'.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+    Inputs: `name`; optional `description`, `confirm`.
+    System groups in {product} are flat (no nesting).
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
+    Call once with `confirm=false`, then call again with `confirm=true`.
+    """)
 async def create_system_group(name: str, ctx: Context, description: str = "", confirm: Union[bool, str] = False) -> str:
     return await _create_system_group(name, ctx, description, confirm)
 
@@ -1684,7 +1658,7 @@ async def _create_system_group(name: str, ctx: Context, description: str = "", c
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = _to_bool(confirm)
+    is_confirmed = to_bool(confirm)
 
     if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will create a new system group named '{name}' with description '{description}'. Do you confirm?"
@@ -1714,32 +1688,13 @@ async def _create_system_group(name: str, ctx: Context, description: str = "", c
             logger.error(msg)
         return msg
 
-DYNAMIC_DESCRIPTION = f"""
-    Lists the systems in a system group.
-
-    Args:
-        group_name: The name of the system group.
-
-    Returns:
-        A list of dictionaries, where each dictionary represents a system with 'system_id' and
-        'system_name' fields.
-
-        Returns an empty list if the API call fails or no systems are found.
-
-        Example:
-            [
-                {{
-                    "system_id": "123456789",
-                    "system_name": "my-system"
-                }},
-                {{
-                    "system_id": "987654321",
-                    "system_name": "my-other-system"
-                }}
-            ]
-    """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, Any]]:
+    """List systems in one group.
+
+    Inputs: `group_name`.
+    Returns: list of `system_id` and `system_name`.
+    """
     log_string = f"Listing systems in group '{group_name}'"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1771,48 +1726,24 @@ async def _list_group_systems(group_name: str, token: str) -> List[Dict[str, Any
                 logger.warning(msg)
     return filtered_systems
 
-DYNAMIC_DESCRIPTION = f"""
-    Adds systems to a system group.
-
-    Args:
-        group_name: The name of the system group.
-        system_identifiers: A list of system names or IDs to add to the group.
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    Returns:
-        A success message if the systems were added.
-
-        Example:
-            Successfully added 1 systems to/from group 'test-group'.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+@write_tool()
 async def add_systems_to_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context, confirm: Union[bool, str] = False) -> str:
+    """Add systems to a group.
+
+    Inputs: `group_name`, `system_identifiers`; optional `confirm`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
+    Call once with `confirm=false`, then call again with `confirm=true`.
+    """
     return await _manage_group_systems(group_name, system_identifiers, True, ctx, confirm)
 
-DYNAMIC_DESCRIPTION = f"""
-    Removes systems from a system group.
-
-    Args:
-        group_name: The name of the system group.
-        system_identifiers: A list of system names or IDs to remove from the group.
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    Returns:
-        A success message if the systems were removed.
-
-        Example:
-            Successfully removed 1 systems to/from group 'test-group'.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+@write_tool()
 async def remove_systems_from_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context, confirm: Union[bool, str] = False) -> str:
+    """Remove systems from a group.
+
+    Inputs: `group_name`, `system_identifiers`; optional `confirm`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
+    Call once with `confirm=false`, then call again with `confirm=true`.
+    """
     return await _manage_group_systems(group_name, system_identifiers, False, ctx, confirm)
 
 async def _manage_group_systems(group_name: str, system_identifiers: List[Union[str, int]], add: bool, ctx: Context, confirm: Union[bool, str] = False) -> str:
@@ -1824,21 +1755,18 @@ async def _manage_group_systems(group_name: str, system_identifiers: List[Union[
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = _to_bool(confirm)
+    is_confirmed = to_bool(confirm)
 
     if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will {action_str[0]} {len(system_identifiers)} systems {action_str[1]} group '{group_name}'. Do you confirm?"
 
     token = ctx.get_state('token')
 
-    # Resolve all system IDs
-    resolved_ids = []
-    for identifier in system_identifiers:
-        sid = await _resolve_system_id(identifier, token)
-        if sid:
-            resolved_ids.append(int(sid))
-        else:
-            print(f"Warning: Could not resolve system identifier '{identifier}'. Skipping.")
+    # Resolve all system IDs in parallel
+    resolved_sid_values = await asyncio.gather(
+        *[_resolve_system_id(identifier, token) for identifier in system_identifiers]
+    )
+    resolved_ids = [int(sid) for sid in resolved_sid_values]
 
     if not resolved_ids:
         return "No valid system identifiers found. Aborting."

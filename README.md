@@ -35,7 +35,10 @@ It is designed to be run as a container remotely (HTTP) or locally (stdio), offe
 * `find_systems_by_name`: Lists systems that match the provided hostname.
 * `find_systems_by_ip`: Lists systems that match the provided IP address.
 * `get_system_updates`: Checks if a specific system has pending updates (relevant errata).
+* `summarize_system_updates`: Returns low-token summary counts for pending updates of a specific system (optional `advisory_types` filter).
+* `query_system_updates`: Returns paginated pending updates for a specific system with optional CVE expansion and optional `advisory_types` filter.
 * `check_all_systems_for_updates`: Checks all active systems for pending updates.
+* `summarize_fleet_updates`: Returns low-token paginated summary of systems with pending updates.
 * `list_systems_needing_update_for_cve`: Finds systems requiring a security update for a specific CVE identifier.
 * `list_systems_needing_reboot`: Fetches a list of systems from the Uyuni server that require a reboot.
 * `get_unscheduled_errata`: Lists applicable and unscheduled patches for a system.
