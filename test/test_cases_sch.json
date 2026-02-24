@@ -5,7 +5,7 @@
   },
   {
     "id": "TC-SCH-001",
-    "prompt": "List all scheduled actions in {product_name}.",
+    "prompt": "List and show details of all scheduled actions in {product_name}.",
     "expected_output": "Returns a list of action dictionaries, it should include a system reboot scheduled as the action with the highest action id. Example fields: id, name, type, earliest."
   },
   {
