@@ -531,33 +531,41 @@ async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str,
 
     return processed_cves
 
-DYNAMIC_DESCRIPTION = f"""
-    Checks if a specific system in the {product} server has pending updates (relevant errata),
-    including associated CVEs for each update.
-
-    Args:
-        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
-
-    Returns:
-        Dict[str, Any]: A dictionary containing:
-                        - 'system_identifier' (Union[str, int]): The original system identifier used in the request.
-                        - 'has_pending_updates' (bool): True if there are pending updates, False otherwise.
-                        - 'update_count' (int): The number of pending updates.
-                        - 'updates' (List[Dict[str, Any]]): A list of pending update details.
-                          Each update dictionary will also include a 'cves' key
-                          containing a list of CVE identifiers associated with that update.
-                        Returns a dictionary with 'has_pending_updates': False and empty 'updates'
-                        if no pending updates are found.
-    """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def get_system_updates(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
+    """Get pending updates for one system.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`; prefer `system_id`).
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Best for compact default update view.
+    Returns: compact update list plus counts and `meta`.
+    Default behavior omits CVEs for lower token usage.
+    For pagination and CVE expansion, use `query_system_updates`.
+    """
 
     log_string = f"Checking pending updates for system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
-    return await _get_system_updates(system_identifier, ctx)
+    return await _get_system_updates(
+        system_identifier=system_identifier,
+        ctx=ctx,
+        include_cves=False,
+        limit=25,
+        offset=0,
+        compact_updates=True,
+    )
 
-async def _get_system_updates(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
+async def _get_system_updates(
+    system_identifier: Union[str, int],
+    ctx: Context,
+    include_cves: bool = False,
+    limit: Optional[int] = 25,
+    offset: int = 0,
+    advisory_types: Optional[List[AdvisoryType]] = None,
+    compact_updates: bool = False,
+    counts_only: bool = False,
+) -> Dict[str, Any]:
+    """Fetch, enrich, filter, and paginate updates for a single system."""
     token = ctx.get_state('token')
     system_id = await _resolve_system_id(system_identifier, token)
 
@@ -588,89 +596,221 @@ async def _get_system_updates(system_identifier: Union[str, int], ctx: Context) 
         )
         relevant_updates_list, unscheduled_updates_list = results
 
+        if not isinstance(relevant_updates_list, list):
+            relevant_updates_list = []
+        if not isinstance(unscheduled_updates_list, list):
+            unscheduled_updates_list = []
+
         unscheduled_advisory_names = {erratum.get('advisory_name') for erratum in unscheduled_updates_list}
 
+        advisory_type_filter = {str(item).lower() for item in advisory_types} if advisory_types else None
+
+        if counts_only:
+            filtered_relevant_updates = [
+                update for update in relevant_updates_list
+                if matches_optional_filter(update.get("advisory_type"), advisory_type_filter)
+            ]
+            pending_count = sum(
+                1 for update in filtered_relevant_updates
+                if update.get('advisory_name') in unscheduled_advisory_names
+            )
+            queued_count = len(filtered_relevant_updates) - pending_count
+
+            normalized_limit, normalized_offset = normalize_pagination(limit=limit, offset=offset)
+            _, meta = paginate_items(filtered_relevant_updates, limit=normalized_limit, offset=normalized_offset)
+
+            return {
+                'system_identifier': system_identifier,
+                'has_pending_updates': len(filtered_relevant_updates) > 0,
+                'update_count': len(filtered_relevant_updates),
+                'pending_update_count': pending_count,
+                'queued_update_count': queued_count,
+                'updates': [],
+                'meta': {
+                    **meta,
+                    'include_cves': include_cves,
+                    'filters': {
+                        'advisory_types': advisory_types or [],
+                    }
+                }
+            }
+
         enriched_updates_list = []
-        cve_fetch_tasks = []
 
         for erratum_api_data in relevant_updates_list:
-            update_details = dict(erratum_api_data)
+            advisory_name = erratum_api_data.get('advisory_name')
 
-            # Rename 'id' to 'update_id'
-            if 'id' in update_details:
-                update_details['update_id'] = update_details.pop('id')
+            if compact_updates:
+                update_details = {
+                    'update_id': erratum_api_data.get('id'),
+                    'advisory_name': advisory_name,
+                    'advisory_type': erratum_api_data.get('advisory_type'),
+                    'advisory_synopsis': erratum_api_data.get('advisory_synopsis'),
+                }
             else:
-                # This case is unlikely for errata from the API but good for robustness
-                update_details['update_id'] = None
-            advisory_name = update_details.get('advisory_name')
+                update_details = dict(erratum_api_data)
+                if 'id' in update_details:
+                    update_details['update_id'] = update_details.pop('id')
+                else:
+                    update_details['update_id'] = None
 
             if advisory_name in unscheduled_advisory_names:
                 update_details['application_status'] = 'Pending'
             else:
                 update_details['application_status'] = 'Queued'
 
-            # Initialize and fetch CVEs
-            update_details['cves'] = []
-            if advisory_name:
-                # Call the helper function to fetch CVEs
-                task = _fetch_cves_for_erratum(client, advisory_name, system_id, list_cves_api_path, ctx)
-                cve_fetch_tasks.append(task)
+            if include_cves or not compact_updates:
+                update_details['cves'] = []
 
             enriched_updates_list.append(update_details)
 
-        all_cve_results = await asyncio.gather(*cve_fetch_tasks)
+        filtered_updates = [
+            update for update in enriched_updates_list
+            if matches_optional_filter(update.get("advisory_type"), advisory_type_filter)
+        ]
+        normalized_limit, normalized_offset = normalize_pagination(limit=limit, offset=offset)
+        paged_updates, meta = paginate_items(filtered_updates, limit=normalized_limit, offset=normalized_offset)
 
-        if cve_fetch_tasks:
-            cve_iterator = iter(all_cve_results)
-            for update in enriched_updates_list:
-                # If the update had an advisory name, it has a corresponding CVE result.
-                if update.get("advisory_name"):
-                    update['cves'] = next(cve_iterator)
-                else:
-                    update['cves'] = [] # Ensure the 'cves' key always exists
+        if include_cves and paged_updates:
+            cve_fetch_updates = [update for update in paged_updates if update.get("advisory_name")]
+            cve_fetch_tasks = [
+                _fetch_cves_for_erratum(client, update.get("advisory_name"), system_id, list_cves_api_path, ctx)
+                for update in cve_fetch_updates
+            ]
+
+            all_cve_results = await asyncio.gather(*cve_fetch_tasks)
+            for update, cves in zip(cve_fetch_updates, all_cve_results):
+                update['cves'] = cves
+
+        pending_count = sum(1 for update in filtered_updates if update.get("application_status") == "Pending")
+        queued_count = sum(1 for update in filtered_updates if update.get("application_status") == "Queued")
 
         return {
             'system_identifier': system_identifier,
-            'has_pending_updates': len(enriched_updates_list) > 0,
-            'update_count': len(enriched_updates_list),
-            'updates': enriched_updates_list
+            'has_pending_updates': len(filtered_updates) > 0,
+            'update_count': len(filtered_updates),
+            'pending_update_count': pending_count,
+            'queued_update_count': queued_count,
+            'updates': paged_updates,
+            'meta': {
+                **meta,
+                'include_cves': include_cves,
+                'filters': {
+                    'advisory_types': advisory_types or [],
+                }
+            }
         }
 
-DYNAMIC_DESCRIPTION = f"""
-    Checks all active systems in the {product} server for pending updates.
 
-    Returns a list containing information only for those systems that have
-    one or more pending updates. Each update detail will include associated CVEs.
+@mcp.tool()
+async def summarize_system_updates(
+    system_identifier: Union[str, int],
+    ctx: Context,
+    advisory_types: Optional[List[AdvisoryType]] = None,
+) -> Dict[str, Any]:
+    """Summarize pending updates for one system.
 
-    Returns:
-        List[Dict[str, Any]]: A list of dictionaries. Each dictionary represents
-                              a system with pending updates and includes:
-                              - 'system_name' (str): The name of the system.
-                              - 'system_id' (int): The unique ID of the system.
-                              - 'update_count' (int): The number of pending updates.
-                              - 'updates' (List[Dict[str, Any]]): A list of pending update details.
-                                Each update dictionary in this list will also contain a 'cves' key
-                                with a list of associated CVE identifiers.
-                              Returns an empty list if no systems are found,
-                              fetching the system list fails, or no systems have updates.
+    Inputs: `system_identifier` (`system_name` or `system_id`); optional `advisory_types`.
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Best for counts only.
+    `advisory_types` accepts: `Security Advisory`, `Product Enhancement Advisory`, `Bug Fix Advisory`.
+    Returns: update counts and `meta`.
     """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
-async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
-    return await _check_all_systems_for_updates(ctx)
+    result = await _get_system_updates(
+        system_identifier=system_identifier,
+        ctx=ctx,
+        include_cves=False,
+        limit=0,
+        offset=0,
+        advisory_types=advisory_types,
+        counts_only=True,
+    )
+    return {
+        'system_identifier': result['system_identifier'],
+        'has_pending_updates': result['has_pending_updates'],
+        'update_count': result['update_count'],
+        'pending_update_count': result['pending_update_count'],
+        'queued_update_count': result['queued_update_count'],
+        'meta': result.get('meta', {})
+    }
 
-async def _check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
+
+@mcp.tool()
+async def query_system_updates(
+    system_identifier: Union[str, int],
+    ctx: Context,
+    limit: int = 25,
+    offset: int = 0,
+    include_cves: bool = False,
+    advisory_types: Optional[List[AdvisoryType]] = None,
+) -> Dict[str, Any]:
+    """Query pending updates for one system.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`); optional `limit`, `offset`, `include_cves`, `advisory_types`.
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Best for pagination and optional CVE expansion.
+    Pagination behavior: `limit <= 0` returns no items (counts still available);
+    positive `limit` is capped at 200.
+    Returns: `updates` with pending updates for the system and `meta`.
+    """
+    return await _get_system_updates(
+        system_identifier=system_identifier,
+        ctx=ctx,
+        include_cves=include_cves,
+        limit=limit,
+        offset=offset,
+        advisory_types=advisory_types,
+    )
+
+@mcp.tool()
+async def check_all_systems_for_updates(
+    ctx: Context,
+    include_updates: bool = False,
+    include_cves: bool = False,
+    system_limit: int = 25,
+    system_offset: int = 0,
+    updates_per_system: int = 10,
+) -> Dict[str, Any]:
+    """Check all active systems for pending updates.
+
+    Inputs: optional `include_updates`, `include_cves`, `system_limit`, `system_offset`, `updates_per_system`.
+    Best for fleet scan; set `include_updates=true` to include per-system update items.
+    `system_limit` is capped at 200 for response paging.
+    Returns: `items` with systems that have pending updates (plus optional update details) and `meta`.
+    """
+    return await _check_all_systems_for_updates(
+        ctx=ctx,
+        include_updates=include_updates,
+        include_cves=include_cves,
+        system_limit=system_limit,
+        system_offset=system_offset,
+        updates_per_system=updates_per_system,
+    )
+
+async def _check_all_systems_for_updates(
+    ctx: Context,
+    include_updates: bool = False,
+    include_cves: bool = False,
+    system_limit: int = 25,
+    system_offset: int = 0,
+    updates_per_system: int = 10,
+) -> Dict[str, Any]:
+    """Scan active systems and return a paged list of systems with pending updates."""
     log_string = "Checking all system for updates"
     logger.info(log_string)
     await ctx.info(log_string)
 
-    systems_with_updates = []
+    systems_with_updates: List[Dict[str, Any]] = []
     active_systems = await _list_systems(ctx.get_state('token')) # Get the list of all systems
 
     if not active_systems:
         msg = "No active systems found."
         logger.warning(msg)
         await ctx.warning(msg)
-        return []
+        return {
+            'items': [],
+            'meta': build_list_meta(total_count=0, returned_count=0, limit=system_limit, offset=system_offset)
+        }
 
     msg = f"Checking {len(active_systems)} systems for updates..."
     logger.info(msg)
@@ -686,46 +826,75 @@ async def _check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
         logger.info(msg)
         await ctx.info(msg)
         # Use the existing get_system_updates tool
-        update_check_result = await _get_system_updates(system_id, ctx)
+        update_check_result = await _get_system_updates(
+            system_id,
+            ctx,
+            include_cves=include_cves,
+            limit=updates_per_system if include_updates else 0,
+            offset=0,
+            counts_only=not include_updates,
+        )
 
         if update_check_result.get('has_pending_updates', False):
-            # If the system has updates, add its info and update details to the result list
-            systems_with_updates.append({
+            system_result = {
                 'system_name': system_name,
                 'system_id': system_id,
                 'update_count': update_check_result.get('update_count', 0),
-                'updates': update_check_result.get('updates', [])
-            })
-        # else: System has no updates, do nothing for this system
+                'pending_update_count': update_check_result.get('pending_update_count', 0),
+                'queued_update_count': update_check_result.get('queued_update_count', 0),
+            }
+            if include_updates:
+                system_result['updates'] = update_check_result.get('updates', [])
+                update_meta = update_check_result.get('meta', {})
+                system_result['updates_truncated'] = bool(update_meta.get('truncated', False))
+            systems_with_updates.append(system_result)
+
     await ctx.report_progress(total_systems, total_systems)
 
     msg = f"Finished checking systems. Found {len(systems_with_updates)} systems with updates."
     logger.info(msg)
     await ctx.info(msg)
-    return systems_with_updates
+    normalized_limit, normalized_offset = normalize_pagination(limit=system_limit, offset=system_offset, default_limit=25, max_limit=200)
+    paged_items, meta = paginate_items(systems_with_updates, limit=normalized_limit, offset=normalized_offset)
+    meta['include_updates'] = include_updates
+    meta['include_cves'] = include_cves
+    meta['updates_per_system'] = updates_per_system if include_updates else 0
+    return {
+        'items': paged_items,
+        'meta': meta
+    }
 
-DYNAMIC_DESCRIPTION = f"""
-    Checks for pending updates on a system, schedules all of them to be applied,
-    and returns the action ID of the scheduled task.
 
-    This tool first calls 'get_system_updates' to determine relevant errata.
-    If updates are found, it then calls the 'system/scheduleApplyErrata' API
-    endpoint to apply all found errata.
+@mcp.tool()
+async def summarize_fleet_updates(
+    ctx: Context,
+    system_limit: int = 25,
+    system_offset: int = 0,
+) -> Dict[str, Any]:
+    """Summarize fleet update status.
 
-    Args:
-        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    Returns:
-        str: The action url if updates were successfully scheduled.
-             Otherwise, returns an empty string.
+    Inputs: optional `system_limit`, `system_offset`.
+    `system_limit` is capped at 200.
+    Returns: paged list of systems with update counts in `items` and `meta`.
     """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+    return await _check_all_systems_for_updates(
+        ctx=ctx,
+        include_updates=False,
+        include_cves=False,
+        system_limit=system_limit,
+        system_offset=system_offset,
+        updates_per_system=0,
+    )
+
+@write_tool()
 async def schedule_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
+    """Schedule all pending updates for one system.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`); optional `confirm`.
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise scheduled action URL or error text.
+    Call once with `confirm=false`, then call again with `confirm=true`.
+    """
     return await _schedule_pending_updates_to_system(system_identifier, ctx, confirm)
 
 async def _schedule_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
@@ -733,12 +902,18 @@ async def _schedule_pending_updates_to_system(system_identifier: Union[str, int]
     logger.info(msg)
     await ctx.info(msg)
 
-    is_confirmed = _to_bool(confirm)
+    is_confirmed = to_bool(confirm)
     if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will apply pending updates to the system {system_identifier}.  Do you confirm?"
 
     token = ctx.get_state('token')
-    update_info = await _get_system_updates(system_identifier, ctx)
+    update_info = await _get_system_updates(
+        system_identifier=system_identifier,
+        ctx=ctx,
+        include_cves=False,
+        limit=None,
+        offset=0,
+    )
 
     if not update_info or not update_info.get('has_pending_updates'):
         msg = f"No pending updates found for system {system_identifier}."
@@ -785,24 +960,15 @@ async def _schedule_pending_updates_to_system(system_identifier: Union[str, int]
             return msg
 
 
-DYNAMIC_DESCRIPTION = f"""
-    Schedules a specific update (erratum) to be applied to a system.
-
-    Args:
-        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
-        errata_id: The unique identifier of the erratum (also referred to as update ID) to be applied. It must be an integer.
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    Returns:
-        str: The action URL if the update was successfully scheduled.
-             Otherwise, returns an empty string.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+@write_tool()
 async def schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
+    """Schedule one specific update for one system.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`), `errata_id`; optional `confirm`.
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise scheduled action URL or error text.
+    Call once with `confirm=false`, then call again with `confirm=true`.
+    """
     return await _schedule_specific_update(system_identifier, errata_id, ctx, confirm)
 
 async def _schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
@@ -810,7 +976,7 @@ async def _schedule_specific_update(system_identifier: Union[str, int], errata_i
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = _to_bool(confirm)
+    is_confirmed = to_bool(confirm)
 
     try:
         errata_id_int = int(errata_id)
@@ -853,33 +1019,12 @@ async def _schedule_specific_update(system_identifier: Union[str, int], errata_i
             logger.error(msg)
             return msg
 
-DYNAMIC_DESCRIPTION = f"""
-    Adds a new system to be managed by {product}.
-
-    This tool remotely connects to the specified host using SSH to register it.
-    It requires an SSH private key to be configured in the UYUNI_SSH_PRIV_KEY
-    environment variable for authentication.
-
-    Args:
-        host: Hostname or IP address of the target system to add.
-        activation_key: The activation key for registering the system.
-        ssh_port: The SSH port on the target machine (default: 22).
-        ssh_user: The user to connect with via SSH (default: 'root').
-        proxy_id: The system ID of a {product} proxy to use (optional).
-        salt_ssh: Manage the system with Salt SSH (default: False).
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    Returns:
-        A confirmation message if 'confirm' is False.
-        An error message if the UYUNI_SSH_PRIV_KEY environment variable is not set.
-        A success message if the system is scheduled for addition successfully.
-        An error message if the operation fails.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+@write_tool(description=f"""
+    Register a new system in {product} via SSH bootstrap.
+    Inputs: `host`; optional `activation_key`, `ssh_port`, `ssh_user`, `proxy_id`, `salt_ssh`, `confirm`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
+    Requires `UYUNI_SSH_PRIV_KEY` on the server.
+    """)
 async def add_system(
     host: str,
     ctx: Context,
@@ -906,7 +1051,7 @@ async def _add_system(
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = _to_bool(confirm)
+    is_confirmed = to_bool(confirm)
 
     if ctx.session.check_client_capability(types.ClientCapabilities(elicitation=types.ElicitationCapability())):
         # Check for activation key
