@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import os
-import sys
 import asyncio
 from typing import Any, List, Dict, Optional, Union, Coroutine
 import httpx
@@ -22,15 +21,23 @@ from pydantic import BaseModel
 
 from fastmcp.server.middleware import Middleware, MiddlewareContext
 from fastmcp import FastMCP, Context
-from mcp import LoggingLevel, ServerSession, types
+from mcp import types
 
-from .logging_config import get_logger, Transport
+from .constants import Transport, AdvisoryType
+from .logging_config import get_logger
 from .uyuni_api import call as call_uyuni_api, TIMEOUT_HAPPENED
 from .config import CONFIG
 from .auth import AuthProvider
 from .errors import (
     UnexpectedResponse,
     NotFoundError
+)
+from .utils import (
+    to_bool,
+    normalize_pagination,
+    build_list_meta,
+    paginate_items,
+    matches_optional_filter,
 )
 
 class ActivationKeySchema(BaseModel):
@@ -39,7 +46,11 @@ class ActivationKeySchema(BaseModel):
 base_url = f'http://{CONFIG["UYUNI_MCP_HOST"]}:{CONFIG["UYUNI_MCP_PORT"]}'
 auth_provider = AuthProvider(CONFIG["AUTH_SERVER"], base_url, CONFIG["UYUNI_MCP_WRITE_TOOLS_ENABLED"]) if CONFIG["AUTH_SERVER"] else None
 product = CONFIG["UYUNI_PRODUCT_NAME"] if CONFIG["UYUNI_PRODUCT_NAME"] else "Uyuni" 
-mcp = FastMCP("mcp-server-uyuni", auth=auth_provider)
+mcp = FastMCP(
+    "mcp-server-uyuni",
+    auth=auth_provider,
+    instructions=f"MCP tools for {product}: manage mixed Linux systems, groups, patches/updates, and scheduled actions via API tools.",
+)
 
 logger = get_logger(
     log_file=CONFIG["UYUNI_MCP_LOG_FILE_PATH"],
@@ -89,38 +100,25 @@ def write_tool(*decorator_args, **decorator_kwargs):
     # 1. The factory returns the decorator.
     return decorator
 
-def _to_bool(value) -> bool:
-    """
-    Convert truthy string/boolean/integer values to a boolean.
-    Accepts: True, 'true', 'yes', '1', 1, etc.
-    """
-    return str(value).lower() in ("true", "yes", "1")
-
-DYNAMIC_DESCRIPTION = f"""
-    Fetches a list of active systems from the {product} server, returning their names and IDs.
-
-    The returned list contains system objects, each of which consists of a 'system_name'
-    and a numerical 'system_id' field for an active system.
-
-    You SHOULD use the 'system_id' to call other system related tools.
-
-    Returns:
-        A list of system objects (system_name and system_id).
-        Returns an empty list if no systems are found.
-
-    Example:
-        [
-            {{ "system_name": "ubuntu.example.com", "system_id": 100010000 }},
-            {{ "system_name": "opensuseleap15.example.com", "system_id": 100010001 }}
-        ]
-    """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
-async def list_systems(ctx: Context) -> List[Dict[str, Any]]:
+@mcp.tool(description=f"""
+    List active systems in {product}.
+    Inputs: optional `limit`, `offset`.
+    `limit` is capped at 500.
+    Returns: `items` with active systems (`system_name`, `system_id`) and `meta`.
+    Note: use `system_id` for other system tools.
+    """)
+async def list_systems(ctx: Context, limit: int = 50, offset: int = 0) -> Dict[str, Any]:
     log_string = "Getting list of active systems"
     logger.info(log_string)
     await ctx.info(log_string)
 
-    return await _list_systems(ctx.get_state('token'))
+    systems = await _list_systems(ctx.get_state('token'))
+    normalized_limit, normalized_offset = normalize_pagination(limit=limit, offset=offset, default_limit=50, max_limit=500)
+    paged_items, meta = paginate_items(systems, limit=normalized_limit, offset=normalized_offset)
+    return {
+        'items': paged_items,
+        'meta': meta,
+    }
 
 async def _list_systems(token: str) -> List[Dict[str, Union[str, int]]]:
 
@@ -145,72 +143,15 @@ async def _list_systems(token: str) -> List[Dict[str, Union[str, int]]]:
 
     return filtered_systems
 
-DYNAMIC_DESCRIPTION = f"""Gets details of the specified system.
-
-    Args:
-        system_identifier: The system name (e.g., "buildhost.example.com") or system ID (e.g., 1000010000).
-            Prefer using numerical system IDs instead of system names when possible.
-
-    Returns:
-        An object that contains the following attributes of the system:
-            - system_id: The numerical ID of the system within {product} server
-            - system_name: The registered system name, usually its main FQDN
-            - last_boot: The last boot time of the system known to {product} server
-            - uuid: UUID of the system if it is a virtual instance, null otherwise.
-            - cpu: An object with the following CPU attributes of the system:
-                - family: The CPU family
-                - mhz: The CPU clock speed
-                - model: The CPU model
-                - vendor: The CPU vendor
-                - arch: The CPU architecture
-            - network: Network addresses and the hostname of the system.
-                - hostname: The hostname of the system
-                - ip: The IPv4 address of the system
-                - ip6: The IPv6 address of the system
-            - installed_products: List of installed products on the system.
-                You can use this field to identify what OS the system is running.
-
-        Example:
-            {{
-              "system_id": "100010001",
-              "system_name": "opensuse.example.local",
-              "last_boot": "2025-04-01T15:21:56Z",
-              "uuid": "a8c3f40d-c1ae-406e-9f9b-96e7d5fdf5a3",
-              "cpu": {{
-                "family": "15",
-                "mhz": "1896.436",
-                "model": "QEMU Virtual CPU",
-                "vendor": "AuthenticAMD",
-                "arch": "x86_64"
-              }},
-              "network": {{
-                "hostname": "opensuse.example.local",
-                "ip": "192.168.122.193",
-                "ip6": "fe80::5054:ff:fe12:3456"
-              }},
-              "installed_products": [
-                {{
-                  "release": "0",
-                  "name": "SLES",
-                  "isBaseProduct": true,
-                  "arch": "x86_64",
-                  "version": "15.7",
-                  "friendlyName": "SUSE Linux Enterprise Server 15 SP7 x86_64"
-                }},
-                {{
-                  "release": "0",
-                  "name": "sle-module-basesystem",
-                  "isBaseProduct": false,
-                  "arch": "x86_64",
-                  "version": "15.7",
-                  "friendlyName": "Basesystem Module 15 SP7 x86_64"
-                }}
-              ]
-            }}
-        """
-
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def get_system_details(system_identifier: Union[str, int], ctx: Context):
+    """Get details for one system.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`).
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Returns: `system_id`, `system_name`, `last_boot`, `uuid`, `cpu`, `network`, `installed_products`.
+    Use system_id when possible.
+    """
     log_string = f"Getting details of system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -317,62 +258,21 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
         logger.error(details_result)
     return {}
 
-DYNAMIC_DESCRIPTION = f"""Gets the event/action history of the specified system.
+@mcp.tool()
+async def get_system_event_history(system_identifier: Union[str, int], ctx: Context, offset: int = 0, limit: int = 10, earliest_date: Optional[str] = None):
+    """List events for one system.
 
-    The output of this tool is paginated and can be controlled via 'offset' and 'limit' parameters.
-
-    Optionally, the 'earliest_date' parameter can be set to an ISO-8601 date to specify the earliest date
-    for the events to be returned.
-
-    You SHOULD use 'get_system_event_details' tool with an event ID to get the details of an event.
-
-    You SHOULD use this tool to check the status of a reboot. A reboot is finished when
-    its related action is completed.
-
-    Args:
-        system_identifier: The system name (e.g., "buildhost.example.com") or system ID (e.g., 1000010000).
-            Prefer using numerical system IDs instead of system names when possible.
-        offset: Number of results to skip
-        limit: Maximum number of results
-        earliest_date: The earliest ISO-8601 date-time string to filter the events (optional)
-
-    Returns:
-        A list of event/action status, newest to oldest.
-
-        A single event object contains the following attributes:
-
-            - id: The ID of the event
-            - history_type: The type of the event
-            - status: Event's status (completed, failed, etc.)
-            - summary: A short summary of the event
-            - completed: ISO-8601 date & time of the event's completion timestamp
-
-        Example:
-            [
-              {{
-                "id": 12,
-                "history_type": "System reboot",
-                "status": "Completed",
-                "summary": "System reboot scheduled by admin",
-                "completed": "2025-11-27T15:37:28Z"
-              }},
-              {{
-                "id": 357,
-                "history_type": "Patch Update",
-                "status": "Failed"
-                "summary": "Patch Update: Security update for the Linux Kernel",
-                "completed": "2025-11-28T13:11:49Z"
-              }}
-            ]
-        """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
-async def get_system_event_history(system_identifier: Union[str, int], ctx: Context, offset: int = 0, limit: int = 10, earliest_date: str = None):
-    log_string = f"Getting event history of system {system_identifier}"
+    Inputs: `system_identifier` (`system_name` or `system_id`); optional `offset`, `limit`, `earliest_date`.
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Returns: newest-first event list with `id`, `history_type`, `status`, `summary`, `completed`.
+    Use `get_system_event_details` for one event.
+    """
+    log_string = f"Getting event history of system {system_identifier} with offset {offset} and limit {limit}"
     logger.info(log_string)
     await ctx.info(log_string)
     return await _get_system_event_history(system_identifier, limit, offset, earliest_date, ctx.get_state('token'))
 
-async def _get_system_event_history(system_identifier: Union[str, int], limit: int, offset: int, earliest_date: str, token: str) -> list[Any]:
+async def _get_system_event_history(system_identifier: Union[str, int], limit: int, offset: int, earliest_date: Optional[str], token: str) -> list[Any]:
     system_id = await _resolve_system_id(system_identifier, token)
 
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
@@ -394,55 +294,17 @@ async def _get_system_event_history(system_identifier: Union[str, int], limit: i
     else:
         logger.error(f"Unexpected API response when getting event history for system {system_id}")
         logger.error(result)
-    return {}
+    return []
 
-DYNAMIC_DESCRIPTION = f"""Gets the details of the event associated with the especified server and event ID.
-
-    The event ID must be a value returned by the 'get_system_event_history' tool.
-
-    Args:
-        system_identifier: The system name (e.g., "buildhost.example.com") or system ID (e.g., 1000010000).
-            Prefer using numerical system IDs instead of system names when possible.
-        event_id: The ID of the event
-
-    Returns:
-        An object that contains the details of the associated event.
-
-        The event object contains the following attributes:
-
-            - id: The ID of the event
-            - history_type: The type of the event
-            - status: Event's status (completed, failed, etc.)
-            - summary: A short summary of the event
-            - created: ISO-8601 date & time of the event's creation timestamp
-            - picked_up: ISO-8601 date & time when the event was picked up by the system
-            - completed: ISO-8601 date & time of the event's completion timestamp
-            - earliest_action: The earliest ISO-8601 date & time this action should occur
-            - result_msg: The result string of the action executed on the system
-            - result_code: The result code of the action executed on the system
-            - additional_info: Additional information on the event, if available
-
-        Example:
-            [
-              {{
-                "id": 12,
-                "history_type": "System reboot",
-                "status": "Completed",
-                "summary": "System reboot scheduled by admin",
-                "completed": "2025-11-27T15:37:28Z"
-              }},
-              {{
-                "id": 357,
-                "history_type": "Patch Update",
-                "status": "Failed"
-                "summary": "Patch Update: Security update for the Linux Kernel",
-                "completed": "2025-11-28T13:11:49Z"
-              }}
-            ]
-        """
-
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def get_system_event_details(system_identifier: Union[str, int], event_id: int, ctx: Context):
+    """Get one event detail.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`), `event_id`.
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Returns: event object including status, timestamps, result fields, and optional additional_info.
+    `event_id` should come from `get_system_event_history`.
+    """
     log_string = f"Getting event history of system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -468,25 +330,28 @@ async def _get_system_event_details(system_identifier: Union[str, int], event_id
         logger.error(result)
     return {}
 
-DYNAMIC_DESCRIPTION = f"""
-    Lists systems that match the provided hostname.
+@mcp.tool()
+async def find_systems_by_name(
+    name: str,
+    ctx: Context,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """Find systems by hostname.
 
-    Args:
-        name: The system name (e.g., "buildhost.example.com").
-
-    Returns:
-        A list of system objects (system_name and system_id) that match the provided name.
-        Returns an empty list if no systems are found.
-
-    Example:
-        [
-            {{ "system_name": "ubuntu1.example.com", "system_id": 100010000 }},
-            {{ "system_name": "ubuntu2.example.com", "system_id": 100010001 }}
-        ]
+    Inputs: `name`; optional `limit`, `offset`.
+    Use this first when user input is a partial hostname.
+    If multiple systems match, ask the user to choose one `system_id`.
+    `limit` is capped at 500.
+    Returns: `items` with matching systems (`system_name`, `system_id`) and `meta`.
     """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
-async def find_systems_by_name(name: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
-    return await _find_systems_by_name(name, ctx)
+    systems = await _find_systems_by_name(name, ctx)
+    normalized_limit, normalized_offset = normalize_pagination(limit=limit, offset=offset, default_limit=50, max_limit=500)
+    paged_items, meta = paginate_items(systems, limit=normalized_limit, offset=normalized_offset)
+    return {
+        'items': paged_items,
+        'meta': meta,
+    }
 
 async def _find_systems_by_name(name: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
     log_string = f"Finding systems with name {name}"
@@ -516,28 +381,26 @@ async def _find_systems_by_name(name: str, ctx: Context) -> List[Dict[str, Union
 
     return filtered_systems
 
-DYNAMIC_DESCRIPTION= f"""
-    Lists systems that match the provided IP address.
+@mcp.tool()
+async def find_systems_by_ip(
+    ip_address: str,
+    ctx: Context,
+    limit: int = 50,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """Find systems by IP address.
 
-    Args:
-        ip_address: The system IP address (e.g., "192.168.122.193").
-
-    Returns:
-        A list of system objects (system_name, system_id and ip) that match the provided IP address.
-        Returns an empty list if no systems are found.
-
-    Example:
-        [
-            {{
-              "system_name": "ubuntu.example.com",
-              "system_id": 100010000,
-              "ip": "192.168.122.193"
-            }}
-        ]
+    Inputs: `ip_address`; optional `limit`, `offset`.
+    `limit` is capped at 500.
+    Returns: `items` with matching systems (`system_name`, `system_id`, `ip`) and `meta`.
     """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
-async def find_systems_by_ip(ip_address: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
-    return await _find_systems_by_ip(ip_address, ctx)
+    systems = await _find_systems_by_ip(ip_address, ctx)
+    normalized_limit, normalized_offset = normalize_pagination(limit=limit, offset=offset, default_limit=50, max_limit=500)
+    paged_items, meta = paginate_items(systems, limit=normalized_limit, offset=normalized_offset)
+    return {
+        'items': paged_items,
+        'meta': meta,
+    }
 
 async def _find_systems_by_ip(ip_address: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
     log_string = f"Finding systems with IP address {ip_address}"
