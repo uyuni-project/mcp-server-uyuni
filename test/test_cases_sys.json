@@ -2,7 +2,14 @@
   {
     "id": "TC-SYS-001",
     "prompt": "Get the name and system id of all systems in the {product_name} server.",
-    "expected_output": "The response must contain the following system and ID pairs: \n* {build_host_name}: {build_host_id} \n* {deblike_minion_name}: {deblike_minion_id} \n* {proxy_name}: {proxy_id} \n* {rhlike_minion_name}: {rhlike_minion_id} \n* {suse_minion_name}: {suse_minion_id} \n* {suse_ssh_minion_name}: {suse_ssh_minion_id}"
+    "expected_output": "The response must contain the following system and ID pairs: \n* {build_host_name}: {build_host_id} \n* {deblike_minion_name}: {deblike_minion_id} \n* {proxy_name}: {proxy_id} \n* {rhlike_minion_name}: {rhlike_minion_id} \n* {suse_minion_name}: {suse_minion_id} \n* {suse_ssh_minion_name}: {suse_ssh_minion_id}",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output contains a list of systems.",
+        "For each system listed in the expected output, verify that both the system name and its corresponding ID are present in the actual output.",
+        "Ignore formatting differences (e.g., 'Name: ID' vs 'Name (ID: ID)')."
+      ]
+    }
   },
   {
     "id": "TC-SYS-002",
@@ -12,7 +19,13 @@
   {
     "id": "TC-SYS-003",
     "prompt": "Get CPU details for system ID 999999999.",
-    "expected_output": "EXPECTED: The response must indicate that the system (ID 999999999) either does not exist OR that no CPU details could be found for it."
+    "expected_output": "EXPECTED: The response must indicate that the system (ID 999999999) either does not exist OR that no CPU details could be found for it.",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the actual output conveys that the system with ID 999999999 was not found, does not exist, or has no CPU details.",
+        "Accept semantic equivalents (e.g., 'not found', 'does not exist', 'unable to retrieve') without requiring exact string matches."
+      ]
+    }
   },
   {
     "id": "TC-SYS-004",
@@ -22,7 +35,14 @@
   {
     "id": "TC-SYS-005",
     "prompt": "Do all active servers have the same CPU? Use available tools to answer.",
-    "expected_output": "No. All have {build_host_cpu_model} except proxy, which has {proxy_cpu_model}."
+    "expected_output": "No. All have {build_host_cpu_model} except proxy, which has {proxy_cpu_model}.",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the actual output answers 'No' to the question.",
+        "Verify that the output identifies the proxy server as having a different CPU compared to the others.",
+        "Check if the CPU types mentioned generally match the expected output (AMD EPYC for proxy, QEMU for others)."
+      ]
+    }
   },
   {
     "id": "TC-SYS-006",
@@ -31,12 +51,19 @@
   },
   {
     "id": "TC-SYS-007",
-    "prompt": "Create a new system group named 'test-group' with description 'Test Group Description'.",
-    "expected_output": "CONFIRMATION REQUIRED: This will create a new system group named 'test-group' with description 'Test Group Description'. Do you confirm?"
+    "prompt": "Create a new system group named 'test-group-2' with description 'Test Group 2 Description'.",
+    "expected_output": "CONFIRMATION REQUIRED: This will create a new system group named 'test-group-2' with description 'Test Group 2 Description'. Do you confirm?",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output is asking for confirmation to create a system group.",
+        "Verify the group name in the output is 'test-group-2'.",
+        "Verify the description in the output is 'Test Group 2 Description'."
+      ]
+    }
   },
   {
     "id": "TC-SYS-008",
-    "prompt": "Create a new system group named 'test-group' with description 'Test Group Description'. Confirm yes.",
-    "expected_output": "Successfully created system group 'test-group'."
+    "prompt": "Create a new system group named 'test-group-2' with description 'Test Group 2 Description'. Confirm yes.",
+    "expected_output": "Successfully created system group 'test-group-2'."
   }
 ]

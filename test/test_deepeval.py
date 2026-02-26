@@ -23,10 +23,16 @@ def load_vars():
     if os.path.exists(config_path):
         with open(config_path, 'r') as f:
             config_data = json.load(f)
+            # Load top-level string values from config
+            for key, value in config_data.items():
+                if isinstance(value, str):
+                    placeholders[key] = value
+            # Load nested system values
             if "systems" in config_data:
                 for sys_key, sys_values in config_data["systems"].items():
                     for attr_key, attr_value in sys_values.items():
                         placeholders[f"{sys_key}_{attr_key}"] = attr_value
+            # Load nested activation key values
             if "activation_keys" in config_data:
                 for key_name, key_value in config_data["activation_keys"].items():
                     placeholders[f"key_{key_name}"] = key_value
@@ -68,7 +74,7 @@ class GoogleGemini(DeepEvalBaseLLM):
     def get_model_name(self):
         return self.model_name
 
-async def run_mcp_agent(prompt: str, model: str = "gemini-2.5-flash") -> str:
+async def run_mcp_agent(prompt: str, model: str = "gemini-2.5-pro") -> str:
     server_params = StdioServerParameters(
         command="uv",
         args=["run", "mcp-server-uyuni"],
@@ -140,11 +146,11 @@ def test_uyuni_mcp_deepeval(test_case):
     actual_output = query_mcp_server(prompt)
 
     geval_kwargs = {
-        name="Correctness",
-        evaluation_params=[LLMTestCaseParams.ACTUAL_OUTPUT],
-        threshold=0.7,
-        verbose_mode=True,
-        model=GoogleGemini()
+        "name": "Correctness",
+        "evaluation_params": [LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
+        "threshold": 0.7,
+        "verbose_mode": True,
+        "model": GoogleGemini()
     }
     user_geval_config = test_case.get("geval_config", {})
     geval_kwargs.update(user_geval_config)
@@ -163,4 +169,16 @@ def test_uyuni_mcp_deepeval(test_case):
         expected_output=expected_output
     )
 
-    assert_test(deepeval_case, [correctness_metric])
+    try:
+        assert_test(deepeval_case, [correctness_metric])
+    except AssertionError as e:
+        error_message = (
+            f"\n--- Deepeval Test Failed ---\n"
+            f"Test Case ID: {test_id}\n"
+            f"Prompt: {prompt}\n"
+            f"Expected Output Hint: {expected_output}\n"
+            f"----- ACTUAL OUTPUT -----\n{actual_output}\n"
+            f"----- END ACTUAL OUTPUT -----\n"
+            f"Original Error: {e}"
+        )
+        raise AssertionError(error_message) from e

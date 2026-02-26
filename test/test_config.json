@@ -1,10 +1,10 @@
 {
-  "product_name": "Uyuni",
+  "product_name": "Multi Linux Manager (MLM)",
   "systems": {
     "proxy": {
       "id": "1000010000",
       "name": "suma-test-ai-proxy.mgr.suse.de",
-      "cpu_model": "AMD EPYC"
+      "cpu_model": "AMD EPYC-Genoa Processor"
     },
     "build_host": {
       "id": "1000010003",
