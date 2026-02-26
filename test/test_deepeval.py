@@ -139,18 +139,23 @@ def test_uyuni_mcp_deepeval(test_case):
 
     actual_output = query_mcp_server(prompt)
 
-    threshold = test_case.get("assertion_config", {}).get("threshold", 0.7)
-
-    gemini_model = GoogleGemini()
-
-    correctness_metric = GEval(
+    geval_kwargs = {
         name="Correctness",
-        criteria=f"The actual output must satisfy this requirement: {expected_output}",
         evaluation_params=[LLMTestCaseParams.ACTUAL_OUTPUT],
-        threshold=threshold,
+        threshold=0.7,
         verbose_mode=True,
-        model=gemini_model
-    )
+        model=GoogleGemini()
+    }
+    user_geval_config = test_case.get("geval_config", {})
+    geval_kwargs.update(user_geval_config)
+
+    if isinstance(geval_kwargs["model"], str):
+        geval_kwargs["model"] = GoogleGemini(model=geval_kwargs["model"])
+
+    if "criteria" not in geval_kwargs and "evaluation_steps" not in geval_kwargs:
+        geval_kwargs["criteria"] = f"The actual output must satisfy this requirement: {expected_output}"
+
+    correctness_metric = GEval(**geval_kwargs)
 
     deepeval_case = LLMTestCase(
         input=prompt,
