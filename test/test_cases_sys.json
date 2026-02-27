@@ -6,12 +6,12 @@
   },
   {
     "id": "TC-SYS-002",
-    "prompt": "Get CPU details for system ID {proxy_id}.",
-    "expected_output": "Returns a message with CPU attributes. Among those attributes there is the model name {proxy_cpu_model}."
+    "prompt": "Show me CPU details for system ID {proxy_id}.",
+    "expected_output": "Returns a message with CPU attributes. Among those attributes there is the model name that includes {proxy_cpu_model}."
   },
   {
     "id": "TC-SYS-003",
-    "prompt": "Get CPU details for system ID 999999999.",
+    "prompt": "Show me CPU details for system ID 999999999.",
     "expected_output": "EXPECTED: The response must indicate that the system (ID 999999999) either does not exist OR that no CPU details could be found for it."
   },
   {
@@ -21,22 +21,22 @@
   },
   {
     "id": "TC-SYS-005",
-    "prompt": "Do all active servers have the same CPU? Use available tools to answer.",
+    "prompt": "Do all active servers have the same CPU model? Use available tools to answer.",
     "expected_output": "No. All have {build_host_cpu_model} except proxy, which has {proxy_cpu_model}."
   },
   {
     "id": "TC-SYS-006",
-    "prompt": "Get CPU details for system '{build_host_name}'.",
-    "expected_output": "Returns a message with CPU attributes of model {build_host_cpu_model}."
+    "prompt": "Show me CPU details for system '{build_host_name}'.",
+    "expected_output": "Returns a message with CPU attributes that the model name includes {build_host_cpu_model}."
   },
   {
     "id": "TC-SYS-007",
-    "prompt": "Create a new system group named 'test-group' with description 'Test Group Description'.",
-    "expected_output": "CONFIRMATION REQUIRED: This will create a new system group named 'test-group' with description 'Test Group Description'. Do you confirm?"
+    "prompt": "Create a new system group named 'test-group-2' with description 'Test Group Description'.",
+    "expected_output": "CONFIRMATION REQUIRED: This will create a new system group named 'test-group-2' with description 'Test Group Description'. Do you confirm?"
   },
   {
     "id": "TC-SYS-008",
-    "prompt": "Create a new system group named 'test-group' with description 'Test Group Description'. Confirm yes.",
-    "expected_output": "Successfully created system group 'test-group'."
+    "prompt": "Create a new system group named 'test-group-2' with description 'Test Group Description'. Confirm yes.",
+    "expected_output": "Successfully created system group 'test-group-2'."
   }
 ]
