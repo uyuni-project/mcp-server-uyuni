@@ -1,0 +1,7 @@
+[
+  {
+    "id": "TC-UPD-003",
+    "prompt": "Use the available tools to check all systems for pending updates and return a list of the systems that have them.",
+    "expected_output": "The response must contain a list of systems that have pending updates OR state that there are no pending updates."
+  }
+]

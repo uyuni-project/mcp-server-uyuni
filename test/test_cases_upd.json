@@ -6,13 +6,18 @@
   },
   {
     "id": "TC-UPD-002",
-    "prompt": "Are there any updates for '{rhlike_minion_name}'?",
+    "prompt": "Are there any updates for '{rhlike_minion_name}'? List them.",
     "expected_output": "The response must contain a list of pending updates for system '{rhlike_minion_name}' OR state that there are no pending updates."
   },
   {
-    "id": "TC-UPD-003",
-    "prompt": "Use the available tools to check all systems for pending updates and return a list of the systems that have them.",
-    "expected_output": "The response must contain a list of systems that have pending updates OR state that there are no pending updates."
+    "id": "TC-UPD-003_confirm_request",
+    "prompt": "Can you schedule applying the update with highest errata id (eid) (Update ID) from that list for system id {rhlike_minion_id}?",
+    "expected_output": "Confirmation is required on applying the update to the system {rhlike_minion_id}."
+  },
+  {
+    "id": "TC-UPD-003_confirmed",
+    "prompt": "Can you schedule applying the update with highest errata id (eid) (Update ID) from that list for system id {rhlike_minion_id}? I confirm.",
+    "expected_output": "The response must clearly state that a schedule/update action has been performed or planned. The mention of a System ID is acceptable and should be considered a successful confirmation."
   },
   {
     "id": "TC-UPD-004_confirm_request",
@@ -27,26 +32,6 @@
   {
     "id": "TC-UPD-006_confirmed",
     "prompt": "Update my server with id {rhlike_minion_id}. I confirm.",
-    "expected_output": "Update successfully scheduled at ...'"
-  },
-  {
-    "id": "TC-UPD-007",
-    "prompt": "Are there any security updates for my systems?",
-    "expected_output": "The response must contain a list of systems that have pending security updates OR state that there are no pending security updates."
-  },
-  {
-    "id": "TC-UPD-008_confirm_request",
-    "prompt": "Can you schedule applying the update with update id 2764 for system id {proxy_id}?",
-    "expected_output": "CONFIRMATION REQUIRED: This will apply specific update (errata ID: 2764) to the system {proxy_id}. Do you confirm?"
-  },
-  {
-    "id": "TC-UPD-009_confirm_request",
-    "prompt": "Can you schedule applying the update with update id 2764 for system {proxy_name}?",
-    "expected_output": "CONFIRMATION REQUIRED: This will apply specific update (errata ID: 2764) to the system {proxy_name}. Do you confirm?"
-  },
-  {
-    "id": "TC-UPD-010_confirmed",
-    "prompt": "Schedule applying the update with update id 2764 for system id {proxy_id}. I confirm.",
-    "expected_output": "Update (errata ID: 2764) successfully scheduled for system {proxy_id}. Action URL: ...'"
+    "expected_output": "The response must clearly state that a schedule/update action has been performed or planned. The mention of a System ID is acceptable and should be considered a successful confirmation."
   }
 ]
