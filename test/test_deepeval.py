@@ -74,7 +74,9 @@ class GoogleGemini(DeepEvalBaseLLM):
     def get_model_name(self):
         return self.model_name
 
-async def run_mcp_agent(prompt: str, model: str = "gemini-2.5-pro") -> str:
+async def run_mcp_agent(prompt: str, model: str = None) -> str:
+    if not model:
+        model = os.environ.get("AGENT_MODEL", "gemini-2.5-flash")
     server_params = StdioServerParameters(
         command="uv",
         args=["run", "mcp-server-uyuni"],
@@ -145,12 +147,13 @@ def test_uyuni_mcp_deepeval(test_case):
 
     actual_output = query_mcp_server(prompt)
 
+    judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash")
     geval_kwargs = {
         "name": "Correctness",
         "evaluation_params": [LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
         "threshold": 0.7,
         "verbose_mode": True,
-        "model": GoogleGemini()
+        "model": GoogleGemini(model=judge_model)
     }
     user_geval_config = test_case.get("geval_config", {})
     geval_kwargs.update(user_geval_config)
