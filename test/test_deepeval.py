@@ -6,8 +6,8 @@ import asyncio
 from google import genai
 from google.genai import types
 from deepeval import assert_test
-from deepeval.test_case import LLMTestCase, LLMTestCaseParams
-from deepeval.metrics import GEval
+from deepeval.test_case import LLMTestCase, LLMTestCaseParams, ToolCall
+from deepeval.metrics import GEval, ToolCorrectnessMetric
 from deepeval.models.base_model import DeepEvalBaseLLM
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -74,7 +74,7 @@ class GoogleGemini(DeepEvalBaseLLM):
     def get_model_name(self):
         return self.model_name
 
-async def run_mcp_agent(prompt: str, model: str = None) -> str:
+async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list]:
     if not model:
         model = os.environ.get("AGENT_MODEL", "gemini-2.5-flash")
     server_params = StdioServerParameters(
@@ -106,10 +106,12 @@ async def run_mcp_agent(prompt: str, model: str = None) -> str:
             )
 
             response = await chat.send_message(prompt)
+            tool_calls = []
 
             while response.function_calls:
                 parts = []
                 for call in response.function_calls:
+                    tool_calls.append(call)
                     result = await session.call_tool(call.name, call.args)
                     tool_output = "\n".join([c.text for c in result.content if c.type == "text"])
                     
@@ -120,9 +122,9 @@ async def run_mcp_agent(prompt: str, model: str = None) -> str:
                 
                 response = await chat.send_message(parts)
 
-            return response.text
+            return response.text, tool_calls
 
-def query_mcp_server(prompt: str) -> str:
+def query_mcp_server(prompt: str) -> tuple[str, list]:
     return asyncio.run(run_mcp_agent(prompt))
 
 def load_test_cases():
@@ -145,7 +147,7 @@ def test_uyuni_mcp_deepeval(test_case):
     prompt = prompt_template.format(**VARS)
     expected_output = expected_template.format(**VARS)
 
-    actual_output = query_mcp_server(prompt)
+    actual_output, actual_tool_calls = query_mcp_server(prompt)
 
     judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash")
     geval_kwargs = {
@@ -165,15 +167,31 @@ def test_uyuni_mcp_deepeval(test_case):
         geval_kwargs["criteria"] = f"The actual output must satisfy this requirement: {expected_output}"
 
     correctness_metric = GEval(**geval_kwargs)
+    metrics = [correctness_metric]
+
+    actual_tools = [
+        ToolCall(name=call.name, input_parameters=dict(call.args or {}))
+        for call in actual_tool_calls
+    ]
+
+    expected_tools = None
+    if "expected_tools" in test_case:
+        expected_tools = [
+            ToolCall(name=t["name"], input_parameters=t.get("arguments", {}))
+            for t in test_case["expected_tools"]
+        ]
+        metrics.append(ToolCorrectnessMetric())
 
     deepeval_case = LLMTestCase(
         input=prompt,
         actual_output=actual_output,
-        expected_output=expected_output
+        expected_output=expected_output,
+        tools_called=actual_tools,
+        expected_tools=expected_tools
     )
 
     try:
-        assert_test(deepeval_case, [correctness_metric])
+        assert_test(deepeval_case, metrics)
     except AssertionError as e:
         error_message = (
             f"\n--- Deepeval Test Failed ---\n"
