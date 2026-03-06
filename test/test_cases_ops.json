@@ -1,17 +1,16 @@
 [
   { "id": "TC-OPS-Pre",
     "prompt": "Is system with name {new_system_host} in {product_name}?",
-    "expected_output": "Return a message stating it is not"
+    "expected_output": "Return a message stating it is."
   },
   {
     "id": "TC-OPS-001_confirm_request",
-    "prompt": "Add a new system at host {new_system_host} with activation key '{key_deblike}'?",
+    "prompt": "Can you remove system {new_system_host}?",
     "expected_output": "Return a message requiring confirmation."
   },
   {
     "id": "TC-OPS-001_confirmed",
-    "prompt": "Add a new system at host {new_system_host} with activation key '{key_deblike}', confirmation set to true",
-    "expected_output": "Return a message stating that the addition process started, and instructing the user to check the system list later for its status."
+    "prompt": "Remove system {new_system_host}, confirmation set to true",
+    "expected_output": "Return a message stating that that system was successfully removed."
   }
-
 ]
