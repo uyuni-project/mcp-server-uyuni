@@ -43,6 +43,7 @@ You can customize the test run with the following command-line arguments. If you
 *   `--config <path>`: Path to the `config.json` file (default: `config.json`).
 *   `--model <model_name>`: The model to use for running the test prompts (default: `google:gemini-2.5-flash`).
 *   `--judge-model <model_name>`: The model to use for evaluating the test results. Defaults to the test model.
+*   `--runner <runner>`: The mcp client to use. Can be `mcphost` or `gemini` (default: `gemini`). 
 
 ## How to Update for a New Tag/Release
 
