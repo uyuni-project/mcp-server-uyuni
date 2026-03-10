@@ -1,7 +1,7 @@
 [
   { "id": "TC-OPS-Pre",
     "prompt": "Is system with name {new_system_host} in {product_name}?",
-    "expected_output": "Return a message stating it is."
+    "expected_output": "A confirmation that the system exists"
   },
   {
     "id": "TC-OPS-001_confirm_request",

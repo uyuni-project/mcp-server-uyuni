@@ -1,26 +1,37 @@
 [
   { "id": "TC-OPS-2-Pre",
-    "prompt": "The system with name {new_system_host} should not be in the list of systems in {product_name}. Can you confirm it is not?",
-    "expected_output": "A message that the system is not in {product_name}"
+    "prompt": "Is system with name {new_system_host} in {product_name}?",
+    "expected_output": "Return a message stating it is"
   },
   {
-    "id": "TC-OPS-2-001_confirm_request",
+    "id": "TC-OPS-002_confirm_request",
+    "prompt": "Can you remove system {new_system_host}?",
+    "expected_output": "Return a message requiring confirmation."
+  },
+  {
+    "id": "TC-OPS-002_confirmed",
+    "prompt": "Remove system {new_system_host}, confirmation set to true",
+    "expected_output": "Return a message stating that that system was successfully removed."
+  },
+  {
+    "id": "TC-OPS-003_confirm_request",
     "prompt": "Add a new system at host {new_system_host} with activation key '{key_deblike}'?",
     "expected_output": "Return a message requiring confirmation."
   },
   {
-    "id": "TC-OPS-2-001_confirmed",
+    "id": "TC-OPS-003_confirmed",
     "prompt": "Add a new system at host {new_system_host} with activation key '{key_deblike}', confirmation set to true",
     "expected_output": "Return a message stating that the addition process started, and instructing the user to check the system list later for its status."
   },
   {
-    "id": "TC-OPS-2-002",
+    "id": "TC-OPS-003",
     "prompt": "Add system {build_host_name} with key {key_deblike} with confirmation set to true",
     "expected_output": "Return a message stating that system already exists."
   },
   {
-    "id": "TC-OPS-2-003",
+    "id": "TC-OPS-004",
     "prompt": "Delete system with ID 999999999, confirmation set to true.",
     "expected_output": "Return a message stating that system with ID 999999999 was not found."
   }
+
 ]
