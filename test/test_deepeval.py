@@ -74,7 +74,7 @@ class GoogleGemini(DeepEvalBaseLLM):
     def get_model_name(self):
         return self.model_name
 
-async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list]:
+async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list]:
     if not model:
         model = os.environ.get("AGENT_MODEL", "gemini-2.5-flash")
     server_params = StdioServerParameters(
@@ -107,6 +107,7 @@ async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list]:
 
             response = await chat.send_message(prompt)
             tool_calls = []
+            tool_outputs = []
 
             while response.function_calls:
                 parts = []
@@ -114,6 +115,7 @@ async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list]:
                     tool_calls.append(call)
                     result = await session.call_tool(call.name, call.args)
                     tool_output = "\n".join([c.text for c in result.content if c.type == "text"])
+                    tool_outputs.append(tool_output)
                     
                     parts.append(types.Part.from_function_response(
                         name=call.name,
@@ -122,9 +124,9 @@ async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list]:
                 
                 response = await chat.send_message(parts)
 
-            return response.text, tool_calls
+            return response.text, tool_calls, tool_outputs
 
-def query_mcp_server(prompt: str) -> tuple[str, list]:
+def query_mcp_server(prompt: str) -> tuple[str, list, list]:
     return asyncio.run(run_mcp_agent(prompt))
 
 def load_test_cases():
@@ -147,7 +149,8 @@ def test_uyuni_mcp_deepeval(test_case):
     prompt = prompt_template.format(**VARS)
     expected_output = expected_template.format(**VARS)
 
-    actual_output, actual_tool_calls = query_mcp_server(prompt)
+    actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt)
+    actual_output = actual_output or ""
 
     judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash")
     geval_kwargs = {
@@ -187,7 +190,8 @@ def test_uyuni_mcp_deepeval(test_case):
         actual_output=actual_output,
         expected_output=expected_output,
         tools_called=actual_tools,
-        expected_tools=expected_tools
+        expected_tools=expected_tools,
+        retrieval_context=actual_tool_outputs
     )
 
     try:
