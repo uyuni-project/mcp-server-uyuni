@@ -12,7 +12,7 @@
   },
   {
     "id": "TC-UPD-002",
-    "prompt": "Are there any updates for '{rhlike_minion_name}'?",
+    "prompt": "Are there any updates for '{rhlike_minion_name}'? List them.",
     "expected_output": "The response must contain a list of pending updates for system '{rhlike_minion_name}' OR state that there are no pending updates.",
     "geval_config": {
       "evaluation_steps": [
@@ -23,8 +23,8 @@
   },
   {
     "id": "TC-UPD-003",
-    "prompt": "Use the available tools to check all systems for pending updates and return a list of the systems that have them.",
-    "expected_output": "The response must contain a list of systems that have pending updates OR state that there are no pending updates.",
+    "prompt": "Can you schedule applying the update with highest errata id (eid) (Update ID) from that list for system id {rhlike_minion_id}?",
+    "expected_output": "Confirmation is required on applying the update to the system {rhlike_minion_id}.",
     "geval_config": {
       "evaluation_steps": [
         "Check if the output identifies which systems have pending updates.",
@@ -58,7 +58,7 @@
   {
     "id": "TC-UPD-006_confirmed",
     "prompt": "Update my server with id {rhlike_minion_id}. I confirm.",
-    "expected_output": "Update successfully scheduled at ...'",
+    "expected_output": "The response must clearly state that a schedule/update action has been performed or planned. The mention of a System ID is acceptable and should be considered a successful confirmation.",
     "geval_config": {
       "evaluation_steps": [
         "Check if the output indicates that the update has been successfully scheduled.",
