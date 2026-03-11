@@ -2,21 +2,45 @@
   {
     "id": "TC-RBT-001",
     "prompt": "Do any of my systems require reboot?",
-    "expected_output": "Return a message that {rhlike_minion_name} require a reboot."
+    "expected_output": "Return a message that {rhlike_minion_name} require a reboot.",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output identifies systems requiring a reboot.",
+        "Verify that the specific system mentioned in expected output is listed as requiring a reboot."
+      ]
+    }
   },
   {
     "id": "TC-RBT-002_confirm_request",
     "prompt": "Can you schedule a reboot for system {rhlike_minion_name}?",
-    "expected_output": "Return a message requiring confirmation"
+    "expected_output": "Return a message requiring confirmation",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output requests confirmation to schedule a reboot.",
+        "Verify the system name in the confirmation request matches the requested system."
+      ]
+    }
   },
   {
     "id": "TC-RBT-003_confirmed",
     "prompt": "Can you schedule a reboot for system {rhlike_minion_name}?, confirmation set to true",
-    "expected_output": "Return a message that system reboot has been successfully scheduled and give the URL of the action details."
+    "expected_output": "Return a message that system reboot has been successfully scheduled and give the URL of the action details.",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output confirms that the reboot has been scheduled.",
+        "Look for a URL or action details in the response."
+      ]
+    }
   },
   {
     "id": "TC-RBT-004",
     "prompt": "Schedule a reboot for system 999999999 with confirmation.",
-    "expected_output": "Returns an empty string or error message; no action scheduled."
+    "expected_output": "Returns an empty string or error message; no action scheduled.",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output indicates failure to schedule a reboot (e.g. system not found).",
+        "Verify that no successful scheduling confirmation is present."
+      ]
+    }
   }
 ]
