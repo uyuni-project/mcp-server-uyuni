@@ -101,7 +101,8 @@ async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list
             chat = client.aio.chats.create(
                 model=model,
                 config=types.GenerateContentConfig(
-                    tools=[types.Tool(function_declarations=gemini_tools)]
+                    tools=[types.Tool(function_declarations=gemini_tools)],
+                    system_instruction="You are a helpful assistant. When you use tools to retrieve information, you must explicitly include that information in your final response. Do not just summarize that the action was taken."
                 )
             )
 
