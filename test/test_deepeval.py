@@ -12,7 +12,7 @@ from deepeval.models.base_model import DeepEvalBaseLLM
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-TEST_CASES_FILE = 'test_cases_sys.json'
+TEST_CASES_FILE = os.environ.get('TEST_CASES_FILE', 'test_cases_sys.json')
 TEST_CONFIG_FILE = 'test_config.json'
 MCP_CONFIG_FILE = 'config.json'
 
