@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import asyncio
+import glob
 from google import genai
 from google.genai import types
 from deepeval import assert_test
@@ -12,7 +13,6 @@ from deepeval.models.base_model import DeepEvalBaseLLM
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-TEST_CASES_FILE = os.environ.get('TEST_CASES_FILE', 'test_cases_sys.json')
 TEST_CONFIG_FILE = 'test_config.json'
 MCP_CONFIG_FILE = 'config.json'
 
@@ -23,16 +23,13 @@ def load_vars():
     if os.path.exists(config_path):
         with open(config_path, 'r') as f:
             config_data = json.load(f)
-            # Load top-level string values from config
             for key, value in config_data.items():
                 if isinstance(value, str):
                     placeholders[key] = value
-            # Load nested system values
             if "systems" in config_data:
                 for sys_key, sys_values in config_data["systems"].items():
                     for attr_key, attr_value in sys_values.items():
                         placeholders[f"{sys_key}_{attr_key}"] = attr_value
-            # Load nested activation key values
             if "activation_keys" in config_data:
                 for key_name, key_value in config_data["activation_keys"].items():
                     placeholders[f"key_{key_name}"] = key_value
@@ -131,12 +128,20 @@ def query_mcp_server(prompt: str) -> tuple[str, list, list]:
     return asyncio.run(run_mcp_agent(prompt))
 
 def load_test_cases():
-    json_path = os.path.join(os.path.dirname(__file__), TEST_CASES_FILE)
-    if not os.path.exists(json_path):
-        return []
-    
-    with open(json_path, 'r') as f:
-        return json.load(f)
+    test_dir = os.path.dirname(__file__)
+    if "TEST_CASES_FILE" in os.environ:
+        file_paths = [os.path.join(test_dir, os.environ["TEST_CASES_FILE"])]
+    else:
+        file_paths = glob.glob(os.path.join(test_dir, "test_cases_*.json"))
+
+    all_test_cases = []
+    for json_path in file_paths:
+        if os.path.exists(json_path):
+            with open(json_path, 'r') as f:
+                cases = json.load(f)
+                if isinstance(cases, list):
+                    all_test_cases.extend(cases)
+    return all_test_cases
 
 @pytest.mark.parametrize("test_case", load_test_cases())
 def test_uyuni_mcp_deepeval(test_case):
