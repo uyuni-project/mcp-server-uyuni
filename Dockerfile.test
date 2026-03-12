@@ -1,0 +1,27 @@
+FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim
+
+WORKDIR /app
+
+# 1. Copy only the metadata first for caching
+COPY pyproject.toml uv.lock README.md ./
+
+# 2. Pre-download dependencies (including build tools like hatchling)
+RUN uv sync --frozen --no-install-project
+
+# 3. Copy the actual source code
+COPY . .
+
+# 4. NOW install the project into the environment while we have internet.
+# This builds the wheel and installs mcp-server-uyuni.
+RUN uv sync --frozen
+
+# 5. Use the --no-sync flag in the ENTRYPOINT.
+# This tells uv "Don't check the network or the lockfile, just run what is there."
+ENTRYPOINT ["uv", "run", "--no-sync", "pytest"]
+# Or, if you want to be even safer and skip uv's logic at runtime:
+# ENTRYPOINT ["/app/.venv/bin/pytest"]
+
+CMD ["-s", "test/test_deepeval.py"]
+
+# podman build -f Dockerfile.test -t test .
+# podman run --rm --env-file .venv/config -v $(pwd)/test/test_config.json:/app/test_config.json -e GOOGLE_API_KEY=${GEMINI_API_KEY} --network=host test
