@@ -84,9 +84,11 @@ UYUNI_MCP_WRITE_TOOLS_ENABLED=false
 # Set the transport protocol. Can be 'stdio' (default) or 'http'.
 UYUNI_MCP_TRANSPORT=stdio
 
-# Host and Port when using HTTP transport
+# Host and Port to bind when using HTTP transport
 UYUNI_MCP_HOST=127.0.0.1
 UYUNI_MCP_PORT=8080
+# Final public URL to advertise
+UYUNI_MCP_PUBLIC_URL=http://127.0.0.1:8080
 
 # OAuth 2.0 authorization server
 UYUNI_AUTH_SERVER=auth.example.com
@@ -190,8 +192,11 @@ First, ensure the following environment variables are set in your configuration:
 UYUNI_MCP_TRANSPORT=http
 UYUNI_MCP_HOST=0.0.0.0 # Or a specific interface
 UYUNI_MCP_PORT=8080
+UYUNI_MCP_PUBLIC_URL=https://mcp.example.com # Client-facing MCP base URL used for OAuth discovery
 UYUNI_AUTH_SERVER=auth.example.com
 ```
+
+`UYUNI_MCP_HOST` controls where the server binds. `UYUNI_MCP_PUBLIC_URL` controls the URL advertised to OAuth-capable clients. Do not set the public URL to `0.0.0.0`.
 
 Then, run the container:
 
