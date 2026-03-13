@@ -1,0 +1,58 @@
+services:
+  mcp-server:
+    build:
+      context: .
+    image: mcp-server-uyuni:local
+    restart: unless-stopped
+    depends_on:
+      - keycloak
+    ports:
+      - "${MCP_BIND_PORT:-8000}:8000"
+    environment:
+      UYUNI_SERVER: ${UYUNI_SERVER:-uyuni-server}
+      UYUNI_MCP_TRANSPORT: http
+      UYUNI_MCP_HOST: 0.0.0.0
+      UYUNI_MCP_PORT: ${MCP_BIND_PORT:-8000}
+      UYUNI_MCP_PUBLIC_URL: ${UYUNI_MCP_PUBLIC_URL:-http://127.0.0.1:8000}
+      UYUNI_MCP_SSL_VERIFY: ${UYUNI_MCP_SSL_VERIFY:-true}
+      UYUNI_MCP_WRITE_TOOLS_ENABLED: ${UYUNI_MCP_WRITE_TOOLS_ENABLED:-false}
+      UYUNI_MCP_LOG_LEVEL: ${UYUNI_MCP_LOG_LEVEL:-INFO}
+      UYUNI_MCP_LOG_FILE_PATH: ${UYUNI_MCP_LOG_FILE_PATH:-}
+      UYUNI_AUTH_SERVER: ${UYUNI_AUTH_SERVER:-http://keycloak:8080/realms/uyuni-mcp}
+      UYUNI_PRODUCT_NAME: ${UYUNI_PRODUCT_NAME:-Uyuni}
+      UYUNI_SSH_PRIV_KEY: ${UYUNI_SSH_PRIV_KEY:-}
+      UYUNI_SSH_PRIV_KEY_PASS: ${UYUNI_SSH_PRIV_KEY_PASS:-}
+    networks:
+      - uyuni
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:${KEYCLOAK_IMAGE_TAG:-26.1.4}
+    restart: unless-stopped
+    ports:
+      - "${KEYCLOAK_BIND_PORT:-8080}:8080"
+    command:
+      - start-dev
+      - --import-realm
+      - --hostname-strict=false
+      - --proxy-headers=xforwarded
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_BOOTSTRAP_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD}
+      KC_HTTP_ENABLED: true
+      KC_HEALTH_ENABLED: true
+      KC_METRICS_ENABLED: true
+      KC_PROXY_HEADERS: xforwarded
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_HOSTNAME:-keycloak}
+      KC_HOSTNAME_PORT: ${KEYCLOAK_PUBLIC_PORT:-8080}
+    volumes:
+      - keycloak-data:/opt/keycloak/data/h2
+      - /root/mcp-server-uyuni/deploy/keycloak/import:/opt/keycloak/data/import:ro,z
+    networks:
+      - uyuni
+
+volumes:
+  keycloak-data:
+
+networks:
+  uyuni:
+    external: true
