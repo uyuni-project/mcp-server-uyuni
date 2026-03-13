@@ -9,6 +9,7 @@ from google.genai import types
 from deepeval import assert_test
 from deepeval.test_case import LLMTestCase, LLMTestCaseParams, ToolCall
 from deepeval.metrics import GEval, ToolCorrectnessMetric
+from deepeval.metrics.g_eval import Rubric
 from deepeval.models.base_model import DeepEvalBaseLLM
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -156,24 +157,43 @@ def test_uyuni_mcp_deepeval(test_case):
     expected_output = expected_template.format(**VARS)
 
     actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt)
-    actual_output = actual_output or ""
+    actual_output = actual_output or "(No output returned by the model)"
 
     judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash")
+    default_rubric = [
+        Rubric(score_range=(0, 3), expected_outcome="The actual output is incorrect or irrelevant."),
+        Rubric(score_range=(4, 6), expected_outcome="The actual output is partially correct or misses some key details."),
+        Rubric(score_range=(7, 10), expected_outcome="The actual output matches the expected output in content and meaning."),
+    ]
+
+    user_geval_config = test_case.get("geval_config", {}).copy()
+    rubric = user_geval_config.pop("rubric", default_rubric)
+
     geval_kwargs = {
         "name": "Correctness",
         "evaluation_params": [LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
         "threshold": 0.7,
         "verbose_mode": True,
-        "model": GoogleGemini(model=judge_model)
+        "model": GoogleGemini(model=judge_model),
     }
-    user_geval_config = test_case.get("geval_config", {})
     geval_kwargs.update(user_geval_config)
 
     if isinstance(geval_kwargs["model"], str):
         geval_kwargs["model"] = GoogleGemini(model=geval_kwargs["model"])
 
-    if "criteria" not in geval_kwargs and "evaluation_steps" not in geval_kwargs:
-        geval_kwargs["criteria"] = f"The actual output must satisfy this requirement: {expected_output}"
+    used_criteria = geval_kwargs.get("criteria")
+    used_steps = geval_kwargs.get("evaluation_steps")
+
+    if not used_criteria:
+        if not used_steps:
+            used_criteria = f"The actual output must satisfy this requirement: {expected_output}"
+        else:
+            used_criteria = "Evaluate the actual output based on the provided evaluation steps."
+
+    if used_criteria:
+        geval_kwargs["criteria"] = used_criteria
+
+    geval_kwargs["rubric"] = rubric
 
     correctness_metric = GEval(**geval_kwargs)
     metrics = [correctness_metric]
@@ -203,11 +223,19 @@ def test_uyuni_mcp_deepeval(test_case):
     try:
         assert_test(deepeval_case, metrics)
     except AssertionError as e:
+        eval_info = ""
+        if used_steps:
+            eval_info = f"Evaluation Steps:\n{json.dumps(used_steps, indent=2)}\n"
+        elif used_criteria:
+            eval_info = f"Criteria/Rubric:\n{used_criteria}\n"
+
         error_message = (
             f"\n--- Deepeval Test Failed ---\n"
             f"Test Case ID: {test_id}\n"
             f"Prompt: {prompt}\n"
             f"Expected Output Hint: {expected_output}\n"
+            f"----- EVALUATION DETAILS -----\n"
+            f"{eval_info}"
             f"----- ACTUAL OUTPUT -----\n{actual_output}\n"
             f"----- END ACTUAL OUTPUT -----\n"
             f"Original Error: {e}"

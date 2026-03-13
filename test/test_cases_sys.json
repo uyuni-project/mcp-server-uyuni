@@ -57,7 +57,7 @@
       "evaluation_steps": [
         "Check if the output is asking for confirmation to create a system group.",
         "Verify the group name in the output is 'test-group-2'.",
-        "Verify the description in the output is 'Test Group 2 Description'."
+        "Verify the description in the output is 'Test Group Description'."
       ]
     }
   },
