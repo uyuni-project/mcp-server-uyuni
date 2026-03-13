@@ -36,7 +36,19 @@ from .errors import (
 class ActivationKeySchema(BaseModel):
     activation_key: str
 
-base_url = f'http://{CONFIG["UYUNI_MCP_HOST"]}:{CONFIG["UYUNI_MCP_PORT"]}'
+def _get_public_base_url(config: Dict[str, Any]) -> str:
+    public_url = config.get("UYUNI_MCP_PUBLIC_URL")
+    if public_url:
+        return public_url.rstrip("/")
+
+    public_host = config["UYUNI_MCP_HOST"]
+    if public_host in {"0.0.0.0", "::", "[::]"}:
+        public_host = "127.0.0.1"
+
+    return f'http://{public_host}:{config["UYUNI_MCP_PORT"]}'
+
+
+base_url = _get_public_base_url(CONFIG)
 auth_provider = AuthProvider(CONFIG["AUTH_SERVER"], base_url, CONFIG["UYUNI_MCP_WRITE_TOOLS_ENABLED"]) if CONFIG["AUTH_SERVER"] else None
 product = CONFIG["UYUNI_PRODUCT_NAME"] if CONFIG["UYUNI_PRODUCT_NAME"] else "Uyuni" 
 mcp = FastMCP("mcp-server-uyuni", auth=auth_provider)

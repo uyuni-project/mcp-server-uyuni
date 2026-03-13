@@ -772,3 +772,21 @@ def test_main_cli_http(monkeypatch):
     with patch.object(server.mcp, 'run') as mock_run:
         server.main_cli()
         mock_run.assert_called_with(transport="streamable-http", host="localhost", port=8000)
+
+def test_get_public_base_url_prefers_explicit_public_url():
+    config = {
+        "UYUNI_MCP_HOST": "0.0.0.0",
+        "UYUNI_MCP_PORT": 8000,
+        "UYUNI_MCP_PUBLIC_URL": "https://mcp.example.com/",
+    }
+
+    assert server._get_public_base_url(config) == "https://mcp.example.com"
+
+def test_get_public_base_url_rewrites_wildcard_bind_host():
+    config = {
+        "UYUNI_MCP_HOST": "0.0.0.0",
+        "UYUNI_MCP_PORT": 8000,
+        "UYUNI_MCP_PUBLIC_URL": None,
+    }
+
+    assert server._get_public_base_url(config) == "http://127.0.0.1:8000"
