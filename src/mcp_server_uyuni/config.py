@@ -12,8 +12,8 @@ if missing_vars:
     )
 
 UYUNI_SERVER = 'https://' + os.environ["UYUNI_SERVER"]
-UYUNI_USER = os.environ["UYUNI_USER"]
-UYUNI_PASS = os.environ["UYUNI_PASS"]
+UYUNI_USER = os.environ.get("UYUNI_USER")
+UYUNI_PASS = os.environ.get("UYUNI_PASS")
 
 UYUNI_MCP_HOST = os.environ.get("UYUNI_MCP_HOST", "127.0.0.1")
 UYUNI_MCP_PORT = int(os.environ.get("UYUNI_MCP_PORT", "8000"))

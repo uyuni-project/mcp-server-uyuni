@@ -68,10 +68,12 @@ Create a file (e.g., `uyuni-config.env`) to store your environment variables. Yo
 #
 # Basic API parameters
 UYUNI_SERVER=192.168.1.124:8443
-UYUNI_USER=mcp-user
-UYUNI_PASS=password
 
 # Optional fields
+#
+# Uyuni credentials for local deployments (not required for OAuth setups)
+UYUNI_USER=mcp-user
+UYUNI_PASS=password
 #
 # Set to 'false' to disable SSL certificate verification. Defaults to 'true'.
 UYUNI_MCP_SSL_VERIFY=true
