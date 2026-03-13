@@ -2,16 +2,34 @@
   {
     "id": "TC-SEC-001",
     "prompt": "list systems affected by CVE-1999-9999",
-    "expected_output": "Return a message stating that the systems affected by CVE-1999-9999 are {rhlike_minion_name}, {suse_minion_name} and {deblike_minion_name}."
+    "expected_output": "Return a message stating that the systems affected by CVE-1999-9999 are {rhlike_minion_name}, {suse_minion_name} and {deblike_minion_name}.",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output lists systems affected by CVE-1999-9999.",
+        "Verify that the output includes the names of the rhlike, suse, and deblike minions."
+      ]
+    }
   },
   {
     "id": "TC-SEC-002",
     "prompt": "Are any systems vulnerable to CVE-XYZ-INVALID?",
-    "expected_output": "Returns a message stating that cve is invalid."
+    "expected_output": "Returns a message stating that cve is invalid.",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output states that the CVE is invalid.",
+        "Ensure the output does not list any systems as vulnerable."
+      ]
+    }
   },
   {
     "id": "TC-SEC-003",
     "prompt": "Are any systems vulnerable to CVE-000-0000?",
-    "expected_output": "Returns a message stating that no systems are."
+    "expected_output": "Returns a message stating that no systems are.",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output explicitly states that no systems are vulnerable to CVE-000-0000.",
+        "Verify that no systems are listed as affected."
+      ]
+    }
   }
 ]

@@ -1,27 +1,56 @@
 [
   { "id": "TC-OPS-2-Pre",
-    "prompt": "Is system with name {new_system_host} in {product_name}?",
-    "expected_output": "Return a message stating it is"
+    "prompt": "The system with name {new_system_host} should not be in the list of systems in {product_name}. Can you confirm it is not?",
+    "expected_output": "A message that the system is not in {product_name}",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output confirms that the system with the specified name is NOT found in the system list.",
+        "Verify that the output does not list the system as present."
+      ]
+    }
   },
   {
-    "id": "TC-OPS-002_confirm_request",
-    "prompt": "Can you remove system {new_system_host}?",
-    "expected_output": "Return a message requiring confirmation."
+    "id": "TC-OPS-2-001_confirm_request",
+    "prompt": "Add a new system at host {new_system_host} with activation key '{key_deblike}'?",
+    "expected_output": "Return a message requiring confirmation.",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output requests confirmation to add a new system.",
+        "Verify that the output mentions the correct host and activation key."
+      ]
+    }
   },
   {
-    "id": "TC-OPS-002_confirmed",
-    "prompt": "Remove system {new_system_host}, confirmation set to true",
-    "expected_output": "Return a message stating that that system was successfully removed."
+    "id": "TC-OPS-2-001_confirmed",
+    "prompt": "Add a new system at host {new_system_host} with activation key '{key_deblike}', confirmation set to true",
+    "expected_output": "Return a message stating that the addition process started, and instructing the user to check the system list later for its status.",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output indicates that the system addition (bootstrap) process has started.",
+        "Verify that the message advises checking the system list later or implies the operation is asynchronous."
+      ]
+    }
   },
   {
-    "id": "TC-OPS-003",
+    "id": "TC-OPS-2-002",
     "prompt": "Add system {build_host_name} with key {key_deblike} with confirmation set to true",
-    "expected_output": "Return a message stating that system already exists."
+    "expected_output": "Return a message stating that system already exists.",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output explicitly states that the system already exists.",
+        "Ensure the output conveys that no new addition was performed because of the existing system."
+      ]
+    }
   },
   {
-    "id": "TC-OPS-004",
+    "id": "TC-OPS-2-003",
     "prompt": "Delete system with ID 999999999, confirmation set to true.",
-    "expected_output": "Return a message stating that system with ID 999999999 was not found."
+    "expected_output": "Return a message stating that system with ID 999999999 was not found.",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output states that the system with ID 999999999 was not found.",
+        "Verify that the output does not indicate a successful deletion."
+      ]
+    }
   }
-
 ]

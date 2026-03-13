@@ -1,17 +1,34 @@
 [
   { "id": "TC-OPS-Pre",
     "prompt": "Is system with name {new_system_host} in {product_name}?",
-    "expected_output": "Return a message stating it is not"
+    "expected_output": "A confirmation that the system exists",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output confirms that the system exists.",
+        "Verify that the system name corresponds to the one requested."
+      ]
+    }
   },
   {
     "id": "TC-OPS-001_confirm_request",
-    "prompt": "Add a new system at host {new_system_host} with activation key '{key_deblike}'?",
-    "expected_output": "Return a message requiring confirmation."
+    "prompt": "Can you remove system {new_system_host}?",
+    "expected_output": "Return a message requiring confirmation.",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output is asking for confirmation to remove the system.",
+        "Verify that the request is about removing the specific system mentioned."
+      ]
+    }
   },
   {
     "id": "TC-OPS-001_confirmed",
-    "prompt": "Add a new system at host {new_system_host} with activation key '{key_deblike}', confirmation set to true",
-    "expected_output": "Return a message stating that the addition process started, and instructing the user to check the system list later for its status."
+    "prompt": "Remove system {new_system_host}, confirmation set to true",
+    "expected_output": "Return a message stating that that system was successfully removed.",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output confirms the system was successfully removed.",
+        "Ensure there are no error messages indicating failure to remove."
+      ]
+    }
   }
-
 ]
