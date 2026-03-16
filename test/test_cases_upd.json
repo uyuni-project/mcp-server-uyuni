@@ -27,8 +27,9 @@
     "expected_output": "Confirmation is required on applying the update to the system {rhlike_minion_id}.",
     "geval_config": {
       "evaluation_steps": [
-        "Check if the output identifies which systems have pending updates.",
-        "If no systems have updates, verify that the output explicitly states that no pending updates were found for any system."
+        "Check if the output identifies the update with the highest errata ID from the previously listed updates, or clearly indicates it will look up and select the highest errata ID update for system {rhlike_minion_id}.",
+        "Verify that the output requests explicit confirmation before scheduling or applying that specific update to the system {rhlike_minion_id}, with a confirmation request semantically equivalent to asking the user to confirm proceeding.",
+        "If no suitable updates are available, verify that the output explicitly states that no applicable updates were found for system {rhlike_minion_id}."
       ]
     }
   },

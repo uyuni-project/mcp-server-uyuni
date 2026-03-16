@@ -10,7 +10,7 @@
     }
   },
   {
-    "id": "TC-SCH-001",
+    "id": "TC-SCH-002",
     "prompt": "List and show details of all scheduled actions in {product_name}.",
     "expected_output": "Returns a list of action dictionaries, it should include at least a system reboot. The list can include other actions. Example fields: id, name, type, earliest.",
     "geval_config": {
@@ -22,7 +22,7 @@
     }
   },
   {
-    "id": "TC-SCH-002_confirm_request",
+    "id": "TC-SCH-003_confirm_request",
     "prompt": "Can you get the action id for the latest system reboot action from list of scheduled actions, and use that id to cancel the action?",
     "expected_output": "Returns a message the requires confirmation",
     "geval_config": {
@@ -33,7 +33,7 @@
     }
   },
   {
-    "id": "TC-SCH-002_confirmed",
+    "id": "TC-SCH-003_confirmed",
     "prompt": "Can you get the action id for the latest system reboot action from list of scheduled actions, and use that id to cancel the action? Do not ask me for confirmation.",
     "expected_output": "A message stating that the action was successfully canceled.",
     "geval_config": {

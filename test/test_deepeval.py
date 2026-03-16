@@ -1,7 +1,6 @@
 import pytest
 import json
 import os
-import sys
 import warnings
 import re
 import asyncio
@@ -17,7 +16,6 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 TEST_CONFIG_FILE = 'test_config.json'
-MCP_CONFIG_FILE = 'config.json'
 
 def load_vars():
     config_path = os.path.join(os.path.dirname(__file__), TEST_CONFIG_FILE)
@@ -225,22 +223,27 @@ def test_uyuni_mcp_deepeval(test_case, record_property):
     try:
         assert_test(deepeval_case, metrics)
     except AssertionError as e:
+        pass_threshold = geval_kwargs.get("threshold", 0.7)
+        partial_threshold = 0.4
+        if isinstance(rubric, list) and len(rubric) > 1:
+            partial_threshold = rubric[1].score_range[0] / 10.0
+
         # Soft Pass Strategy:
-        # If the score is >= 0.4 (Rubric "Partial" tier start), we treat it as a PASS with a warning.
+        # If the score is >= partial_threshold (Rubric "Partial" tier start), we treat it as a PASS with a warning.
         # This avoids binary failures for results that are semantically useful but not perfect.
         current_score = metrics[0].score
 
         # Fallback: If the score isn't populated in the metric object, extract it directly from
         # the error message. This guarantees we have the score that triggered the assertion failure.
-        # It seeems DeepEval sometimes raises the error without updating the metric object in place (bug?)
+        # It seems DeepEval sometimes raises the error without updating the metric object in place (bug?)
         # We try to parse the score from the error message: "Metrics: Correctness ... (score: 0.6, ...)"
         if current_score is None:
             match = re.search(r"score: ([0-9.]+)", str(e))
             if match:
                 current_score = float(match.group(1))
 
-        if current_score is not None and current_score >= 0.4:
-            warning_msg = f"Test '{test_id}' passed with PARTIAL CORRECTNESS. Score: {current_score} (Threshold: 0.7)"
+        if current_score is not None and current_score >= partial_threshold:
+            warning_msg = f"Test '{test_id}' passed with PARTIAL CORRECTNESS. Score: {current_score} (Threshold: {pass_threshold})"
             warnings.warn(warning_msg)
             record_property("warning", warning_msg)
             return
