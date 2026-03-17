@@ -209,7 +209,7 @@ def test_uyuni_mcp_deepeval(test_case, record_property):
             ToolCall(name=t["name"], input_parameters=t.get("arguments", {}))
             for t in test_case["expected_tools"]
         ]
-        metrics.append(ToolCorrectnessMetric())
+        metrics.append(ToolCorrectnessMetric(model=geval_kwargs["model"]))
 
     deepeval_case = LLMTestCase(
         input=prompt,
