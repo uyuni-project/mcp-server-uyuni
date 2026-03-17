@@ -31,7 +31,8 @@
         "Verify that the output requests explicit confirmation before scheduling or applying that specific update to the system {rhlike_minion_id}, with a confirmation request semantically equivalent to asking the user to confirm proceeding.",
         "If no suitable updates are available, verify that the output explicitly states that no applicable updates were found for system {rhlike_minion_id}."
       ]
-    }
+    },
+    "mcp_use_criteria": "The model should first use a tool to list updates for the system, and then use another tool to schedule a specific update. It should not try to schedule all updates."
   },
   {
     "id": "TC-UPD-004_confirm_request",

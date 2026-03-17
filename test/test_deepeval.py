@@ -9,7 +9,7 @@ from google import genai
 from google.genai import types
 from deepeval import assert_test
 from deepeval.test_case import LLMTestCase, LLMTestCaseParams, ToolCall
-from deepeval.metrics import GEval, ToolCorrectnessMetric
+from deepeval.metrics import GEval, ToolCorrectnessMetric, MCPUseMetric
 from deepeval.metrics.g_eval import Rubric
 from deepeval.models.base_model import DeepEvalBaseLLM
 from mcp import ClientSession, StdioServerParameters
@@ -210,6 +210,13 @@ def test_uyuni_mcp_deepeval(test_case, record_property):
             for t in test_case["expected_tools"]
         ]
         metrics.append(ToolCorrectnessMetric(model=geval_kwargs["model"]))
+
+    if "mcp_use_criteria" in test_case:
+        mcp_use_metric = MCPUseMetric(
+            criteria=test_case["mcp_use_criteria"],
+            model=geval_kwargs["model"]
+        )
+        metrics.append(mcp_use_metric)
 
     deepeval_case = LLMTestCase(
         input=prompt,
