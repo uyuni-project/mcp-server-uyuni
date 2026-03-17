@@ -68,10 +68,12 @@ Create a file (e.g., `uyuni-config.env`) to store your environment variables. Yo
 #
 # Basic API parameters
 UYUNI_SERVER=192.168.1.124:8443
-UYUNI_USER=mcp-user
-UYUNI_PASS=password
 
 # Optional fields
+#
+# Uyuni credentials for local deployments (not required for OAuth setups)
+UYUNI_USER=mcp-user
+UYUNI_PASS=password
 #
 # Set to 'false' to disable SSL certificate verification. Defaults to 'true'.
 UYUNI_MCP_SSL_VERIFY=true
@@ -82,9 +84,11 @@ UYUNI_MCP_WRITE_TOOLS_ENABLED=false
 # Set the transport protocol. Can be 'stdio' (default) or 'http'.
 UYUNI_MCP_TRANSPORT=stdio
 
-# Host and Port when using HTTP transport
+# Host and Port to bind when using HTTP transport
 UYUNI_MCP_HOST=127.0.0.1
 UYUNI_MCP_PORT=8080
+# Final public URL to advertise
+UYUNI_MCP_PUBLIC_URL=http://127.0.0.1:8080
 
 # OAuth 2.0 authorization server
 UYUNI_AUTH_SERVER=auth.example.com
@@ -104,11 +108,11 @@ UYUNI_SSH_PRIV_KEY_PASS=""
 
 
 > [!WARNING]
-> **Security Note on HTTP Transport:** When `UYUNI_MCP_TRANSPORT` is set to `http` but `AUTH_SERVER` is not set, the server runs without authentication. This means any client with network access can execute commands. Only use this mode in a trusted, isolated network environment. For more details, see the Security Policy.
+> **Security Note on HTTP Transport:** When `UYUNI_MCP_TRANSPORT` is set to `http` but `UYUNI_AUTH_SERVER` is not set, the server runs without authentication. This means any client with network access can execute commands. Only use this mode in a trusted, isolated network environment. For more details, see the Security Policy.
 
 
 > [!WARNING]
-> Note this feature expects OAuth 2.0 to be also supported in Uyuni at the `/manager/api/oicdLogin` endpoint. Otherwise, it will raise an error. See implementation status at [https://github.com/uyuni-project/uyuni/pull/11084](https://github.com/uyuni-project/uyuni/pull/11084). More info on implementation details at the Security Policy.
+> OAuth with Uyuni requires Uyuni support for `POST /manager/api/oidcLogin`. Configure Uyuni OIDC support as described below. For implementation details, see [https://github.com/uyuni-project/uyuni/pull/11084](https://github.com/uyuni-project/uyuni/pull/11084).
 
 > [!NOTE]
 > **Formatting the SSH Private Key**
@@ -188,8 +192,11 @@ First, ensure the following environment variables are set in your configuration:
 UYUNI_MCP_TRANSPORT=http
 UYUNI_MCP_HOST=0.0.0.0 # Or a specific interface
 UYUNI_MCP_PORT=8080
+UYUNI_MCP_PUBLIC_URL=https://mcp.example.com # Client-facing MCP base URL used for OAuth discovery
 UYUNI_AUTH_SERVER=auth.example.com
 ```
+
+`UYUNI_MCP_HOST` controls where the server binds. `UYUNI_MCP_PUBLIC_URL` controls the URL advertised to OAuth-capable clients. Do not set the public URL to `0.0.0.0`.
 
 Then, run the container:
 
@@ -262,7 +269,44 @@ When running the server in HTTP mode (`UYUNI_MCP_TRANSPORT=http`), it is strongl
 
 #### Configuring an Identity Provider
 
-[TODO]
+Uyuni must be configured to trust the same identity provider as the MCP server. When `UYUNI_AUTH_SERVER` is set, the MCP server forwards the user's bearer token to Uyuni at `POST /manager/api/oidcLogin`.
+
+Configure Uyuni in `rhn.conf`:
+
+```properties
+web.oidc.enabled = true
+web.oidc.idp.issuer = https://auth.example.com
+```
+
+If you want to set the JWKS endpoint explicitly, add:
+
+```properties
+web.oidc.idp.jwks_path = /realms/your-realm/protocol/openid-connect/certs
+```
+
+If `web.oidc.idp.jwks_path` is left unset, Uyuni resolves it from the issuer's `/.well-known/openid-configuration` document.
+
+Uyuni also validates the expected audience and the username claim. The defaults introduced by Uyuni are:
+
+```properties
+web.oidc.jwt.audience = uyuni-server
+web.oidc.jwt.username_claim = preferred_username
+```
+
+Notes:
+
+- `web.oidc.idp.issuer` must match the token `iss` claim exactly.
+- The forwarded token must include a `sub` claim.
+- `web.oidc.jwt.username_claim` must point to a claim whose value matches an existing active Uyuni username.
+- The forwarded token must include both audiences required by this integration: `mcp-server-uyuni` for the MCP server and `uyuni-server` for Uyuni.
+- If you change `web.oidc.jwt.audience` in Uyuni, your identity provider must issue the matching audience value.
+
+After updating `rhn.conf`, restart the relevant Uyuni services according to your deployment procedure, then verify that:
+
+- the token issuer matches `web.oidc.idp.issuer`
+- the token audience includes `uyuni-server`
+- the token contains `preferred_username` or your configured username claim
+- the username from that claim already exists in Uyuni
 
 ### Best Practices
 
