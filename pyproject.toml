@@ -74,6 +74,20 @@ dev-dependencies = [
     "pytest>=8.3.5",
     "pytest-asyncio>=0.26.0",
     "respx>=0.22.0",
+    "ruff>=0.11.0",
 ]
 # For a flat layout with mcp_server_uyuni.py in the root,
 # Hatchling's auto-detection will find it when 'packages' is omitted.
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
