@@ -159,7 +159,7 @@ def test_uyuni_mcp_deepeval(test_case, record_property):
     actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt)
     actual_output = actual_output or "(No output returned by the model)"
 
-    judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash")
+    judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash-lite")
     default_rubric = [
         Rubric(score_range=(0, 3), expected_outcome="The actual output is incorrect or irrelevant."),
         Rubric(score_range=(4, 6), expected_outcome="The actual output is partially correct or misses some key details."),
