@@ -23,7 +23,7 @@ dependencies = [
     "jsonschema==4.26.0",
     "jsonschema-specifications==2024.10.1",
     "lazy-object-proxy==1.10.0",
-    "markdown-it-py==3.0.0",
+    "markdown-it-py==4.0.0",
     "markupsafe==3.0.2",
     "mcp==1.15.0",
     "mdurl==0.1.2",
