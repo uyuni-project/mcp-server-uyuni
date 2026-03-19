@@ -74,7 +74,7 @@ class GoogleGemini(DeepEvalBaseLLM):
 
 async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list]:
     if not model:
-        model = os.environ.get("AGENT_MODEL", "gemini-2.5-flash")
+        model = os.environ.get("AGENT_MODEL", "gemini-2.5-flash-lite")
     server_params = StdioServerParameters(
         command="uv",
         args=["run", "mcp-server-uyuni"],
