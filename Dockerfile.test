@@ -24,4 +24,4 @@ ENTRYPOINT ["uv", "run", "--no-sync", "pytest"]
 CMD ["-s", "test/test_deepeval.py","--junit-xml=results.xml"]
 
 # podman build -f Dockerfile.test -t test .
-# podman run --rm --env-file .venv/config -v $(pwd)/test/test_config.json:/app/test_config.json -e GOOGLE_API_KEY=${GEMINI_API_KEY} --network=host test
+# podman run --rm --env-file .venv/config -v $(pwd)/test/test_config.json:/app/test/test_config.json -e GOOGLE_API_KEY=${GEMINI_API_KEY} --network=host test
