@@ -35,6 +35,8 @@ Your task is to determine if the 'Actual Output' from the tool meets the criteri
 
 8.  **Ignore Thinking Steps in Actual Output:** If the 'Actual Output' contains thinking steps (e.g., content within <think>...</think> tags), ignore them. Evaluate the test based only on the final output.
 
+9.  **Ignore Prefixes:** Disregard system messages like 'Data collection is disabled' if the requested data follows immediately after.
+
 **Input for Evaluation:**
 
 [Expected Output]:
