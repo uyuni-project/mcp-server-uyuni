@@ -1,17 +1,46 @@
 [
-  {
-    "id": "TC-SCH-001",
-    "prompt": "List all scheduled actions in {product_name}.",
-    "expected_output": "Returns a list of action dictionaries, or an empty list if none. Example fields: id, name, type, earliest."
+  { "id": "TC-SCH-001",
+    "prompt": "Can you schedule a reboot for system {rhlike_minion_name}?, confirmation set to true",
+    "expected_output": "Return a message that system reboot has been successfully scheduled.",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output confirms that the reboot has been successfully scheduled.",
+        "Verify that the output indicates success."
+      ]
+    }
   },
   {
-    "id": "TC-SCH-002_confirm_request",
-    "prompt": "Can you cancel an action with a valid ID?",
-    "expected_output": "Returns a message the requires confirmation"
+    "id": "TC-SCH-002",
+    "prompt": "List and show details of all scheduled actions in {product_name}.",
+    "expected_output": "Returns a list of action dictionaries, it should include at least a system reboot. The list can include other actions. Example fields: id, name, type, earliest.",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output contains a list of scheduled actions.",
+        "Verify that the list includes at least one system reboot action.",
+        "Check for the presence of action details such as id, name, or type."
+      ]
+    }
   },
   {
-    "id": "TC-SCH-002_confirmed",
-    "prompt": "Cancel an action with a valid ID, confirmation set to true",
-    "expected_output": "A message stating that the action was successfully canceled."
+    "id": "TC-SCH-003_confirm_request",
+    "prompt": "Can you get the action id for the latest system reboot action from list of scheduled actions, and use that id to cancel the action?",
+    "expected_output": "Returns a message the requires confirmation",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output requests confirmation to cancel an action.",
+        "Verify that the action to be cancelled is identified as a system reboot (or the latest one)."
+      ]
+    }
+  },
+  {
+    "id": "TC-SCH-003_confirmed",
+    "prompt": "Can you get the action id for the latest system reboot action from list of scheduled actions, and use that id to cancel the action? Do not ask me for confirmation.",
+    "expected_output": "A message stating that the action was successfully canceled.",
+    "geval_config": {
+      "evaluation_steps": [
+        "Check if the output confirms that the action was successfully canceled.",
+        "Verify that the output implies the operation completed without further confirmation."
+      ]
+    }
   }
 ]
