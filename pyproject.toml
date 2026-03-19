@@ -58,7 +58,7 @@ dependencies = [
     "typing-inspection==0.4.2",
     "urllib3==2.5.0",
     "uvicorn==0.34.2",
-    "websockets==14.2",
+    "websockets==16.0",
     "werkzeug==3.1.1",
 ]
 
