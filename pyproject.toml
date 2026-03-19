@@ -19,7 +19,7 @@ dependencies = [
     "httpcore==1.0.9",
     "httpx==0.28.1",
     "httpx-sse==0.4.0",
-    "idna==3.10",
+    "idna==3.11",
     "jsonschema==4.26.0",
     "jsonschema-specifications==2024.10.1",
     "lazy-object-proxy==1.10.0",
