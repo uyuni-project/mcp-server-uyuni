@@ -39,7 +39,7 @@ def load_vars():
 VARS = load_vars()
 
 class GoogleGemini(DeepEvalBaseLLM):
-    def __init__(self, model="gemini-2.5-flash"):
+    def __init__(self, model="gemini-2.5-flash-lite"):
         self.model_name = model
         self.api_key = os.environ.get("GOOGLE_API_KEY")
         if not self.api_key:
