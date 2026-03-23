@@ -2,6 +2,8 @@
 
 This guide deploys the MCP server and Keycloak next to an existing Uyuni deployment.
 
+![Deployment architecture](architecture.png)
+
 **This deployment is intended only for dev/test environments.**
 
 Assumptions:
