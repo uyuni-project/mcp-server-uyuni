@@ -95,6 +95,7 @@
         "+"
       ],
       "attributes": {
+        "pkce.code.challenge.method": "S256",
         "realm_client": "false",
         "post.logout.redirect.uris": "+"
       },
