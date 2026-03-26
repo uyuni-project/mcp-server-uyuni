@@ -25,6 +25,21 @@ services:
     networks:
       - uyuni
 
+  keycloak-dcr-proxy:
+    profiles:
+      - dcr-proxy
+    build:
+      context: ./deploy/nginx-dcr-proxy
+      dockerfile: Dockerfile
+    image: mcp-server-uyuni-keycloak-dcr-proxy:local
+    restart: unless-stopped
+    depends_on:
+      - keycloak
+    ports:
+      - "${KEYCLOAK_DCR_PROXY_BIND_PORT:-8081}:8080"
+    networks:
+      - uyuni
+
   keycloak:
     image: quay.io/keycloak/keycloak:${KEYCLOAK_IMAGE_TAG:-26.1.4}
     restart: unless-stopped
