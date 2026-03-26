@@ -137,6 +137,21 @@ Use this checklist:
 - `UYUNI_AUTH_SERVER` uses the same public Keycloak issuer URL.
 - Uyuni `web.oidc.idp.issuer` equals `UYUNI_AUTH_SERVER`.
 
+### Optional: DCR-sanitizing Keycloak proxy for Amazon Quick
+
+This compose stack includes an optional lightweight `nginx` proxy (`keycloak-dcr-proxy`) that forwards all Keycloak traffic and sanitizes dynamic client registration (`POST /realms/uyuni-mcp/clients-registrations/openid-connect`) by removing a `registration_url` field from the JSON body before it reaches Keycloak.
+
+Use it when your client sends non-Keycloak DCR metadata and Keycloak rejects it.
+
+- The proxy is behind compose profile `dcr-proxy` (not started by default).
+- Start with profile enabled:
+  ```bash
+  docker compose --env-file deploy/stack.env --profile dcr-proxy up -d --build
+  ```
+- Proxy bind port: `KEYCLOAK_DCR_PROXY_BIND_PORT` (default `8081`)
+- Route your external tunnel/client to this proxy endpoint instead of Keycloak directly.
+- Keep `UYUNI_AUTH_SERVER`/Uyuni issuer alignment unchanged unless you intentionally move the issuer host to the proxy host.
+
 ## Troubleshooting
 
 - `network uyuni not found`:
