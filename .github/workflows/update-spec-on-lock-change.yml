@@ -1,0 +1,45 @@
+name: Update Spec File on uv.lock Change
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'uv.lock'
+
+jobs:
+  update-spec-file:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository # v6.0.0
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff853c1426121c84341c5e3e23a8c5f20d84 # v6.2.0
+        with:
+          # Reads the python version from your .python-version file
+          python-version-file: '.python-version'
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v1
+
+      - name: Run pydeps.py to update spec file
+        run: uv run python release/pydeps.py release/packages/mlm/python-mcp-server-mlm/python-mcp-server-mlm.spec
+
+      - name: Create Pull Request with updated spec file
+        uses: peter-evans/create-pull-request@b1ddad2c994a25fbc81a28b963240d3ba575c4df # v6.1.0
+        with:
+          # The token is automatically provided by GitHub
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore(deps): update spec file from uv.lock"
+          title: "chore(deps): Update python-mcp-server-mlm.spec from uv.lock"
+          body: |
+            `uv.lock` was updated in the last push to `main`.
+
+            This PR was automatically created to update the `python-mcp-server-mlm.spec` file with the new dependencies.
+          branch: "chore/auto-update-spec-file"
+          delete-branch: true
+          labels: "dependencies, automation"
+          reviewers: ${{ !endsWith(github.actor, '[bot]') && github.actor || '' }}
