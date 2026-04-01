@@ -1314,6 +1314,9 @@ dependencies = [
     { name = "certifi" },
     { name = "cryptography" },
     { name = "fastmcp" },
+    { name = "httpx" },
+    { name = "mcp" },
+    { name = "pydantic" },
 ]
 
 [package.dev-dependencies]
@@ -1331,6 +1334,9 @@ requires-dist = [
     { name = "certifi", specifier = "==2025.1.31" },
     { name = "cryptography", specifier = "==44.0.3" },
     { name = "fastmcp", specifier = "==2.14.5" },
+    { name = "httpx" },
+    { name = "mcp" },
+    { name = "pydantic" },
 ]
 
 [package.metadata.requires-dev]
