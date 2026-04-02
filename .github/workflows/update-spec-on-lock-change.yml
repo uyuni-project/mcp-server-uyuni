@@ -43,4 +43,4 @@ jobs:
           delete-branch: true
           labels: "dependencies, automation"
           reviewers: ${{ !endsWith(github.actor, '[bot]') && github.actor || '' }}
-          sign: true
+          sign-commits: true
