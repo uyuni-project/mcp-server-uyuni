@@ -100,30 +100,81 @@ async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list
                 model=model,
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(function_declarations=gemini_tools)],
-                    system_instruction="You are a helpful assistant. When you use tools to retrieve information, you must explicitly include that information in your final response. Do not just summarize that the action was taken."
+                    system_instruction=(
+                        "You are an autonomous assistant specialized in Uyuni infrastructure management. "
+                        "Fulfill requests by using tools directly. "
+                        "POLICY ON ACTIONS: "
+                        "1. INFO GATHERING: Be proactive. Perform multiple tool calls in sequence if necessary "
+                        "(e.g., listing systems and then fetching details for each). Do NOT ask for permission to "
+                        "retrieve or show information. "
+                        "2. STATE-CHANGING ACTIONS: For actions that modify the system (rebooting, removing systems, "
+                        "applying updates, creating groups), you MUST first call the tool with 'confirm=False' "
+                        "to show the user what will happen and wait for their confirmation. "
+                        "EXCEPTION: If the user's prompt already includes an explicit confirmation (e.g., 'Confirm yes', 'I confirm', or 'confirmation set to true'), "
+                        "you may proceed to call the tool with 'confirm=True' immediately."
+                        "CRITICAL: Do NOT use example names or IDs from the tool documentation. Use ONLY the real data "
+                        "returned by the tools in the current session."
+                    )
                 )
             )
 
-            response = await chat.send_message(prompt)
+            # Prepend a strong directive to the user prompt
+            directive_prompt = (
+                f"{prompt}\n\n"
+                "INSTRUCTION: Use available tools to fulfill this request. "
+                "Retain and report specific details like names and IDs. "
+                "If this is a state-changing action (reboot, remove, update, create), "
+                "you MUST ask for confirmation first by calling the tool with confirm=False."
+            )
+
+            response = await chat.send_message(directive_prompt)
             tool_calls = []
             tool_outputs = []
+            full_text = []
 
-            while response.function_calls:
+            while True:
+                # Accumulate text from the current response
+                if response.text:
+                    full_text.append(response.text)
+
+                if not response.function_calls:
+                    # Fallback: If we finished tools but have no text at all, nudge the model for a summary
+                    if not full_text:
+                        response = await chat.send_message("Provide a final summary of the information retrieved or the status of the request.")
+                        if response.text:
+                            full_text.append(response.text)
+                        if not response.function_calls:
+                            break
+                        continue # Process any late tool calls if the nudge triggered them
+                    break
+
                 parts = []
                 for call in response.function_calls:
                     tool_calls.append(call)
                     result = await session.call_tool(call.name, call.args)
-                    tool_output = "\n".join([c.text for c in result.content if c.type == "text"])
-                    tool_outputs.append(tool_output)
+                    tool_output_text = "\n".join([c.text for c in result.content if c.type == "text"])
+                    tool_outputs.append(tool_output_text)
                     
+                    # Try to parse as JSON to provide structured data to the model
+                    try:
+                        parsed_result = json.loads(tool_output_text)
+                        if isinstance(parsed_result, list):
+                            response_dict = {"result": parsed_result}
+                        elif isinstance(parsed_result, dict):
+                            response_dict = parsed_result
+                        else:
+                            response_dict = {"result": parsed_result}
+                    except:
+                        response_dict = {"result": tool_output_text}
+
                     parts.append(types.Part.from_function_response(
                         name=call.name,
-                        response={"result": tool_output}
+                        response=response_dict
                     ))
                 
                 response = await chat.send_message(parts)
 
-            return response.text, tool_calls, tool_outputs
+            return "\n".join(full_text), tool_calls, tool_outputs
 
 def query_mcp_server(prompt: str) -> tuple[str, list, list]:
     return asyncio.run(run_mcp_agent(prompt))
