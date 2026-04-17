@@ -21,6 +21,40 @@ class UyuniApi:
         self.verify = verify
         self.timeout = timeout or httpx.Timeout(30.0, connect=10.0)
 
+async def login(client: httpx.AsyncClient, token: Optional[str] = None) -> None:
+    """
+    Authenticate the given AsyncClient against Uyuni.
+    After this call the client holds a session cookie that can be reused
+    for subsequent requests without re-logging in.
+    """
+    try:
+        if token:
+            response = await client.post(
+                CONFIG["UYUNI_SERVER"] + '/rhn/manager/api/oidcLogin',
+                headers={"Authorization": f"Bearer {token}"}
+            )
+        elif CONFIG["UYUNI_USER"] and CONFIG["UYUNI_PASS"]:
+            response = await client.post(
+                CONFIG["UYUNI_SERVER"] + '/rhn/manager/api/login',
+                json={"login": CONFIG["UYUNI_USER"], "password": CONFIG["UYUNI_PASS"]}
+            )
+        else:
+            logger.warning("login() called but no token or username/password available; skipping.")
+            return
+        response.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        status = e.response.status_code if e.response is not None else None
+        body = e.response.text if e.response is not None else ''
+        logger.error(f"HTTP error during login: {getattr(e.request, 'url', '')} - {status} - {body}")
+        from .errors import AuthError, HTTPError
+        if status in (401, 403):
+            raise AuthError(status, str(getattr(e.request, 'url', '')), body)
+        raise HTTPError(status or -1, str(getattr(e.request, 'url', '')), body)
+    except httpx.RequestError as e:
+        logger.exception(f"Request error during login: {getattr(e.request, 'url', '')} - {e}")
+        from .errors import NetworkError
+        raise NetworkError(getattr(e.request, 'url', ''), e)
+
 async def call(
     client: httpx.AsyncClient,
     method: str,

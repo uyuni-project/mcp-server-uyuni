@@ -25,7 +25,7 @@ from fastmcp import FastMCP, Context
 from mcp import LoggingLevel, ServerSession, types
 
 from .logging_config import get_logger, Transport
-from .uyuni_api import call as call_uyuni_api, TIMEOUT_HAPPENED
+from .uyuni_api import call as call_uyuni_api, login as uyuni_login, TIMEOUT_HAPPENED
 from .config import CONFIG
 from .auth import AuthProvider
 from .errors import (
@@ -232,13 +232,17 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
     system_id = await _resolve_system_id(system_identifier, token)
 
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+        # Login once so all concurrent calls below can share the same session
+        await uyuni_login(client, token=token)
+
         details_call: Coroutine = call_uyuni_api(
             client=client,
             method="GET",
             api_path="/rhn/manager/api/system/getDetails",
             params={'sid': system_id},
             error_context=f"Fetching details for system {system_id}",
-            token=token
+            token=token,
+            perform_login=False
         )
         uuid_call: Coroutine = call_uyuni_api(
             client=client,
@@ -246,7 +250,8 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
             api_path="/rhn/manager/api/system/getUuid",
             params={'sid': system_id},
             error_context=f"Fetching UUID for system {system_id}",
-            token=token
+            token=token,
+            perform_login=False
         )
         cpu_call: Coroutine = call_uyuni_api(
             client=client,
@@ -254,7 +259,8 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
             api_path="/rhn/manager/api/system/getCpu",
             params={'sid': system_id},
             error_context=f"Fetching CPU information for system {system_id}",
-            token=token
+            token=token,
+            perform_login=False
         )
         network_call: Coroutine = call_uyuni_api(
             client=client,
@@ -262,7 +268,8 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
             api_path="/rhn/manager/api/system/getNetwork",
             params={'sid': system_id},
             error_context=f"Fetching network information for system {system_id}",
-            token=token
+            token=token,
+            perform_login=False
         )
         products_call: Coroutine = call_uyuni_api(
             client=client,
@@ -270,7 +277,8 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
             api_path="/rhn/manager/api/system/getInstalledProducts",
             params={'sid': system_id},
             error_context=f"Fetching installed product information for system {system_id}",
-            token=token
+            token=token,
+            perform_login=False
         )
 
         results = await asyncio.gather(
@@ -713,13 +721,17 @@ async def _get_system_updates(system_identifier: Union[str, int], ctx: Context) 
     list_cves_api_path = '/rhn/manager/api/errata/listCves'
 
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+        # Login once so all concurrent calls below can share the same session
+        await uyuni_login(client, token=token)
+
         relevant_errata_call: Coroutine = call_uyuni_api(
             client=client,
             method="GET",
             api_path="/rhn/manager/api/system/getRelevantErrata",
             params={'sid': system_id},
             error_context=f"checking updates for system {system_identifier}",
-            token=token
+            token=token,
+            perform_login=False
         )
 
         unscheduled_errata_call: Coroutine = call_uyuni_api(
@@ -728,7 +740,8 @@ async def _get_system_updates(system_identifier: Union[str, int], ctx: Context) 
             api_path="/rhn/manager/api/system/getUnscheduledErrata",
             params={'sid': str(system_id)},
             error_context=f"checking unscheduled errata for system ID {system_id}",
-            token=token
+            token=token,
+            perform_login=False
         )
 
         results = await asyncio.gather(
