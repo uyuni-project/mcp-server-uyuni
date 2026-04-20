@@ -83,7 +83,7 @@ def _run_command(runner, prompt, config_path, model, debug=False):
             "--prompt",
             prompt,
             "--model",
-            model,
+            model.removeprefix("google:"),
         ]
     else:
         return f"Error: Unsupported runner '{runner}'"
@@ -241,8 +241,8 @@ def main():
         "-m",
         "--model",
         type=str,
-        default="google:gemini-2.5-flash",
-        help="Model to use for the tests (e.g., 'google:gemini-2.5-flash').",
+        default="google:gemini-2.5-flash-lite",
+        help="Model to use for the tests (e.g., 'google:gemini-2.5-flash-lite').",
     )
     parser.add_argument(
         "--runner",
