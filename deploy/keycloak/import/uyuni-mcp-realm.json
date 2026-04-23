@@ -108,7 +108,47 @@
         "offline_access"
       ],
       "optionalClientScopes": []
+    },
+    {
+      "clientId": "mcp-server-uyuni-headless",
+      "name": "Uyuni MCP Server Headless",
+      "description": "OIDC client for the Uyuni MCP server",
+      "surrogateAuthRequired": false,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "bearerOnly": false,
+      "consentRequired": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": true,
+      "frontchannelLogout": false,
+      "secret": "SECRET-REPLACE-ME",
+      "redirectUris": [
+        "*"
+      ],
+      "webOrigins": [
+        "+"
+      ],
+      "attributes": {
+        "display.on.consent.screen": "false",
+        "pkce.code.challenge.method": "S256",
+        "realm_client": "false",
+        "post.logout.redirect.uris": "+"
+      },
+      "authenticationFlowBindingOverrides": {},
+      "fullScopeAllowed": true,
+      "nodeReRegistrationTimeout": -1,
+      "defaultClientScopes": [
+        "mcp:read",
+        "mcp:write",
+        "offline_access"
+      ],
+      "optionalClientScopes": []
     }
+
   ],
   "clientScopes": [
     {
