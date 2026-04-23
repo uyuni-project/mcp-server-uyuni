@@ -143,6 +143,18 @@ Restart Uyuni web service:
 systemctl restart tomcat
 ```
 
+- `HTTP Status 404` during startup:
+
+If Tomcat fails to start or returns 404s, it may be failing to fetch the OIDC discovery document.
+Check Proxy Settings: If server.satellite.http_proxy is set in rhn.conf, you must add keycloak to the no_proxy list:
+
+```plaintext
+
+server.satellite.no_proxy = keycloak, <keycloak-ipv4>, <keycloak-ipv6>
+```
+
+Restart Tomcat after changing: systemctl restart tomcat
+
 ## Automation-friendly flow
 
 For non-interactive runs, keep changes minimal:
