@@ -49,14 +49,26 @@ The OAuth2 Authorization Code flow requires a **user interaction step** (logging
 - **Display:** You must have access to a graphical session (KDE, GNOME, or VNC) to interact with the authentication prompts.
 
 ## Static vs. Dynamic Registration
+
 This stack is pre-configured for **Static Client Registration**. 
 
 Dynamic registration allows any unknown client to register itself. Static registration ensures only the clients defined in your Keycloak JSON (like `mcp-server-uyuni`) are permitted to request tokens.
 
 Our setup uses specific scopes (`mcp:read`, `mcp:write`). Generic clients often request `basic` or `profile` by default, which Keycloak will reject unless they are explicitly mapped to a static client.
 
+## Headless Authentication for CI/Testing
+
+For automated environments like CI/CD pipelines where user interaction is not possible, this stack provides a headless authentication flow using the `client_credentials` grant type.
+
+The headless configured for the `mcp-server-uyuni-headless` client with:
+- `publicClient` set to `false`.
+- `serviceAccountsEnabled` set to `true`.
+- A placeholder client secret (`SECRET-REPLACE-ME`), which **must be replaced** with a strong, unique secret in your environment.
+
+This allows clients like the Gemini CLI or Jenkins workers to authenticate non-interactively.
+
 ### Example: Gemini CLI Configuration
-To use the Gemini CLI with this stack, use a static configuration in your `mcp_config.json`:
+To use the Gemini CLI with the interactive (Authorization Code) flow, use this static configuration in your `mcp_config.json`:
 
 ```json
 {
@@ -74,6 +86,38 @@ To use the Gemini CLI with this stack, use a static configuration in your `mcp_c
   }
 }
 ```
+### Example: Gemini CLI with Headless Authentication
+
+For automated testing, you can use the client_credentials flow. This requires replacing the placeholder secret in the realm configuration and setting up your client accordingly.
+
+A helper script gemini-uyuni is provided to streamline this process.
+
+1. Set .gemini/settings.json to use the client secret auth (see keycloak/mcp_config_headless.json)
+```json
+{
+  "mcpServers": {
+    "mcp-server-uyuni": {
+      "httpUrl": "http://<mcp-host>:<MCP_BIND_PORT>/mcp",
+      "headers": {
+        "Authorization": "Bearer: $UYUNI_TOKEN"
+      }
+    }
+  }
+}
+
+```
+
+2. Run the helper script:
+
+This script generates a secure client secret and automatically replaces the SECRET-REPLACE-ME placeholder in deploy/keycloak/import/uyuni-mcp-realm-headless.json.
+bash
+./gemini-uyuni
+plaintext
+
+3. Start the services:
+
+Use the command from the previous step to launch the stack. The uyuni-mcp-realm-headless.json file will be used by Keycloak on startup.
+
 
 ## Running against a remote Podman host
 
