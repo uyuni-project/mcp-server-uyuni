@@ -61,7 +61,7 @@ services:
       KC_HOSTNAME_PORT: ${KEYCLOAK_PUBLIC_PORT:-8080}
     volumes:
       - keycloak-data:/opt/keycloak/data/h2
-      - /root/mcp-server-uyuni/deploy/keycloak/import:/opt/keycloak/data/import:ro,z
+      - ./deploy/keycloak/import:/opt/keycloak/data/import:ro,z
     networks:
       - uyuni
 
