@@ -42,7 +42,7 @@ def _get_public_base_url(config: Dict[str, Any]) -> str:
         return public_url.rstrip("/")
 
     public_host = config["UYUNI_MCP_HOST"]
-    if public_host in {"0.0.0.0", "::", "[::]"}:
+    if public_host in {"0.0.0.0", "::", "[::]"}:  # nosec B104
         public_host = "127.0.0.1"
 
     return f'http://{public_host}:{config["UYUNI_MCP_PORT"]}'
@@ -1099,7 +1099,7 @@ async def _add_system(
 
     ssh_priv_key_pass = os.environ.get('UYUNI_SSH_PRIV_KEY_PASS')
     if not ssh_priv_key_pass:
-        ssh_priv_key_pass = ""
+        ssh_priv_key_pass = ""  # nosec B105
 
     payload = {
         "host": host,
