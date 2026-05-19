@@ -72,6 +72,29 @@ class GoogleGemini(DeepEvalBaseLLM):
     def get_model_name(self):
         return self.model_name
 
+def remove_additional_properties(schema: dict) -> dict:
+    """Recursively removes additional_properties and additionalProperties from JSON schemas
+
+    as required by the Google GenAI API endpoint.
+    """
+    if not isinstance(schema, dict):
+        return schema
+
+    # Remove both variants that cause the Google 400 error
+    schema.pop("additional_properties", None)
+    schema.pop("additionalProperties", None)
+
+    for key, value in schema.items():
+        if isinstance(value, dict):
+            schema[key] = remove_additional_properties(value)
+        elif isinstance(value, list):
+            schema[key] = [
+                remove_additional_properties(item) if isinstance(item, dict) else item 
+                for item in value
+            ]
+
+    return schema
+
 async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list]:
     if not model:
         model = os.environ.get("AGENT_MODEL", "gemini-2.5-flash-lite")
@@ -89,10 +112,13 @@ async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list
             
             gemini_tools = []
             for tool in mcp_tools.tools:
+                # Convert the inputSchema to a clean dictionary and strip extra fields
+                cleaned_schema = remove_additional_properties(dict(tool.inputSchema))
+
                 gemini_tools.append({
                     "name": tool.name,
                     "description": tool.description,
-                    "parameters": tool.inputSchema
+                    "parameters": cleaned_schema
                 })
 
             client = genai.Client(api_key=os.environ.get("GOOGLE_API_KEY"))
@@ -295,6 +321,7 @@ def test_uyuni_mcp_deepeval(test_case, record_property):
         # the error message. This guarantees we have the score that triggered the assertion failure.
         # It seems DeepEval sometimes raises the error without updating the metric object in place (bug?)
         # We try to parse the score from the error message: "Metrics: Correctness ... (score: 0.6, ...)"
+
         if current_score is None:
             match = re.search(r"score: ([0-9.]+)", str(e))
             if match:
