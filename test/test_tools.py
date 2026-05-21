@@ -197,10 +197,10 @@ async def test_schedule_specific_update(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": [12345]})
     )
 
-    result = await server._schedule_specific_update(system_id, errata_id, mock_ctx, confirm=False)
+    result = await server._schedule_specific_update(system_id, errata_id, "mock_token", confirm=False)
     assert "CONFIRMATION REQUIRED" in result
 
-    result = await server._schedule_specific_update(system_id, errata_id, mock_ctx, confirm=True)
+    result = await server._schedule_specific_update(system_id, errata_id, "mock_token", confirm=True)
     assert "successfully scheduled" in result
     assert route.called
 
@@ -334,10 +334,10 @@ async def test_add_systems_to_group(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": 1})
     )
 
-    result = await server._manage_group_systems(group_name, system_ids, True, "mock_token", mock_ctx, confirm=False)
+    result = await server._manage_group_systems(group_name, system_ids, True, mock_ctx, confirm=False)
     assert "CONFIRMATION REQUIRED" in result
 
-    result = await server._manage_group_systems(group_name, system_ids, True, "mock_token", mock_ctx, confirm=True)
+    result = await server._manage_group_systems(group_name, system_ids, True, mock_ctx, confirm=True)
     assert "Successfully added" in result
     assert route_add.called
 
@@ -355,10 +355,10 @@ async def test_remove_systems_from_group(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": 1})
     )
 
-    result = await server._manage_group_systems(group_name, system_ids, False, "mock_token", mock_ctx, confirm=False)
+    result = await server._manage_group_systems(group_name, system_ids, False, mock_ctx, confirm=False)
     assert "CONFIRMATION REQUIRED" in result
 
-    result = await server._manage_group_systems(group_name, system_ids, False, "mock_token", mock_ctx, confirm=True)
+    result = await server._manage_group_systems(group_name, system_ids, False, mock_ctx, confirm=True)
     assert "Successfully removed" in result
     assert route_remove.called
 
@@ -646,7 +646,7 @@ async def test_remove_system_not_found(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": [{"id": 1001, "name": "sys1"}]})
     )
 
-    result = await server._remove_system(system_id, "mock_token")
+    result = await server._remove_system(system_id, "mock_token", confirm=True)
     assert f"System with ID {system_id} not found" in result
 
 @pytest.mark.asyncio
