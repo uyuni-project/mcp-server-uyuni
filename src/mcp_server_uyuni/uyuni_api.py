@@ -1,3 +1,4 @@
+import inspect
 from typing import Any, Dict, Optional
 import httpx
 
@@ -37,6 +38,10 @@ async def call(
     Helper function to make authenticated API calls to Uyuni.
     Handles login, request execution, error handling, and basic response parsing.
     """
+
+    # Smooth over the FastMCP v2 vs v3 async state difference
+    if inspect.iscoroutine(token):
+        token = await token
 
     # Safety check: Do not allow POST requests if write tools are disabled.
     # This acts as a secondary guard after the @write_tool decorator.
