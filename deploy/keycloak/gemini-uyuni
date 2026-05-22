@@ -1,0 +1,11 @@
+TOKEN=$(curl -s -X POST "http://keycloak:8080/realms/uyuni-mcp/protocol/openid-connect/token" \\
+  -d "grant_type=client_credentials" \\
+  -d "client_id=mcp-server-uyuni" \\
+  -d "client_secret=$UYUNI_OAUTH_SECRET" | jq -r .access_token)
+
+export UYUNI_TOKEN="$TOKEN"
+if [ -z "$1" ]; then
+  gemini
+else
+  gemini -p "$@"
+fi

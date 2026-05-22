@@ -26,7 +26,7 @@ from fastmcp import FastMCP, Context
 from mcp import LoggingLevel, ServerSession, types
 
 from .logging_config import get_logger, Transport
-from .uyuni_api import call as call_uyuni_api, TIMEOUT_HAPPENED
+from .uyuni_api import call as call_uyuni_api, login as uyuni_login, TIMEOUT_HAPPENED
 from .config import CONFIG
 from .auth import AuthProvider
 from .errors import (
@@ -59,6 +59,11 @@ logger = get_logger(
     transport=CONFIG["UYUNI_MCP_TRANSPORT"],
     log_level=CONFIG["UYUNI_MCP_LOG_LEVEL"]
 )
+
+def _make_client() -> httpx.AsyncClient:
+    """Create an AsyncClient with the configured SSL and timeout settings."""
+    timeout = httpx.Timeout(CONFIG["UYUNI_MCP_TIMEOUT"], connect=10.0)
+    return httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"], timeout=timeout)
 
 class AuthTokenMiddleware(Middleware):
     async def on_call_tool(self, ctx: MiddlewareContext, call_next):
@@ -157,7 +162,7 @@ async def list_systems(ctx: Context) -> List[Dict[str, Any]]:
 
 async def _list_systems(token: str) -> List[Dict[str, Union[str, int]]]:
 
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         systems_data_result = await call_uyuni_api(
             client=client,
             method="GET",
@@ -255,14 +260,18 @@ async def get_system_details(system_identifier: Union[str, int], ctx: Context):
 async def _get_system_details(system_identifier: Union[str, int], token: str) -> Dict[str, Any]:
     system_id = await _resolve_system_id(system_identifier, token)
 
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
+        # Login once so all concurrent calls below can share the same session
+        await uyuni_login(client, token=token)
+
         details_call: Coroutine = call_uyuni_api(
             client=client,
             method="GET",
             api_path="/rhn/manager/api/system/getDetails",
             params={'sid': system_id},
             error_context=f"Fetching details for system {system_id}",
-            token=token
+            token=token,
+            perform_login=False
         )
         uuid_call: Coroutine = call_uyuni_api(
             client=client,
@@ -270,7 +279,8 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
             api_path="/rhn/manager/api/system/getUuid",
             params={'sid': system_id},
             error_context=f"Fetching UUID for system {system_id}",
-            token=token
+            token=token,
+            perform_login=False
         )
         cpu_call: Coroutine = call_uyuni_api(
             client=client,
@@ -278,7 +288,8 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
             api_path="/rhn/manager/api/system/getCpu",
             params={'sid': system_id},
             error_context=f"Fetching CPU information for system {system_id}",
-            token=token
+            token=token,
+            perform_login=False
         )
         network_call: Coroutine = call_uyuni_api(
             client=client,
@@ -286,7 +297,8 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
             api_path="/rhn/manager/api/system/getNetwork",
             params={'sid': system_id},
             error_context=f"Fetching network information for system {system_id}",
-            token=token
+            token=token,
+            perform_login=False
         )
         products_call: Coroutine = call_uyuni_api(
             client=client,
@@ -294,7 +306,8 @@ async def _get_system_details(system_identifier: Union[str, int], token: str) ->
             api_path="/rhn/manager/api/system/getInstalledProducts",
             params={'sid': system_id},
             error_context=f"Fetching installed product information for system {system_id}",
-            token=token
+            token=token,
+            perform_login=False
         )
 
         results = await asyncio.gather(
@@ -414,7 +427,7 @@ async def get_system_event_history(system_identifier: Union[str, int], ctx: Cont
 async def _get_system_event_history(system_identifier: Union[str, int], limit: int, offset: int, earliest_date: str, token: str) -> list[Any]:
     system_id = await _resolve_system_id(system_identifier, token)
 
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         params = {'sid': system_id, 'limit': limit, 'offset': offset}
         if earliest_date:
             params['earliestDate'] = earliest_date
@@ -493,7 +506,7 @@ async def get_system_event_details(system_identifier: Union[str, int], event_id:
 async def _get_system_event_details(system_identifier: Union[str, int], event_id: int, token: str) -> Dict[str, Any]:
     system_id = await _resolve_system_id(system_identifier, token)
 
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         result = await call_uyuni_api(
             client=client,
             method="GET",
@@ -537,7 +550,7 @@ async def find_systems_by_name(name: str, ctx: Context) -> List[Dict[str, Union[
     return await _find_systems_by_name(name, token)
 
 async def _find_systems_by_name(name: str, token: str) -> List[Dict[str, Union[str, int]]]:
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         systems_data_result = await call_uyuni_api(
             client=client,
             method="GET",
@@ -589,7 +602,7 @@ async def find_systems_by_ip(ip_address: str, ctx: Context) -> List[Dict[str, Un
     return await _find_systems_by_ip(ip_address, token)
 
 async def _find_systems_by_ip(ip_address: str, token: str) -> List[Dict[str, Union[str, int]]]:
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         systems_data_result = await call_uyuni_api(
             client=client,
             method="GET",
@@ -639,7 +652,7 @@ async def _resolve_system_id(system_identifier: Union[str, int], token: str) -> 
     system_name = id_str
     logger.info(f"System identifier '{system_name}' is not numeric, treating as a name and looking up ID.")
 
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         api_path = "/rhn/manager/api/system/getId"
         # The result from system.getId is an array of system structs
         systems_list = await call_uyuni_api(
@@ -751,14 +764,18 @@ async def _get_system_updates(system_identifier: Union[str, int], token: str, ct
 
     list_cves_api_path = '/rhn/manager/api/errata/listCves'
 
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
+        # Login once so all concurrent calls below can share the same session
+        await uyuni_login(client, token=token)
+
         relevant_errata_call: Coroutine = call_uyuni_api(
             client=client,
             method="GET",
             api_path="/rhn/manager/api/system/getRelevantErrata",
             params={'sid': system_id},
             error_context=f"checking updates for system {system_identifier}",
-            token=token
+            token=token,
+            perform_login=False
         )
 
         unscheduled_errata_call: Coroutine = call_uyuni_api(
@@ -767,7 +784,8 @@ async def _get_system_updates(system_identifier: Union[str, int], token: str, ct
             api_path="/rhn/manager/api/system/getUnscheduledErrata",
             params={'sid': str(system_id)},
             error_context=f"checking unscheduled errata for system ID {system_id}",
-            token=token
+            token=token,
+            perform_login=False
         )
 
         results = await asyncio.gather(
@@ -954,7 +972,7 @@ async def _schedule_pending_updates_to_system(system_identifier: Union[str, int]
     logger.info(msg)
     await ctx.info(msg)
 
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         payload = {"sid": int(system_id), "errataIds": errata_ids}
         api_result = await call_uyuni_api(
             client=client,
@@ -1016,7 +1034,7 @@ async def _schedule_specific_update(system_identifier: Union[str, int], errata_i
     if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will apply specific update (errata ID: {errata_id}) to the system {system_identifier}. Do you confirm?"
 
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         # The API expects a list of errata IDs, even if it's just one.
         payload = {"sid": int(system_id), "errataIds": [errata_id_int]}
         api_result = await call_uyuni_api(
@@ -1157,7 +1175,7 @@ async def _add_system(
         payload["proxyId"] = proxy_id
     logger.info(f"adding system {host}")
 
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         api_result = await call_uyuni_api(
             client=client, method="POST",
             api_path="/rhn/manager/api/system/bootstrapWithPrivateSshKey",
@@ -1229,7 +1247,7 @@ async def _remove_system(system_identifier: Union[str, int], token: str, cleanup
 
     cleanup_type = "FORCE_DELETE" if cleanup else "NO_CLEANUP"
 
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         api_result = await call_uyuni_api(
             client=client,
             method="POST",
@@ -1283,7 +1301,7 @@ async def _list_systems_needing_update_for_cve(cve_identifier: str, token: str, 
 
     find_by_cve_path = '/rhn/manager/api/errata/findByCve'
     list_affected_systems_path = '/rhn/manager/api/errata/listAffectedSystems'
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         # 1. Call findByCve (login will be handled by the helper)
         logger.info(f"Searching for errata related to CVE: {cve_identifier}")
         errata_list = await call_uyuni_api(
@@ -1382,7 +1400,7 @@ async def _list_systems_needing_reboot(token: str) -> List[Dict[str, Any]]:
     systems_needing_reboot_list = []
     list_reboot_path = '/rhn/manager/api/system/listSuggestedReboot'
 
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         reboot_data_result = await call_uyuni_api(
             client=client,
             method="GET",
@@ -1450,7 +1468,7 @@ async def _schedule_system_reboot(system_identifier: Union[str, int], token: str
     # Generate current time in ISO 8601 format (UTC)
     now_iso = datetime.now(timezone.utc).isoformat()
 
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         payload = {"sid": int(system_id), "earliestOccurrence": now_iso}
         api_result = await call_uyuni_api(
             client=client,
@@ -1501,7 +1519,7 @@ async def _list_all_scheduled_actions(token: str) -> List[Dict[str, Any]]:
     list_actions_path = '/rhn/manager/api/schedule/listAllActions'
     processed_actions_list = []
 
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         api_result = await call_uyuni_api(
             client=client,
             method="GET",
@@ -1562,7 +1580,7 @@ async def _cancel_action(action_id: int, token: str, confirm: Union[bool, str] =
     if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will schedule action {action_id} to be canceled. Do you confirm?"
 
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         payload = {"actionIds": [action_id]} # API expects a list
         api_result = await call_uyuni_api(
             client=client,
@@ -1599,7 +1617,7 @@ async def list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
 async def _list_activation_keys(token: str, ctx: Context) -> List[Dict[str, str]]:
     list_keys_path = '/rhn/manager/api/activationkey/listActivationKeys'
 
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         api_result = await call_uyuni_api(
             client=client,
             method="GET",
@@ -1643,7 +1661,7 @@ async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str,
     return await _get_unscheduled_errata(system_id, token)
 
 async def _get_unscheduled_errata(system_id: int, token: str) -> List[Dict[str, Any]]:
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         get_unscheduled_errata = "/rhn/manager/api/system/getUnscheduledErrata"
         payload = {'sid': str(system_id)}
         unscheduled_errata_result = await call_uyuni_api(
@@ -1704,7 +1722,7 @@ async def list_system_groups(ctx: Context) -> List[Dict[str, str]]:
 async def _list_system_groups(token: str, ctx: Context) -> List[Dict[str, str]]:
     list_groups_path = '/rhn/manager/api/systemgroup/listAllGroups'
 
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         api_result = await call_uyuni_api(
             client=client,
             method="GET",
@@ -1762,7 +1780,7 @@ async def _create_system_group(name: str, token: str, description: str = "", con
 
     create_group_path = '/rhn/manager/api/systemgroup/create'
 
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         api_result = await call_uyuni_api(
             client=client,
             method="POST",
@@ -1822,7 +1840,7 @@ async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, An
 async def _list_group_systems(group_name: str, token: str) -> List[Dict[str, Any]]:
     list_systems_path = '/rhn/manager/api/systemgroup/listSystemsMinimal'
 
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         api_result = await call_uyuni_api(
             client=client,
             method="GET",
@@ -1920,7 +1938,7 @@ async def _manage_group_systems(group_name: str, system_identifiers: List[Union[
 
     add_remove_path = '/rhn/manager/api/systemgroup/addOrRemoveSystems'
 
-    async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
+    async with _make_client() as client:
         api_result = await call_uyuni_api(
             client=client,
             method="POST",

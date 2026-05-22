@@ -1,0 +1,22 @@
+{
+  "realm": "uyuni-mcp",
+  "users": [
+    {
+      "username": "mcp-tester",
+      "firstName": "MCP",
+      "lastName": "Tester",
+      "email": "mcp-tester@localhost",
+      "enabled": true,
+      "realmRoles": [
+        "default-roles-uyuni-mcp"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "mcp-tester-pass",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
