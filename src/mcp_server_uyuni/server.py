@@ -109,6 +109,24 @@ def _to_bool(value) -> bool:
     """
     return str(value).lower() in ("true", "yes", "1")
 
+
+async def extract_token(ctx: Optional[Context] = None, token: Any = None):
+    """
+    Extracts and resolves a token. 
+    Can be called with context, a raw token, or both.
+    """
+    # 1. If no token was provided, try to fetch it from context
+    if token is None:
+        if ctx is None:
+            raise ValueError("You must provide either 'ctx' or 'token' to extract_token.")
+        token = ctx.get_state('token')
+
+    # 2. Handle FastMCP v3 coroutines (unwrap if necessary)
+    if inspect.iscoroutine(token):
+        token = await token
+
+    return token
+
 DYNAMIC_DESCRIPTION = f"""
     Fetches a list of active systems from the {product} server, returning their names and IDs.
 
@@ -133,9 +151,7 @@ async def list_systems(ctx: Context) -> List[Dict[str, Any]]:
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _list_systems(token)
 
@@ -232,9 +248,7 @@ async def get_system_details(system_identifier: Union[str, int], ctx: Context):
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _get_system_details(system_identifier, token)
 
@@ -393,9 +407,7 @@ async def get_system_event_history(system_identifier: Union[str, int], ctx: Cont
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _get_system_event_history(system_identifier, limit, offset, earliest_date, token)
 
@@ -474,9 +486,7 @@ async def get_system_event_details(system_identifier: Union[str, int], event_id:
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _get_system_event_details(system_identifier, event_id, token)
 
@@ -522,9 +532,7 @@ async def find_systems_by_name(name: str, ctx: Context) -> List[Dict[str, Union[
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _find_systems_by_name(name, token)
 
@@ -576,9 +584,7 @@ async def find_systems_by_ip(ip_address: str, ctx: Context) -> List[Dict[str, Un
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _find_systems_by_ip(ip_address, token)
 
@@ -606,9 +612,6 @@ async def _find_systems_by_ip(ip_address: str, token: str) -> List[Dict[str, Uni
     return filtered_systems
 
 async def _resolve_system_id(system_identifier: Union[str, int], token: str) -> str:
-    if inspect.iscoroutine(token):
-        token = await token
-
     """
     Resolves a system identifier, which can be a name or an ID, to a numeric system ID string.
 
@@ -626,6 +629,8 @@ async def _resolve_system_id(system_identifier: Union[str, int], token: str) -> 
         UnexpectedResponse: If the {product} API returns an unexpected payload (non-list, malformed items,
                             or multiple matches for a single name).
     """
+    token = await extract_token(token=token)
+
     id_str = str(system_identifier)
     if id_str.isdigit():
         return id_str
@@ -735,15 +740,12 @@ async def get_system_updates(system_identifier: Union[str, int], ctx: Context) -
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _get_system_updates(system_identifier, token, ctx)
 
 async def _get_system_updates(system_identifier: Union[str, int], token: str, ctx: Context) -> Dict[str, Any]:
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(token=token)
 
     system_id = await _resolve_system_id(system_identifier, token)
 
@@ -845,9 +847,7 @@ async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _check_all_systems_for_updates(token, ctx)
 
@@ -919,9 +919,7 @@ async def schedule_pending_updates_to_system(system_identifier: Union[str, int],
     logger.info(msg)
     await ctx.info(msg)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _schedule_pending_updates_to_system(system_identifier, token, ctx, confirm)
 
@@ -999,9 +997,7 @@ async def schedule_specific_update(system_identifier: Union[str, int], errata_id
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _schedule_specific_update(system_identifier, errata_id, token, confirm)
 
@@ -1089,9 +1085,7 @@ async def add_system(
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _add_system(host, token, ctx, activation_key, ssh_port, ssh_user, proxy_id, salt_ssh, confirm)
 
@@ -1213,9 +1207,7 @@ async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanu
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _remove_system(system_identifier, token, cleanup, confirm)
 
@@ -1282,9 +1274,7 @@ async def list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context)
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _list_systems_needing_update_for_cve(cve_identifier, token, ctx)
 
@@ -1384,9 +1374,7 @@ async def list_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _list_systems_needing_reboot(token)
 
@@ -1445,9 +1433,7 @@ async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _schedule_system_reboot(system_identifier, token, confirm)
 
@@ -1507,9 +1493,7 @@ async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _list_all_scheduled_actions(token)
 
@@ -1563,9 +1547,7 @@ async def cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] 
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _cancel_action(action_id, token, confirm)
 
@@ -1610,9 +1592,7 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _list_activation_keys(token, ctx)
 
@@ -1658,9 +1638,7 @@ async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str,
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _get_unscheduled_errata(system_id, token)
 
@@ -1719,9 +1697,7 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def list_system_groups(ctx: Context) -> List[Dict[str, str]]:
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _list_system_groups(token, ctx)
 
@@ -1774,9 +1750,7 @@ async def create_system_group(name: str, ctx: Context, description: str = "", co
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _create_system_group(name, token, description, confirm)
 
@@ -1841,9 +1815,7 @@ async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, An
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     return await _list_group_systems(group_name, token)
 
@@ -1928,9 +1900,7 @@ async def _manage_group_systems(group_name: str, system_identifiers: List[Union[
 
     is_confirmed = _to_bool(confirm)
 
-    token = ctx.get_state('token')
-    if inspect.iscoroutine(token):
-        token = await token
+    token = await extract_token(ctx)
 
     if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will {action_str[0]} {len(system_identifiers)} systems {action_str[1]} group '{group_name}'. Do you confirm?"
