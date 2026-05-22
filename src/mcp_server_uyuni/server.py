@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import os
 import sys
 import asyncio
@@ -108,6 +109,24 @@ def _to_bool(value) -> bool:
     """
     return str(value).lower() in ("true", "yes", "1")
 
+
+async def extract_token(ctx: Optional[Context] = None, token: Any = None):
+    """
+    Extracts and resolves a token. 
+    Can be called with context, a raw token, or both.
+    """
+    # 1. If no token was provided, try to fetch it from context
+    if token is None:
+        if ctx is None:
+            raise ValueError("You must provide either 'ctx' or 'token' to extract_token.")
+        token = ctx.get_state('token')
+
+    # 2. Handle FastMCP v3 coroutines (unwrap if necessary)
+    if inspect.iscoroutine(token):
+        token = await token
+
+    return token
+
 DYNAMIC_DESCRIPTION = f"""
     Fetches a list of active systems from the {product} server, returning their names and IDs.
 
@@ -132,7 +151,9 @@ async def list_systems(ctx: Context) -> List[Dict[str, Any]]:
     logger.info(log_string)
     await ctx.info(log_string)
 
-    return await _list_systems(ctx.get_state('token'))
+    token = await extract_token(ctx)
+
+    return await _list_systems(token)
 
 async def _list_systems(token: str) -> List[Dict[str, Union[str, int]]]:
 
@@ -226,7 +247,10 @@ async def get_system_details(system_identifier: Union[str, int], ctx: Context):
     log_string = f"Getting details of system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
-    return await _get_system_details(system_identifier, ctx.get_state('token'))
+
+    token = await extract_token(ctx)
+
+    return await _get_system_details(system_identifier, token)
 
 async def _get_system_details(system_identifier: Union[str, int], token: str) -> Dict[str, Any]:
     system_id = await _resolve_system_id(system_identifier, token)
@@ -382,7 +406,10 @@ async def get_system_event_history(system_identifier: Union[str, int], ctx: Cont
     log_string = f"Getting event history of system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
-    return await _get_system_event_history(system_identifier, limit, offset, earliest_date, ctx.get_state('token'))
+
+    token = await extract_token(ctx)
+
+    return await _get_system_event_history(system_identifier, limit, offset, earliest_date, token)
 
 async def _get_system_event_history(system_identifier: Union[str, int], limit: int, offset: int, earliest_date: str, token: str) -> list[Any]:
     system_id = await _resolve_system_id(system_identifier, token)
@@ -458,7 +485,10 @@ async def get_system_event_details(system_identifier: Union[str, int], event_id:
     log_string = f"Getting event history of system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
-    return await _get_system_event_details(system_identifier, event_id, ctx.get_state('token'))
+
+    token = await extract_token(ctx)
+
+    return await _get_system_event_details(system_identifier, event_id, token)
 
 async def _get_system_event_details(system_identifier: Union[str, int], event_id: int, token: str) -> Dict[str, Any]:
     system_id = await _resolve_system_id(system_identifier, token)
@@ -498,14 +528,15 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def find_systems_by_name(name: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
-    return await _find_systems_by_name(name, ctx)
-
-async def _find_systems_by_name(name: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
     log_string = f"Finding systems with name {name}"
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
+    token = await extract_token(ctx)
+
+    return await _find_systems_by_name(name, token)
+
+async def _find_systems_by_name(name: str, token: str) -> List[Dict[str, Union[str, int]]]:
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
         systems_data_result = await call_uyuni_api(
             client=client,
@@ -549,14 +580,15 @@ DYNAMIC_DESCRIPTION= f"""
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def find_systems_by_ip(ip_address: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
-    return await _find_systems_by_ip(ip_address, ctx)
-
-async def _find_systems_by_ip(ip_address: str, ctx: Context) -> List[Dict[str, Union[str, int]]]:
     log_string = f"Finding systems with IP address {ip_address}"
     logger.info(log_string)
     await ctx.info(log_string)
 
-    token = ctx.get_state('token')
+    token = await extract_token(ctx)
+
+    return await _find_systems_by_ip(ip_address, token)
+
+async def _find_systems_by_ip(ip_address: str, token: str) -> List[Dict[str, Union[str, int]]]:
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
         systems_data_result = await call_uyuni_api(
             client=client,
@@ -597,6 +629,8 @@ async def _resolve_system_id(system_identifier: Union[str, int], token: str) -> 
         UnexpectedResponse: If the {product} API returns an unexpected payload (non-list, malformed items,
                             or multiple matches for a single name).
     """
+    token = await extract_token(token=token)
+
     id_str = str(system_identifier)
     if id_str.isdigit():
         return id_str
@@ -639,7 +673,7 @@ async def _resolve_system_id(system_identifier: Union[str, int], token: str) -> 
         raise UnexpectedResponse(CONFIG["UYUNI_SERVER"] + api_path, f"Malformed system data: {first_system!r}")
 
 async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str, system_id: int,
-                                  list_cves_path: str, ctx: Context) -> List[str]:
+                                  list_cves_path: str, token: str, ctx: Context) -> List[str]:
     """
     Internal helper to fetch CVEs for a given erratum advisory name.
 
@@ -648,6 +682,7 @@ async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str,
         advisory_name: The advisory name of the erratum to fetch CVEs for.
         system_id: The ID of the system (for logging purposes).
         list_cves_path: The API path for listing CVEs.
+        token: The authentication token string.
 
     Returns:
         List[str]: A list of CVE identifier strings. Returns an empty list on failure or if no CVEs are found.
@@ -671,7 +706,7 @@ async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str,
         api_path=list_cves_path,
         error_context=f"fetching CVEs for advisory {advisory_name} (system ID: {system_id})",
         params={'advisoryName': advisory_name},
-        perform_login=False, # Login is handled by the calling function
+        token=token,
     )
 
     processed_cves = []
@@ -704,10 +739,14 @@ async def get_system_updates(system_identifier: Union[str, int], ctx: Context) -
     log_string = f"Checking pending updates for system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
-    return await _get_system_updates(system_identifier, ctx)
 
-async def _get_system_updates(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
-    token = ctx.get_state('token')
+    token = await extract_token(ctx)
+
+    return await _get_system_updates(system_identifier, token, ctx)
+
+async def _get_system_updates(system_identifier: Union[str, int], token: str, ctx: Context) -> Dict[str, Any]:
+    token = await extract_token(token=token)
+
     system_id = await _resolve_system_id(system_identifier, token)
 
     list_cves_api_path = '/rhn/manager/api/errata/listCves'
@@ -761,8 +800,7 @@ async def _get_system_updates(system_identifier: Union[str, int], ctx: Context) 
             # Initialize and fetch CVEs
             update_details['cves'] = []
             if advisory_name:
-                # Call the helper function to fetch CVEs
-                task = _fetch_cves_for_erratum(client, advisory_name, system_id, list_cves_api_path, ctx)
+                task = _fetch_cves_for_erratum(client, advisory_name, system_id, list_cves_api_path, token, ctx)
                 cve_fetch_tasks.append(task)
 
             enriched_updates_list.append(update_details)
@@ -805,15 +843,17 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
-    return await _check_all_systems_for_updates(ctx)
-
-async def _check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
     log_string = "Checking all system for updates"
     logger.info(log_string)
     await ctx.info(log_string)
 
+    token = await extract_token(ctx)
+
+    return await _check_all_systems_for_updates(token, ctx)
+
+async def _check_all_systems_for_updates(token: str, ctx: Context) -> List[Dict[str, Any]]:
     systems_with_updates = []
-    active_systems = await _list_systems(ctx.get_state('token')) # Get the list of all systems
+    active_systems = await _list_systems(token) # Get the list of all systems
 
     if not active_systems:
         msg = "No active systems found."
@@ -835,7 +875,7 @@ async def _check_all_systems_for_updates(ctx: Context) -> List[Dict[str, Any]]:
         logger.info(msg)
         await ctx.info(msg)
         # Use the existing get_system_updates tool
-        update_check_result = await _get_system_updates(system_id, ctx)
+        update_check_result = await _get_system_updates(system_id, token, ctx)
 
         if update_check_result.get('has_pending_updates', False):
             # If the system has updates, add its info and update details to the result list
@@ -875,19 +915,20 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @write_tool(description = DYNAMIC_DESCRIPTION)
 async def schedule_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
-    return await _schedule_pending_updates_to_system(system_identifier, ctx, confirm)
-
-async def _schedule_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
     msg = f"Attempting to apply pending updates for system ID: {system_identifier}"
     logger.info(msg)
     await ctx.info(msg)
 
+    token = await extract_token(ctx)
+
+    return await _schedule_pending_updates_to_system(system_identifier, token, ctx, confirm)
+
+async def _schedule_pending_updates_to_system(system_identifier: Union[str, int], token: str, ctx: Context, confirm: Union[bool, str] = False) -> str:
     is_confirmed = _to_bool(confirm)
     if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will apply pending updates to the system {system_identifier}.  Do you confirm?"
 
-    token = ctx.get_state('token')
-    update_info = await _get_system_updates(system_identifier, ctx)
+    update_info = await _get_system_updates(system_identifier, token, ctx)
 
     if not update_info or not update_info.get('has_pending_updates'):
         msg = f"No pending updates found for system {system_identifier}."
@@ -952,13 +993,15 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @write_tool(description = DYNAMIC_DESCRIPTION)
 async def schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
-    return await _schedule_specific_update(system_identifier, errata_id, ctx, confirm)
-
-async def _schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
     log_string = f"Attempting to apply specific update (errata ID: {errata_id}) to system ID: {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
 
+    token = await extract_token(ctx)
+
+    return await _schedule_specific_update(system_identifier, errata_id, token, confirm)
+
+async def _schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], token: str, confirm: Union[bool, str] = False) -> str:
     is_confirmed = _to_bool(confirm)
 
     try:
@@ -966,7 +1009,6 @@ async def _schedule_specific_update(system_identifier: Union[str, int], errata_i
     except (ValueError, TypeError):
         return f"Invalid errata ID '{errata_id}'. The ID must be an integer."
 
-    token = ctx.get_state('token')
     system_id = await _resolve_system_id(system_identifier, token)
 
     logger.info(f"Attempting to apply specific update (errata ID: {errata_id}) to system: {system_identifier}")
@@ -1039,10 +1081,17 @@ async def add_system(
     salt_ssh: bool = False,
     confirm: Union[bool, str] = False,
 ) -> str:
-    return await _add_system(host, ctx, activation_key, ssh_port, ssh_user, proxy_id, salt_ssh, confirm)
+    log_string = f"Attempting to add system ID: {host}"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    token = await extract_token(ctx)
+
+    return await _add_system(host, token, ctx, activation_key, ssh_port, ssh_user, proxy_id, salt_ssh, confirm)
 
 async def _add_system(
     host: str,
+    token: str,
     ctx: Context,
     activation_key: str = "",
     ssh_port: int = 22,
@@ -1051,10 +1100,6 @@ async def _add_system(
     salt_ssh: bool = False,
     confirm: Union[bool, str] = False,
 ) -> str:
-    log_string = f"Attempting to add system ID: {host}"
-    logger.info(log_string)
-    await ctx.info(log_string)
-
     is_confirmed = _to_bool(confirm)
 
     if ctx.session.check_client_capability(types.ClientCapabilities(elicitation=types.ElicitationCapability())):
@@ -1073,8 +1118,6 @@ async def _add_system(
                 return "System addition cancelled."
     elif not activation_key:  # Fallback if elicitation is not supported
         return "You need to provide an activation key."
-
-    token = ctx.get_state('token')
 
     # Check if the system already exists
     active_systems = await _list_systems(token)
@@ -1160,16 +1203,17 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @write_tool(description = DYNAMIC_DESCRIPTION)
 async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanup: bool = True, confirm: Union[bool, str] = False) -> str:
-    return await _remove_system(system_identifier, ctx, cleanup, confirm)
-
-async def _remove_system(system_identifier: Union[str, int], ctx: Context, cleanup: bool = True, confirm: Union[bool, str] = False) -> str:
     log_string = f"Attempting to remove system with id {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
 
+    token = await extract_token(ctx)
+
+    return await _remove_system(system_identifier, token, cleanup, confirm)
+
+async def _remove_system(system_identifier: Union[str, int], token: str, cleanup: bool = True, confirm: Union[bool, str] = False) -> str:
     is_confirmed = _to_bool(confirm)
 
-    token = ctx.get_state('token')
     system_id = await _resolve_system_id(system_identifier, token)
 
     # Check if the system exists before proceeding
@@ -1226,19 +1270,19 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context) -> List[Dict[str, Any]]:
-    return await _list_systems_needing_update_for_cve(cve_identifier, ctx)
-
-async def _list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context) -> List[Dict[str, Any]]:
     log_string = f"Getting systems that need to apply CVE {cve_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
 
+    token = await extract_token(ctx)
+
+    return await _list_systems_needing_update_for_cve(cve_identifier, token, ctx)
+
+async def _list_systems_needing_update_for_cve(cve_identifier: str, token: str, ctx: Context) -> List[Dict[str, Any]]:
     affected_systems_map = {}  # Use a dict to store unique systems by ID {system_id: {details}}
 
     find_by_cve_path = '/rhn/manager/api/errata/findByCve'
     list_affected_systems_path = '/rhn/manager/api/errata/listAffectedSystems'
-
-    token = ctx.get_state('token')
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
         # 1. Call findByCve (login will be handled by the helper)
         logger.info(f"Searching for errata related to CVE: {cve_identifier}")
@@ -1278,7 +1322,7 @@ async def _list_systems_needing_update_for_cve(cve_identifier: str, ctx: Context
                 api_path=list_affected_systems_path,
                 params={'advisoryName': advisory_name},
                 error_context=f"listing affected systems for advisory {advisory_name}",
-                perform_login=False, # Login already performed for this client session
+                token=token,
             )
 
             if systems_data_result is None: # API call failed for this advisory
@@ -1326,13 +1370,15 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def list_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
-    return await _list_systems_needing_reboot(ctx)
-
-async def _list_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
     log_string = "Fetch list of system that require a reboot."
     logger.info(log_string)
     await ctx.info(log_string)
 
+    token = await extract_token(ctx)
+
+    return await _list_systems_needing_reboot(token)
+
+async def _list_systems_needing_reboot(token: str) -> List[Dict[str, Any]]:
     systems_needing_reboot_list = []
     list_reboot_path = '/rhn/manager/api/system/listSuggestedReboot'
 
@@ -1342,7 +1388,7 @@ async def _list_systems_needing_reboot(ctx: Context) -> List[Dict[str, Any]]:
             method="GET",
             api_path=list_reboot_path,
             error_context="fetching systems needing reboot",
-            token=ctx.get_state('token')
+            token=token
         )
 
         if isinstance(reboot_data_result, list):
@@ -1383,16 +1429,17 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @write_tool(description = DYNAMIC_DESCRIPTION)
 async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context, confirm: Union[bool, str] = False) -> str:
-    return await _schedule_system_reboot(system_identifier, ctx, confirm)
-
-async def _schedule_system_reboot(system_identifier: Union[str, int], ctx:Context, confirm: Union[bool, str] = False) -> str:
     log_string = f"Schedule system reboot for system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
 
+    token = await extract_token(ctx)
+
+    return await _schedule_system_reboot(system_identifier, token, confirm)
+
+async def _schedule_system_reboot(system_identifier: Union[str, int], token: str, confirm: Union[bool, str] = False) -> str:
     is_confirmed = _to_bool(confirm)
 
-    token = ctx.get_state('token')
     system_id = await _resolve_system_id(system_identifier, token)
 
     if not is_confirmed:
@@ -1442,13 +1489,15 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
-    return await _list_all_scheduled_actions(ctx)
-
-async def _list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
     log_string = "Listing all scheduled actions"
     logger.info(log_string)
     await ctx.info(log_string)
 
+    token = await extract_token(ctx)
+
+    return await _list_all_scheduled_actions(token)
+
+async def _list_all_scheduled_actions(token: str) -> List[Dict[str, Any]]:
     list_actions_path = '/rhn/manager/api/schedule/listAllActions'
     processed_actions_list = []
 
@@ -1458,7 +1507,7 @@ async def _list_all_scheduled_actions(ctx: Context) -> List[Dict[str, Any]]:
             method="GET",
             api_path=list_actions_path,
             error_context="listing all scheduled actions",
-            token=ctx.get_state('token')
+            token=token
         )
 
         if isinstance(api_result, list):
@@ -1494,13 +1543,15 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @write_tool(description = DYNAMIC_DESCRIPTION)
 async def cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] = False) -> str:
-    return await _cancel_action(action_id, ctx, confirm)
-
-async def _cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] = False) -> str:
     log_string = f"Cancel action {action_id}"
     logger.info(log_string)
     await ctx.info(log_string)
 
+    token = await extract_token(ctx)
+
+    return await _cancel_action(action_id, token, confirm)
+
+async def _cancel_action(action_id: int, token: str, confirm: Union[bool, str] = False) -> str:
     is_confirmed = _to_bool(confirm)
 
     cancel_actions_path = '/rhn/manager/api/schedule/cancelActions'
@@ -1519,7 +1570,7 @@ async def _cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str]
             api_path=cancel_actions_path,
             json_body=payload,
             error_context=f"canceling action {action_id}",
-            token=ctx.get_state('token')
+            token=token
         )
         if api_result == 1:
             return f"Successfully canceled action: {action_id}"
@@ -1541,9 +1592,11 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
-    return await _list_activation_keys(ctx)
+    token = await extract_token(ctx)
 
-async def _list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
+    return await _list_activation_keys(token, ctx)
+
+async def _list_activation_keys(token: str, ctx: Context) -> List[Dict[str, str]]:
     list_keys_path = '/rhn/manager/api/activationkey/listActivationKeys'
 
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
@@ -1552,7 +1605,7 @@ async def _list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
             method="GET",
             api_path=list_keys_path,
             error_context="listing activation keys",
-            token=ctx.get_state('token')
+            token=token
         )
 
     filtered_keys = []
@@ -1581,13 +1634,15 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str, Any]]:
-    return await _get_unscheduled_errata(system_id, ctx)
-
-async def _get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str, Any]]:
     log_string = f"Getting list of unscheduled errata for system {system_id}"
     logger.info(log_string)
     await ctx.info(log_string)
 
+    token = await extract_token(ctx)
+
+    return await _get_unscheduled_errata(system_id, token)
+
+async def _get_unscheduled_errata(system_id: int, token: str) -> List[Dict[str, Any]]:
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
         get_unscheduled_errata = "/rhn/manager/api/system/getUnscheduledErrata"
         payload = {'sid': str(system_id)}
@@ -1597,7 +1652,7 @@ async def _get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str
             api_path=get_unscheduled_errata,
             params=payload,
             error_context=f"fetching unscheduled errata for system ID {system_id}",
-            token=ctx.get_state('token')
+            token=token
         )
 
         if isinstance(unscheduled_errata_result, list):
@@ -1642,9 +1697,11 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @mcp.tool(description = DYNAMIC_DESCRIPTION)
 async def list_system_groups(ctx: Context) -> List[Dict[str, str]]:
-    return await _list_system_groups(ctx)
+    token = await extract_token(ctx)
 
-async def _list_system_groups(ctx: Context) -> List[Dict[str, str]]:
+    return await _list_system_groups(token, ctx)
+
+async def _list_system_groups(token: str, ctx: Context) -> List[Dict[str, str]]:
     list_groups_path = '/rhn/manager/api/systemgroup/listAllGroups'
 
     async with httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"]) as client:
@@ -1653,7 +1710,7 @@ async def _list_system_groups(ctx: Context) -> List[Dict[str, str]]:
             method="GET",
             api_path=list_groups_path,
             error_context="listing system groups",
-            token=ctx.get_state('token')
+            token=token
         )
 
     filtered_groups = []
@@ -1689,13 +1746,15 @@ DYNAMIC_DESCRIPTION = f"""
     """
 @write_tool(description = DYNAMIC_DESCRIPTION)
 async def create_system_group(name: str, ctx: Context, description: str = "", confirm: Union[bool, str] = False) -> str:
-    return await _create_system_group(name, ctx, description, confirm)
-
-async def _create_system_group(name: str, ctx: Context, description: str = "", confirm: Union[bool, str] = False) -> str:
     log_string = f"Creating system group '{name}'"
     logger.info(log_string)
     await ctx.info(log_string)
 
+    token = await extract_token(ctx)
+
+    return await _create_system_group(name, token, description, confirm)
+
+async def _create_system_group(name: str, token: str, description: str = "", confirm: Union[bool, str] = False) -> str:
     is_confirmed = _to_bool(confirm)
 
     if not is_confirmed:
@@ -1710,7 +1769,7 @@ async def _create_system_group(name: str, ctx: Context, description: str = "", c
             api_path=create_group_path,
             json_body={"name": name, "description": description},
             error_context=f"creating system group '{name}'",
-            token=ctx.get_state('token')
+            token=token
         )
 
         if isinstance(api_result, dict) and 'id' in api_result:
@@ -1755,7 +1814,10 @@ async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, An
     log_string = f"Listing systems in group '{group_name}'"
     logger.info(log_string)
     await ctx.info(log_string)
-    return await _list_group_systems(group_name, ctx.get_state('token'))
+
+    token = await extract_token(ctx)
+
+    return await _list_group_systems(group_name, token)
 
 async def _list_group_systems(group_name: str, token: str) -> List[Dict[str, Any]]:
     list_systems_path = '/rhn/manager/api/systemgroup/listSystemsMinimal'
@@ -1838,10 +1900,11 @@ async def _manage_group_systems(group_name: str, system_identifiers: List[Union[
 
     is_confirmed = _to_bool(confirm)
 
+    token = await extract_token(ctx)
+
     if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will {action_str[0]} {len(system_identifiers)} systems {action_str[1]} group '{group_name}'. Do you confirm?"
 
-    token = ctx.get_state('token')
 
     # Resolve all system IDs
     resolved_ids = []

@@ -114,6 +114,7 @@ async def test_add_system(mock_uyuni, mock_ctx, monkeypatch):
 
     result = await server._add_system(
         host="new-system",
+        token="mock_token",
         activation_key="1-KEY",
         ctx=mock_ctx,
         confirm=False
@@ -126,6 +127,7 @@ async def test_add_system(mock_uyuni, mock_ctx, monkeypatch):
 
     result = await server._add_system(
         host="new-system",
+        token="mock_token",
         activation_key="1-KEY",
         ctx=mock_ctx,
         confirm=True
@@ -154,7 +156,7 @@ async def test_get_system_updates(mock_uyuni, mock_ctx):
     mock_uyuni.get(f"{base_url}/rhn/manager/api/system/getUnscheduledErrata").mock(return_value=Response(200, json={"success": True, "result": mock_unscheduled}))
     mock_uyuni.get(f"{base_url}/rhn/manager/api/errata/listCves").mock(return_value=Response(200, json={"success": True, "result": mock_cves}))
 
-    result = await server._get_system_updates(system_id, mock_ctx)
+    result = await server._get_system_updates(system_id, "mock_token", mock_ctx)
 
     assert result['has_pending_updates'] is True
     assert result['update_count'] == 1
@@ -195,10 +197,10 @@ async def test_schedule_specific_update(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": [12345]})
     )
 
-    result = await server._schedule_specific_update(system_id, errata_id, mock_ctx, confirm=False)
+    result = await server._schedule_specific_update(system_id, errata_id, "mock_token", confirm=False)
     assert "CONFIRMATION REQUIRED" in result
 
-    result = await server._schedule_specific_update(system_id, errata_id, mock_ctx, confirm=True)
+    result = await server._schedule_specific_update(system_id, errata_id, "mock_token", confirm=True)
     assert "successfully scheduled" in result
     assert route.called
 
@@ -221,10 +223,10 @@ async def test_schedule_pending_updates_to_system(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": [12345]})
     )
 
-    result = await server._schedule_pending_updates_to_system(system_id, mock_ctx, confirm=False)
+    result = await server._schedule_pending_updates_to_system(system_id, "mock_token", mock_ctx, confirm=False)
     assert "CONFIRMATION REQUIRED" in result
 
-    result = await server._schedule_pending_updates_to_system(system_id, mock_ctx, confirm=True)
+    result = await server._schedule_pending_updates_to_system(system_id, "mock_token", mock_ctx, confirm=True)
     assert "successfully scheduled" in result
     assert route_schedule.called
 
@@ -245,10 +247,10 @@ async def test_remove_system(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": 1})
     )
 
-    result = await server._remove_system(system_id, mock_ctx, confirm=False)
+    result = await server._remove_system(system_id, "mock_token", confirm=False)
     assert "CONFIRMATION REQUIRED" in result
 
-    result = await server._remove_system(system_id, mock_ctx, confirm=True)
+    result = await server._remove_system(system_id, "mock_token", confirm=True)
     assert "successfully removed" in result
     assert route_delete.called
 
@@ -261,10 +263,10 @@ async def test_schedule_system_reboot(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": 12346})
     )
 
-    result = await server._schedule_system_reboot(system_id, mock_ctx, confirm=False)
+    result = await server._schedule_system_reboot(system_id, "mock_token", confirm=False)
     assert "CONFIRMATION REQUIRED" in result
 
-    result = await server._schedule_system_reboot(system_id, mock_ctx, confirm=True)
+    result = await server._schedule_system_reboot(system_id, "mock_token", confirm=True)
     assert "successfully scheduled" in result
     assert route_reboot.called
 
@@ -277,10 +279,10 @@ async def test_cancel_action(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": 1})
     )
 
-    result = await server._cancel_action(action_id, mock_ctx, confirm=False)
+    result = await server._cancel_action(action_id, "mock_token", confirm=False)
     assert "CONFIRMATION REQUIRED" in result
 
-    result = await server._cancel_action(action_id, mock_ctx, confirm=True)
+    result = await server._cancel_action(action_id, "mock_token", confirm=True)
     assert "Successfully canceled action" in result
     assert route.called
 
@@ -294,10 +296,10 @@ async def test_create_system_group(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": {"id": 101, "name": group_name}})
     )
 
-    result = await server._create_system_group(group_name, mock_ctx, description=description, confirm=False)
+    result = await server._create_system_group(group_name, "mock_token", description=description, confirm=False)
     assert "CONFIRMATION REQUIRED" in result
 
-    result = await server._create_system_group(group_name, mock_ctx, description=description, confirm=True)
+    result = await server._create_system_group(group_name, "mock_token", description=description, confirm=True)
     assert "Successfully created system group" in result
     assert route_create.called
 
@@ -403,7 +405,7 @@ async def test_find_systems_by_name(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": mock_data})
     )
 
-    result = await server._find_systems_by_name(name, mock_ctx)
+    result = await server._find_systems_by_name(name, "mock_token")
 
     assert len(result) == 1
     assert result[0]['system_name'] == "system1.example.com"
@@ -423,7 +425,7 @@ async def test_find_systems_by_ip(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": mock_data})
     )
 
-    result = await server._find_systems_by_ip(ip, mock_ctx)
+    result = await server._find_systems_by_ip(ip, "mock_token")
 
     assert len(result) == 1
     assert result[0]['system_name'] == "system1.example.com"
@@ -456,7 +458,7 @@ async def test_check_all_systems_for_updates(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": mock_cves})
     )
 
-    result = await server._check_all_systems_for_updates(mock_ctx)
+    result = await server._check_all_systems_for_updates("mock_token", mock_ctx)
 
     assert len(result) == 1
     assert result[0]['system_id'] == 1001
@@ -478,7 +480,7 @@ async def test_list_systems_needing_update_for_cve(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": mock_affected})
     )
 
-    result = await server._list_systems_needing_update_for_cve(cve, mock_ctx)
+    result = await server._list_systems_needing_update_for_cve(cve, "mock_token", mock_ctx)
 
     assert len(result) == 1
     assert result[0]['system_id'] == 1001
@@ -494,7 +496,7 @@ async def test_list_systems_needing_reboot(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": mock_data})
     )
 
-    result = await server._list_systems_needing_reboot(mock_ctx)
+    result = await server._list_systems_needing_reboot("mock_token")
 
     assert len(result) == 1
     assert result[0]['system_id'] == 1001
@@ -511,7 +513,7 @@ async def test_list_all_scheduled_actions(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": mock_data})
     )
 
-    result = await server._list_all_scheduled_actions(mock_ctx)
+    result = await server._list_all_scheduled_actions("mock_token")
 
     assert len(result) == 1
     assert result[0]['action_id'] == 123
@@ -527,7 +529,7 @@ async def test_list_activation_keys(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": mock_data})
     )
 
-    result = await server._list_activation_keys(mock_ctx)
+    result = await server._list_activation_keys("mock_token", mock_ctx)
 
     assert len(result) == 1
     assert result[0]['key'] == "1-KEY"
@@ -544,7 +546,7 @@ async def test_get_unscheduled_errata(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": mock_data})
     )
 
-    result = await server._get_unscheduled_errata(system_id, mock_ctx)
+    result = await server._get_unscheduled_errata(system_id, "mock_token")
 
     assert len(result) == 1
     assert result[0]['advisory_name'] == "ADV-1"
@@ -562,7 +564,7 @@ async def test_list_system_groups(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": mock_data})
     )
 
-    result = await server._list_system_groups(mock_ctx)
+    result = await server._list_system_groups("mock_token", mock_ctx)
 
     assert len(result) == 1
     assert result[0]['id'] == "10"
@@ -600,7 +602,7 @@ async def test_add_system_already_exists(mock_uyuni, mock_ctx, monkeypatch):
         return_value=Response(200, json={"success": True, "result": [{"id": 1001, "name": "existing-system"}]})
     )
 
-    result = await server._add_system("existing-system", mock_ctx, activation_key="key")
+    result = await server._add_system("existing-system", "mock_token", mock_ctx, activation_key="key")
     assert "already exists" in result
 
 @pytest.mark.asyncio
@@ -613,7 +615,7 @@ async def test_add_system_missing_ssh_key(mock_uyuni, mock_ctx, monkeypatch):
         return_value=Response(200, json={"success": True, "result": []})
     )
 
-    result = await server._add_system("new-system", mock_ctx, activation_key="key", confirm=True)
+    result = await server._add_system("new-system", "mock_token", mock_ctx, activation_key="key", confirm=True)
     assert "UYUNI_SSH_PRIV_KEY environment variable is not set" in result
 
 @pytest.mark.asyncio
@@ -630,7 +632,7 @@ async def test_add_system_timeout(mock_uyuni, mock_ctx, monkeypatch):
         side_effect=httpx.TimeoutException("Timeout")
     )
 
-    result = await server._add_system("new-system", mock_ctx, activation_key="key", confirm=True)
+    result = await server._add_system("new-system", "mock_token", mock_ctx, activation_key="key", confirm=True)
     assert "process started" in result
     assert "may take some time" in result
 
@@ -644,7 +646,7 @@ async def test_remove_system_not_found(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": [{"id": 1001, "name": "sys1"}]})
     )
 
-    result = await server._remove_system(system_id, mock_ctx)
+    result = await server._remove_system(system_id, "mock_token", confirm=True)
     assert f"System with ID {system_id} not found" in result
 
 @pytest.mark.asyncio
