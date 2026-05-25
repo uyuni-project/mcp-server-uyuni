@@ -115,18 +115,19 @@ def _to_bool(value) -> bool:
     return str(value).lower() in ("true", "yes", "1")
 
 
-async def extract_token(ctx: Optional[Context] = None, token: Any = None):
+async def extract_token(ctx: Context, token: Any = None):
     """
-    Extracts and resolves a token. 
-    Can be called with context, a raw token, or both.
+    Safely extracts and resolves the authentication token.
+    
+    If 'token' is already provided (e.g., passed down from a parent function),
+    it ensures any coroutines are unwrapped and returns it. Otherwise, it 
+    extracts the token from the mandatory context state.
     """
-    # 1. If no token was provided, try to fetch it from context
+    # 1. If no token was passed down, extract it from the mandatory context
     if token is None:
-        if ctx is None:
-            raise ValueError("You must provide either 'ctx' or 'token' to extract_token.")
         token = ctx.get_state('token')
 
-    # 2. Handle FastMCP v3 coroutines (unwrap if necessary)
+    # 2. Handle FastMCP v3 coroutines (unwrap if it's an un-awaited coroutine)
     if inspect.iscoroutine(token):
         token = await token
 
@@ -255,10 +256,10 @@ async def get_system_details(system_identifier: Union[str, int], ctx: Context):
 
     token = await extract_token(ctx)
 
-    return await _get_system_details(system_identifier, token)
+    return await _get_system_details(system_identifier, ctx, token)
 
-async def _get_system_details(system_identifier: Union[str, int], token: str) -> Dict[str, Any]:
-    system_id = await _resolve_system_id(system_identifier, token)
+async def _get_system_details(system_identifier: Union[str, int],ctx: Context, token: str) -> Dict[str, Any]:
+    system_id = await _resolve_system_id(system_identifier, ctx, token)
 
     async with _make_client() as client:
         # Login once so all concurrent calls below can share the same session
@@ -422,10 +423,10 @@ async def get_system_event_history(system_identifier: Union[str, int], ctx: Cont
 
     token = await extract_token(ctx)
 
-    return await _get_system_event_history(system_identifier, limit, offset, earliest_date, token)
+    return await _get_system_event_history(system_identifier, limit, offset, earliest_date, ctx, token)
 
-async def _get_system_event_history(system_identifier: Union[str, int], limit: int, offset: int, earliest_date: str, token: str) -> list[Any]:
-    system_id = await _resolve_system_id(system_identifier, token)
+async def _get_system_event_history(system_identifier: Union[str, int], limit: int, offset: int, earliest_date: str, ctx: Context, token: str) -> list[Any]:
+    system_id = await _resolve_system_id(system_identifier, ctx, token)
 
     async with _make_client() as client:
         params = {'sid': system_id, 'limit': limit, 'offset': offset}
@@ -501,10 +502,10 @@ async def get_system_event_details(system_identifier: Union[str, int], event_id:
 
     token = await extract_token(ctx)
 
-    return await _get_system_event_details(system_identifier, event_id, token)
+    return await _get_system_event_details(system_identifier, event_id, ctx, token)
 
-async def _get_system_event_details(system_identifier: Union[str, int], event_id: int, token: str) -> Dict[str, Any]:
-    system_id = await _resolve_system_id(system_identifier, token)
+async def _get_system_event_details(system_identifier: Union[str, int], event_id: int, ctx: Context, token: str) -> Dict[str, Any]:
+    system_id = await _resolve_system_id(system_identifier, ctx, token)
 
     async with _make_client() as client:
         result = await call_uyuni_api(
@@ -624,7 +625,7 @@ async def _find_systems_by_ip(ip_address: str, token: str) -> List[Dict[str, Uni
 
     return filtered_systems
 
-async def _resolve_system_id(system_identifier: Union[str, int], token: str) -> str:
+async def _resolve_system_id(system_identifier: Union[str, int], ctx: Context, token: str) -> str:
     """
     Resolves a system identifier, which can be a name or an ID, to a numeric system ID string.
 
@@ -642,7 +643,7 @@ async def _resolve_system_id(system_identifier: Union[str, int], token: str) -> 
         UnexpectedResponse: If the {product} API returns an unexpected payload (non-list, malformed items,
                             or multiple matches for a single name).
     """
-    token = await extract_token(token=token)
+    token = await extract_token(ctx, token)
 
     id_str = str(system_identifier)
     if id_str.isdigit():
@@ -758,9 +759,9 @@ async def get_system_updates(system_identifier: Union[str, int], ctx: Context) -
     return await _get_system_updates(system_identifier, token, ctx)
 
 async def _get_system_updates(system_identifier: Union[str, int], token: str, ctx: Context) -> Dict[str, Any]:
-    token = await extract_token(token=token)
+    token = await extract_token(ctx, token=token)
 
-    system_id = await _resolve_system_id(system_identifier, token)
+    system_id = await _resolve_system_id(system_identifier, ctx, token)
 
     list_cves_api_path = '/rhn/manager/api/errata/listCves'
 
@@ -967,7 +968,7 @@ async def _schedule_pending_updates_to_system(system_identifier: Union[str, int]
         logger.error(msg)
         return msg
 
-    system_id = await _resolve_system_id(system_identifier, token)
+    system_id = await _resolve_system_id(system_identifier, ctx, token)
     msg = f"Found {len(errata_ids)} errata to apply for system {system_identifier} (ID: {system_id}). IDs: {errata_ids}"
     logger.info(msg)
     await ctx.info(msg)
@@ -1017,9 +1018,9 @@ async def schedule_specific_update(system_identifier: Union[str, int], errata_id
 
     token = await extract_token(ctx)
 
-    return await _schedule_specific_update(system_identifier, errata_id, token, confirm)
+    return await _schedule_specific_update(system_identifier, errata_id, ctx, token, confirm)
 
-async def _schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], token: str, confirm: Union[bool, str] = False) -> str:
+async def _schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, token: str, confirm: Union[bool, str] = False) -> str:
     is_confirmed = _to_bool(confirm)
 
     try:
@@ -1027,7 +1028,7 @@ async def _schedule_specific_update(system_identifier: Union[str, int], errata_i
     except (ValueError, TypeError):
         return f"Invalid errata ID '{errata_id}'. The ID must be an integer."
 
-    system_id = await _resolve_system_id(system_identifier, token)
+    system_id = await _resolve_system_id(system_identifier, ctx, token)
 
     logger.info(f"Attempting to apply specific update (errata ID: {errata_id}) to system: {system_identifier}")
 
@@ -1227,12 +1228,12 @@ async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanu
 
     token = await extract_token(ctx)
 
-    return await _remove_system(system_identifier, token, cleanup, confirm)
+    return await _remove_system(system_identifier, ctx, token, cleanup, confirm)
 
-async def _remove_system(system_identifier: Union[str, int], token: str, cleanup: bool = True, confirm: Union[bool, str] = False) -> str:
+async def _remove_system(system_identifier: Union[str, int], ctx: Context, token: str, cleanup: bool = True, confirm: Union[bool, str] = False) -> str:
     is_confirmed = _to_bool(confirm)
 
-    system_id = await _resolve_system_id(system_identifier, token)
+    system_id = await _resolve_system_id(system_identifier, ctx, token)
 
     # Check if the system exists before proceeding
     active_systems = await _list_systems(token)
@@ -1453,12 +1454,12 @@ async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context
 
     token = await extract_token(ctx)
 
-    return await _schedule_system_reboot(system_identifier, token, confirm)
+    return await _schedule_system_reboot(system_identifier, ctx, token, confirm)
 
-async def _schedule_system_reboot(system_identifier: Union[str, int], token: str, confirm: Union[bool, str] = False) -> str:
+async def _schedule_system_reboot(system_identifier: Union[str, int], ctx: Context, token: str, confirm: Union[bool, str] = False) -> str:
     is_confirmed = _to_bool(confirm)
 
-    system_id = await _resolve_system_id(system_identifier, token)
+    system_id = await _resolve_system_id(system_identifier, ctx, token)
 
     if not is_confirmed:
         return f"CONFIRMATION REQUIRED: This will reboot system {system_identifier}. Do you confirm?"
@@ -1927,7 +1928,7 @@ async def _manage_group_systems(group_name: str, system_identifiers: List[Union[
     # Resolve all system IDs
     resolved_ids = []
     for identifier in system_identifiers:
-        sid = await _resolve_system_id(identifier, token)
+        sid = await _resolve_system_id(identifier, ctx, token)
         if sid:
             resolved_ids.append(int(sid))
         else:
