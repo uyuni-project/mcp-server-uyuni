@@ -95,7 +95,7 @@ async def test_get_system_details(mock_uyuni):
     mock_uyuni.get(f"{base_url}/rhn/manager/api/system/getNetwork").mock(return_value=Response(200, json={"success": True, "result": mock_network}))
     mock_uyuni.get(f"{base_url}/rhn/manager/api/system/getInstalledProducts").mock(return_value=Response(200, json={"success": True, "result": mock_products}))
 
-    result = await server._get_system_details(system_id, "mock_token")
+    result = await server._get_system_details(system_id, mock_ctx, "mock_token")
 
     assert result['system_name'] == "system1.example.com"
     assert result['cpu']['model'] == "Intel Xeon"
@@ -178,7 +178,7 @@ async def test_get_system_event_history(mock_uyuni):
         return_value=Response(200, json={"success": True, "result": mock_data})
     )
 
-    result = await server._get_system_event_history(system_id, limit, offset, None, "mock_token")
+    result = await server._get_system_event_history(system_id, limit, offset, None, mock_ctx, "mock_token")
 
     assert isinstance(result, list)
     assert len(result) == 1
@@ -197,10 +197,10 @@ async def test_schedule_specific_update(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": [12345]})
     )
 
-    result = await server._schedule_specific_update(system_id, errata_id, "mock_token", confirm=False)
+    result = await server._schedule_specific_update(system_id, errata_id, mock_ctx, "mock_token", confirm=False)
     assert "CONFIRMATION REQUIRED" in result
 
-    result = await server._schedule_specific_update(system_id, errata_id, "mock_token", confirm=True)
+    result = await server._schedule_specific_update(system_id, errata_id, mock_ctx, "mock_token", confirm=True)
     assert "successfully scheduled" in result
     assert route.called
 
@@ -247,10 +247,10 @@ async def test_remove_system(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": 1})
     )
 
-    result = await server._remove_system(system_id, "mock_token", confirm=False)
+    result = await server._remove_system(system_id, mock_ctx, "mock_token", confirm=False)
     assert "CONFIRMATION REQUIRED" in result
 
-    result = await server._remove_system(system_id, "mock_token", confirm=True)
+    result = await server._remove_system(system_id, mock_ctx, "mock_token", confirm=True)
     assert "successfully removed" in result
     assert route_delete.called
 
@@ -263,10 +263,10 @@ async def test_schedule_system_reboot(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": 12346})
     )
 
-    result = await server._schedule_system_reboot(system_id, "mock_token", confirm=False)
+    result = await server._schedule_system_reboot(system_id, mock_ctx, "mock_token", confirm=False)
     assert "CONFIRMATION REQUIRED" in result
 
-    result = await server._schedule_system_reboot(system_id, "mock_token", confirm=True)
+    result = await server._schedule_system_reboot(system_id, mock_ctx, "mock_token", confirm=True)
     assert "successfully scheduled" in result
     assert route_reboot.called
 
@@ -384,7 +384,7 @@ async def test_get_system_event_details(mock_uyuni):
         return_value=Response(200, json={"success": True, "result": mock_details})
     )
 
-    result = await server._get_system_event_details(system_id, event_id, "mock_token")
+    result = await server._get_system_event_details(system_id, event_id, mock_ctx, "mock_token")
 
     assert result['id'] == 123
     assert result['history_type'] == "System reboot"
@@ -646,7 +646,7 @@ async def test_remove_system_not_found(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": [{"id": 1001, "name": "sys1"}]})
     )
 
-    result = await server._remove_system(system_id, "mock_token", confirm=True)
+    result = await server._remove_system(system_id, mock_ctx, "mock_token", confirm=True)
     assert f"System with ID {system_id} not found" in result
 
 @pytest.mark.asyncio
@@ -660,7 +660,7 @@ async def test_resolve_system_id_by_name_not_found(mock_uyuni, mock_ctx):
     )
 
     with pytest.raises(NotFoundError):
-        await server._get_system_details(name, "mock_token")
+        await server._get_system_details(name, mock_ctx, "mock_token")
 
 @pytest.mark.asyncio
 async def test_resolve_system_id_by_name_multiple_found(mock_uyuni, mock_ctx):
@@ -673,7 +673,7 @@ async def test_resolve_system_id_by_name_multiple_found(mock_uyuni, mock_ctx):
     )
 
     with pytest.raises(UnexpectedResponse) as excinfo:
-        await server._get_system_details(name, "mock_token")
+        await server._get_system_details(name, mock_ctx, "mock_token")
     assert "Multiple systems found" in str(excinfo.value)
 
 @pytest.mark.asyncio
