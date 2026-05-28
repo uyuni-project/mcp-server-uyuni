@@ -112,15 +112,6 @@ async def test_add_system(mock_uyuni, mock_ctx, monkeypatch):
         return_value=Response(200, json={"success": True, "result": []})
     )
 
-    result = await server._add_system(
-        host="new-system",
-        token="mock_token",
-        activation_key="1-KEY",
-        ctx=mock_ctx,
-        confirm=False
-    )
-    assert "CONFIRMATION REQUIRED" in result
-
     route_bootstrap = mock_uyuni.post(f"{base_url}/rhn/manager/api/system/bootstrapWithPrivateSshKey").mock(
         return_value=Response(200, json={"success": True, "result": 1})
     )
@@ -130,7 +121,6 @@ async def test_add_system(mock_uyuni, mock_ctx, monkeypatch):
         token="mock_token",
         activation_key="1-KEY",
         ctx=mock_ctx,
-        confirm=True
     )
     assert "successfully scheduled" in result
     assert route_bootstrap.called
@@ -240,6 +230,45 @@ def test_normalize_pagination_edge_cases(limit, offset, expected_limit, expected
     assert normalized_offset == expected_offset
 
 
+def test_client_supports_elicitation(mock_ctx):
+    mock_ctx.session.check_client_capability.return_value = True
+    assert server.client_supports_elicitation(mock_ctx) is True
+
+
+@pytest.mark.asyncio
+async def test_elicit_approval_skips_when_capability_missing(mock_ctx):
+    mock_ctx.session.check_client_capability.return_value = False
+    mock_ctx.elicit = AsyncMock()
+
+    result = await server.elicit_approval(mock_ctx, "prompt")
+
+    assert result is True
+    mock_ctx.elicit.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("approve_value,expected", [(True, True), (False, False)])
+async def test_elicit_approval_accept_result(mock_ctx, approve_value, expected):
+    mock_ctx.session.check_client_capability.return_value = True
+    mock_ctx.elicit = AsyncMock(
+        return_value=MagicMock(action="accept", data={"approve": approve_value})
+    )
+
+    result = await server.elicit_approval(mock_ctx, "prompt")
+
+    assert result is expected
+
+
+@pytest.mark.asyncio
+async def test_elicit_approval_decline_result(mock_ctx):
+    mock_ctx.session.check_client_capability.return_value = True
+    mock_ctx.elicit = AsyncMock(return_value=MagicMock(action="decline", data={"approve": True}))
+
+    result = await server.elicit_approval(mock_ctx, "prompt")
+
+    assert result is False
+
+
 @pytest.mark.asyncio
 async def test_get_system_updates_type_filter_and_counts(mock_uyuni, mock_ctx):
     base_url = server.CONFIG["UYUNI_SERVER"]
@@ -318,10 +347,7 @@ async def test_schedule_specific_update(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": [12345]})
     )
 
-    result = await server._schedule_specific_update(system_id, errata_id, mock_ctx, "mock_token", confirm=False)
-    assert "CONFIRMATION REQUIRED" in result
-
-    result = await server._schedule_specific_update(system_id, errata_id, mock_ctx, "mock_token", confirm=True)
+    result = await server._schedule_specific_update(system_id, errata_id, mock_ctx, "mock_token")
     assert "successfully scheduled" in result
     assert route.called
 
@@ -344,10 +370,7 @@ async def test_schedule_pending_updates_to_system(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": [12345]})
     )
 
-    result = await server._schedule_pending_updates_to_system(system_id, "mock_token", mock_ctx, confirm=False)
-    assert "CONFIRMATION REQUIRED" in result
-
-    result = await server._schedule_pending_updates_to_system(system_id, "mock_token", mock_ctx, confirm=True)
+    result = await server._schedule_pending_updates_to_system(system_id, "mock_token", mock_ctx)
     assert "successfully scheduled" in result
     assert route_schedule.called
 
@@ -368,10 +391,7 @@ async def test_remove_system(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": 1})
     )
 
-    result = await server._remove_system(system_id, mock_ctx, "mock_token", confirm=False)
-    assert "CONFIRMATION REQUIRED" in result
-
-    result = await server._remove_system(system_id, mock_ctx, "mock_token", confirm=True)
+    result = await server._remove_system(system_id, mock_ctx, "mock_token")
     assert "successfully removed" in result
     assert route_delete.called
 
@@ -384,10 +404,7 @@ async def test_schedule_system_reboot(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": 12346})
     )
 
-    result = await server._schedule_system_reboot(system_id, mock_ctx, "mock_token", confirm=False)
-    assert "CONFIRMATION REQUIRED" in result
-
-    result = await server._schedule_system_reboot(system_id, mock_ctx, "mock_token", confirm=True)
+    result = await server._schedule_system_reboot(system_id, "mock_token", mock_ctx)
     assert "successfully scheduled" in result
     assert route_reboot.called
 
@@ -400,10 +417,7 @@ async def test_cancel_action(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": 1})
     )
 
-    result = await server._cancel_action(action_id, "mock_token", confirm=False)
-    assert "CONFIRMATION REQUIRED" in result
-
-    result = await server._cancel_action(action_id, "mock_token", confirm=True)
+    result = await server._cancel_action(action_id, "mock_token", mock_ctx)
     assert "Successfully canceled action" in result
     assert route.called
 
@@ -417,10 +431,7 @@ async def test_create_system_group(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": {"id": 101, "name": group_name}})
     )
 
-    result = await server._create_system_group(group_name, "mock_token", description=description, confirm=False)
-    assert "CONFIRMATION REQUIRED" in result
-
-    result = await server._create_system_group(group_name, "mock_token", description=description, confirm=True)
+    result = await server._create_system_group(group_name, "mock_token", mock_ctx, description=description)
     assert "Successfully created system group" in result
     assert route_create.called
 
@@ -455,10 +466,7 @@ async def test_add_systems_to_group(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": 1})
     )
 
-    result = await server._manage_group_systems(group_name, system_ids, True, mock_ctx, confirm=False)
-    assert "CONFIRMATION REQUIRED" in result
-
-    result = await server._manage_group_systems(group_name, system_ids, True, mock_ctx, confirm=True)
+    result = await server._manage_group_systems(group_name, system_ids, True, mock_ctx)
     assert "Successfully added" in result
     assert route_add.called
 
@@ -476,10 +484,7 @@ async def test_remove_systems_from_group(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": 1})
     )
 
-    result = await server._manage_group_systems(group_name, system_ids, False, mock_ctx, confirm=False)
-    assert "CONFIRMATION REQUIRED" in result
-
-    result = await server._manage_group_systems(group_name, system_ids, False, mock_ctx, confirm=True)
+    result = await server._manage_group_systems(group_name, system_ids, False, mock_ctx)
     assert "Successfully removed" in result
     assert route_remove.called
 
@@ -625,7 +630,7 @@ async def test_check_all_systems_for_updates_expanded(mock_uyuni, mock_ctx):
 
 
 @pytest.mark.asyncio
-async def test_check_all_systems_for_updates_pages_active_systems_before_scan(mock_uyuni, mock_ctx):
+async def test_check_all_systems_for_updates_pagination(mock_uyuni, mock_ctx):
     base_url = server.CONFIG["UYUNI_SERVER"]
 
     mock_systems = [
@@ -878,7 +883,7 @@ async def test_add_system_missing_ssh_key(mock_uyuni, mock_ctx, monkeypatch):
         return_value=Response(200, json={"success": True, "result": []})
     )
 
-    result = await server._add_system("new-system", "mock_token", mock_ctx, activation_key="key", confirm=True)
+    result = await server._add_system("new-system", "mock_token", mock_ctx, activation_key="key")
     assert "UYUNI_SSH_PRIV_KEY environment variable is not set" in result
 
 @pytest.mark.asyncio
@@ -895,7 +900,7 @@ async def test_add_system_timeout(mock_uyuni, mock_ctx, monkeypatch):
         side_effect=httpx.TimeoutException("Timeout")
     )
 
-    result = await server._add_system("new-system", "mock_token", mock_ctx, activation_key="key", confirm=True)
+    result = await server._add_system("new-system", "mock_token", mock_ctx, activation_key="key")
     assert "process started" in result
     assert "may take some time" in result
 
@@ -909,7 +914,7 @@ async def test_remove_system_not_found(mock_uyuni, mock_ctx):
         return_value=Response(200, json={"success": True, "result": [{"id": 1001, "name": "sys1"}]})
     )
 
-    result = await server._remove_system(system_id, mock_ctx, "mock_token", confirm=True)
+    result = await server._remove_system(system_id, mock_ctx, "mock_token")
     assert f"System with ID {system_id} not found" in result
 
 @pytest.mark.asyncio
