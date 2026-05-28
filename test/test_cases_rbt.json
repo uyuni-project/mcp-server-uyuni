@@ -12,7 +12,7 @@
   },
   {
     "id": "TC-RBT-002",
-    "prompt": "Can you schedule a reboot for system {rhlike_minion_name}?",
+    "prompt": "Schedule a reboot for system {rhlike_minion_name}.",
     "expected_output": "Return a message that system reboot has been successfully scheduled and give the URL of the action details.",
     "geval_config": {
       "evaluation_steps": [

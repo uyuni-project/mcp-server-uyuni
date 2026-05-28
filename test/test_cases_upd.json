@@ -1,7 +1,7 @@
 [
   {
     "id": "TC-UPD-001",
-    "prompt": "Are there any updates for system ID {rhlike_minion_id}? List them.",
+    "prompt": "List any updates for system ID {rhlike_minion_id}.",
     "expected_output": "The response must contain a list of pending updates for system {rhlike_minion_id} OR state that there are no pending updates.",
     "geval_config": {
       "evaluation_steps": [
@@ -12,7 +12,7 @@
   },
   {
     "id": "TC-UPD-002",
-    "prompt": "Are there any updates for '{rhlike_minion_name}'? List them.",
+    "prompt": "List any updates for '{rhlike_minion_name}'.",
     "expected_output": "The response must contain a list of pending updates for system '{rhlike_minion_name}' OR state that there are no pending updates.",
     "geval_config": {
       "evaluation_steps": [
@@ -23,7 +23,7 @@
   },
   {
     "id": "TC-UPD-003",
-    "prompt": "Can you schedule applying the update with highest errata id (eid) (Update ID) from that list for system id {rhlike_minion_id}?",
+    "prompt": "Schedule applying the update with highest errata id (eid) (Update ID) from that list for system id {rhlike_minion_id}.",
     "expected_output": "The response should schedule applying the selected update for system {rhlike_minion_id}.",
     "geval_config": {
       "evaluation_steps": [
@@ -36,7 +36,7 @@
   },
   {
     "id": "TC-UPD-004",
-    "prompt": "Can you update {rhlike_minion_name}?",
+    "prompt": "Update {rhlike_minion_name}.",
     "expected_output": "The response must clearly state that an update action has been scheduled for system {rhlike_minion_name}, OR state that there are no pending updates.",
     "geval_config": {
       "evaluation_steps": [
