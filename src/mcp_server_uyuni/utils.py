@@ -1,13 +1,34 @@
 from typing import Any, Dict, List, Optional
 
+from fastmcp import Context
+from mcp import types
+from pydantic import BaseModel
 
-def to_bool(value) -> bool:
-    """
-    Convert truthy string/boolean/integer values to a boolean.
-    Accepts: True, 'true', 'yes', '1', 1, etc.
-    """
-    return str(value).lower() in ("true", "yes", "1")
 
+class ActionApprovalSchema(BaseModel):
+    approve: bool
+
+
+def client_supports_elicitation(ctx: Context) -> bool:
+    return ctx.session.check_client_capability(
+        types.ClientCapabilities(elicitation=types.ElicitationCapability())
+    )
+
+
+async def elicit_approval(ctx: Context, prompt: str) -> bool:
+    if not client_supports_elicitation(ctx):
+        return True
+
+    result = await ctx.elicit(prompt, ActionApprovalSchema)
+    if result.action != "accept":
+        return False
+
+    data = result.data
+    if hasattr(data, "approve"):
+        return bool(data.approve)
+    if isinstance(data, dict):
+        return bool(data.get("approve"))
+    return False
 
 def normalize_pagination(limit: Optional[int], offset: int, default_limit: int = 25, max_limit: int = 200) -> tuple[Optional[int], int]:
     """Return a safe `(limit, offset)` tuple for pagination.
