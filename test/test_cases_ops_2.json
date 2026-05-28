@@ -1,6 +1,6 @@
 [
   { "id": "TC-OPS-2-Pre",
-    "prompt": "The system with name {new_system_host} should not be in the list of systems in {product_name}. Can you verify it is not?",
+    "prompt": "The system with name {new_system_host} should not be in the list of systems in {product_name}. Verify that it is not.",
     "expected_output": "A message that the system is not in {product_name}",
     "geval_config": {
       "evaluation_steps": [

@@ -1,6 +1,6 @@
 [
   { "id": "TC-SCH-001",
-    "prompt": "Can you schedule a reboot for system {rhlike_minion_name}?",
+    "prompt": "Schedule a reboot for system {rhlike_minion_name}.",
     "expected_output": "Return a message that system reboot has been successfully scheduled.",
     "geval_config": {
       "evaluation_steps": [
@@ -23,7 +23,7 @@
   },
   {
     "id": "TC-SCH-003",
-    "prompt": "Can you get the action id for the latest system reboot action from list of scheduled actions, and use that id to cancel the action?",
+    "prompt": "Get the action id for the latest system reboot action from list of scheduled actions, and use that id to cancel the action.",
     "expected_output": "A message stating that the action was successfully canceled.",
     "geval_config": {
       "evaluation_steps": [
