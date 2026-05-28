@@ -52,7 +52,11 @@ def _get_public_base_url(config: Dict[str, Any]) -> str:
 base_url = _get_public_base_url(CONFIG)
 auth_provider = AuthProvider(CONFIG["AUTH_SERVER"], base_url, CONFIG["UYUNI_MCP_WRITE_TOOLS_ENABLED"]) if CONFIG["AUTH_SERVER"] else None
 product = CONFIG["UYUNI_PRODUCT_NAME"] if CONFIG["UYUNI_PRODUCT_NAME"] else "Uyuni" 
-mcp = FastMCP("mcp-server-uyuni", auth=auth_provider)
+mcp = FastMCP(
+    "mcp-server-uyuni",
+    auth=auth_provider,
+    instructions=f"MCP tools for {product}: manage mixed Linux systems, groups, patches/updates, and scheduled actions via API tools.",
+)
 
 logger = get_logger(
     log_file=CONFIG["UYUNI_MCP_LOG_FILE_PATH"],
@@ -184,72 +188,15 @@ async def _list_systems(token: str) -> List[Dict[str, Union[str, int]]]:
 
     return filtered_systems
 
-DYNAMIC_DESCRIPTION = f"""Gets details of the specified system.
-
-    Args:
-        system_identifier: The system name (e.g., "buildhost.example.com") or system ID (e.g., 1000010000).
-            Prefer using numerical system IDs instead of system names when possible.
-
-    Returns:
-        An object that contains the following attributes of the system:
-            - system_id: The numerical ID of the system within {product} server
-            - system_name: The registered system name, usually its main FQDN
-            - last_boot: The last boot time of the system known to {product} server
-            - uuid: UUID of the system if it is a virtual instance, null otherwise.
-            - cpu: An object with the following CPU attributes of the system:
-                - family: The CPU family
-                - mhz: The CPU clock speed
-                - model: The CPU model
-                - vendor: The CPU vendor
-                - arch: The CPU architecture
-            - network: Network addresses and the hostname of the system.
-                - hostname: The hostname of the system
-                - ip: The IPv4 address of the system
-                - ip6: The IPv6 address of the system
-            - installed_products: List of installed products on the system.
-                You can use this field to identify what OS the system is running.
-
-        Example:
-            {{
-              "system_id": "100010001",
-              "system_name": "opensuse.example.local",
-              "last_boot": "2025-04-01T15:21:56Z",
-              "uuid": "a8c3f40d-c1ae-406e-9f9b-96e7d5fdf5a3",
-              "cpu": {{
-                "family": "15",
-                "mhz": "1896.436",
-                "model": "QEMU Virtual CPU",
-                "vendor": "AuthenticAMD",
-                "arch": "x86_64"
-              }},
-              "network": {{
-                "hostname": "opensuse.example.local",
-                "ip": "192.168.122.193",
-                "ip6": "fe80::5054:ff:fe12:3456"
-              }},
-              "installed_products": [
-                {{
-                  "release": "0",
-                  "name": "SLES",
-                  "isBaseProduct": true,
-                  "arch": "x86_64",
-                  "version": "15.7",
-                  "friendlyName": "SUSE Linux Enterprise Server 15 SP7 x86_64"
-                }},
-                {{
-                  "release": "0",
-                  "name": "sle-module-basesystem",
-                  "isBaseProduct": false,
-                  "arch": "x86_64",
-                  "version": "15.7",
-                  "friendlyName": "Basesystem Module 15 SP7 x86_64"
-                }}
-              ]
-            }}
-        """
-
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def get_system_details(system_identifier: Union[str, int], ctx: Context):
+    """Get details for one system.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`).
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Returns: `system_id`, `system_name`, `last_boot`, `uuid`, `cpu`, `network`, `installed_products`.
+    Use system_id when possible.
+    """
     log_string = f"Getting details of system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -494,8 +441,15 @@ DYNAMIC_DESCRIPTION = f"""Gets the details of the event associated with the espe
             ]
         """
 
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def get_system_event_details(system_identifier: Union[str, int], event_id: int, ctx: Context):
+    """Get one event detail.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`), `event_id`.
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Returns: event object including status, timestamps, result fields, and optional additional_info.
+    `event_id` should come from `get_system_event_history`.
+    """
     log_string = f"Getting event history of system {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -729,26 +683,17 @@ async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str,
 
     return processed_cves
 
-DYNAMIC_DESCRIPTION = f"""
-    Checks if a specific system in the {product} server has pending updates (relevant errata),
-    including associated CVEs for each update.
-
-    Args:
-        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
-
-    Returns:
-        Dict[str, Any]: A dictionary containing:
-                        - 'system_identifier' (Union[str, int]): The original system identifier used in the request.
-                        - 'has_pending_updates' (bool): True if there are pending updates, False otherwise.
-                        - 'update_count' (int): The number of pending updates.
-                        - 'updates' (List[Dict[str, Any]]): A list of pending update details.
-                          Each update dictionary will also include a 'cves' key
-                          containing a list of CVE identifiers associated with that update.
-                        Returns a dictionary with 'has_pending_updates': False and empty 'updates'
-                        if no pending updates are found.
-    """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def get_system_updates(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
+    """Get pending updates for one system.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`; prefer `system_id`).
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Best for compact default update view.
+    Returns: compact update list plus counts and `meta`.
+    Default behavior omits CVEs for lower token usage.
+    For pagination and CVE expansion, use `query_system_updates`.
+    """
 
     log_string = f"Checking pending updates for system {system_identifier}"
     logger.info(log_string)
@@ -994,24 +939,15 @@ async def _schedule_pending_updates_to_system(system_identifier: Union[str, int]
             return msg
 
 
-DYNAMIC_DESCRIPTION = f"""
-    Schedules a specific update (erratum) to be applied to a system.
-
-    Args:
-        system_identifier: The unique identifier of the system. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
-        errata_id: The unique identifier of the erratum (also referred to as update ID) to be applied. It must be an integer.
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    Returns:
-        str: The action URL if the update was successfully scheduled.
-             Otherwise, returns an empty string.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+@write_tool()
 async def schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
+    """Schedule one specific update for one system.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`), `errata_id`; optional `confirm`.
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise scheduled action URL or error text.
+    Call once with `confirm=false`, then call again with `confirm=true`.
+    """
     log_string = f"Attempting to apply specific update (errata ID: {errata_id}) to system ID: {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1063,33 +999,12 @@ async def _schedule_specific_update(system_identifier: Union[str, int], errata_i
             logger.error(msg)
             return msg
 
-DYNAMIC_DESCRIPTION = f"""
-    Adds a new system to be managed by {product}.
-
-    This tool remotely connects to the specified host using SSH to register it.
-    It requires an SSH private key to be configured in the UYUNI_SSH_PRIV_KEY
-    environment variable for authentication.
-
-    Args:
-        host: Hostname or IP address of the target system to add.
-        activation_key: The activation key for registering the system.
-        ssh_port: The SSH port on the target machine (default: 22).
-        ssh_user: The user to connect with via SSH (default: 'root').
-        proxy_id: The system ID of a {product} proxy to use (optional).
-        salt_ssh: Manage the system with Salt SSH (default: False).
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    Returns:
-        A confirmation message if 'confirm' is False.
-        An error message if the UYUNI_SSH_PRIV_KEY environment variable is not set.
-        A success message if the system is scheduled for addition successfully.
-        An error message if the operation fails.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+@write_tool(description=f"""
+    Register a new system in {product} via SSH bootstrap.
+    Inputs: `host`; optional `activation_key`, `ssh_port`, `ssh_user`, `proxy_id`, `salt_ssh`, `confirm`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
+    Requires `UYUNI_SSH_PRIV_KEY` on the server.
+    """)
 async def add_system(
     host: str,
     ctx: Context,
@@ -1201,26 +1116,13 @@ async def _add_system(
         logger.info(f"api result was NOT 1 {api_result}")
         return f"System {host} was NOT successfully scheduled to be added. Check server logs."
 
-DYNAMIC_DESCRIPTION = f"""
-    Removes/deletes a system from being managed by {product}.
-
-    This is a destructive action and requires confirmation.
-
-    Args:
-        system_identifier: The unique identifier of the system to remove. It can be the system name (e.g. "buildhost") or the system ID (e.g. 1000010000).
-        cleanup: If True (default), {product} will attempt to run cleanup scripts on the client before deletion.
-                 If False, the system is deleted from {product} without attempting client-side cleanup.
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    Returns:
-        A confirmation message if 'confirm' is False.
-        A success or error message string detailing the outcome.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+@write_tool(description=f"""
+    Remove a system from {product}.
+    Inputs: `system_identifier` (`system_name` or `system_id`); optional `cleanup`, `confirm`.
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
+    This is a destructive operation.
+    """)
 async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanup: bool = True, confirm: Union[bool, str] = False) -> str:
     log_string = f"Attempting to remove system with id {system_identifier}"
     logger.info(log_string)
@@ -1597,23 +1499,17 @@ async def _cancel_action(action_id: int, token: str, confirm: Union[bool, str] =
             return f"Failed to cancel action: {action_id}. The API did not return success (expected 1, got {api_result}). Check server logs for details."
 
 
-DYNAMIC_DESCRIPTION = f"""
-    Fetches a list of activation keys from the {product} server.
-
-    This tool retrieves all activation keys visible to the user and returns
-    a list containing only the key identifier and its description.
-
-    Returns:
-        List[Dict[str, str]]: A list of dictionaries, where each dictionary
-                              represents an activation key with 'key' and
-                              'description' fields. Returns an empty list
-                              if no keys are found.
-    """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def list_activation_keys(ctx: Context) -> List[Dict[str, str]]:
-    token = await extract_token(ctx)
+    """List activation keys available to the current user.
 
+    Inputs: none.
+    Returns: list of objects with `key` and `description`.
+    """
+
+    token = await extract_token(ctx)
     return await _list_activation_keys(token, ctx)
+
 
 async def _list_activation_keys(token: str, ctx: Context) -> List[Dict[str, str]]:
     list_keys_path = '/rhn/manager/api/activationkey/listActivationKeys'
@@ -1638,28 +1534,22 @@ async def _list_activation_keys(token: str, ctx: Context) -> List[Dict[str, str]
                 await ctx.warning(msg)
     return filtered_keys
 
-DYNAMIC_DESCRIPTION = f"""
-    Provides a list of errata that are applicable to the system with the system_id
-    passed as parameter and have not been scheduled yet. All elements in the result are patches that are applicable
-    for the system.
 
-    Args:
-        system_id: The integer ID of the system for which we want to know the list of applicable errata.
-
-    Returns:
-        List[Dict[str, Any]]: A list of dictionaries with each dictionary defining a errata applicable
-                            to the system given as a parameter.
-                            Returns an empty dictionary if no applicable errata for the system are found.
-    """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str, Any]]:
+    """List unscheduled errata for one system.
+
+    Inputs: `system_id`.
+    This tool accepts numeric `system_id` only.
+    Returns: errata list for that system.
+    """
     log_string = f"Getting list of unscheduled errata for system {system_id}"
     logger.info(log_string)
     await ctx.info(log_string)
 
     token = await extract_token(ctx)
-
     return await _get_unscheduled_errata(system_id, token)
+
 
 async def _get_unscheduled_errata(system_id: int, token: str) -> List[Dict[str, Any]]:
     async with _make_client() as client:
@@ -1744,26 +1634,15 @@ async def _list_system_groups(token: str, ctx: Context) -> List[Dict[str, str]]:
                 await ctx.warning(msg)
     return filtered_groups
 
-DYNAMIC_DESCRIPTION = f"""
-    Creates a new system group in {product}.
 
-    Args:
-        name: The name of the new system group.
-        description: An optional description for the system group.
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
+@write_tool(description=f"""
+    Create a new system group in {product}.
 
-    Returns:
-        A success message if the group was created, e.g., "Successfully created system group 'my-group'".
-        Returns an error message if the creation failed.
-
-        Example:
-            Successfully created system group 'my-group'.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+    Inputs: `name`; optional `description`, `confirm`.
+    System groups in {product} are flat (no nesting).
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
+    Call once with `confirm=false`, then call again with `confirm=true`.
+    """)
 async def create_system_group(name: str, ctx: Context, description: str = "", confirm: Union[bool, str] = False) -> str:
     log_string = f"Creating system group '{name}'"
     logger.info(log_string)
@@ -1804,32 +1683,13 @@ async def _create_system_group(name: str, token: str, description: str = "", con
             logger.error(msg)
         return msg
 
-DYNAMIC_DESCRIPTION = f"""
-    Lists the systems in a system group.
-
-    Args:
-        group_name: The name of the system group.
-
-    Returns:
-        A list of dictionaries, where each dictionary represents a system with 'system_id' and
-        'system_name' fields.
-
-        Returns an empty list if the API call fails or no systems are found.
-
-        Example:
-            [
-                {{
-                    "system_id": "123456789",
-                    "system_name": "my-system"
-                }},
-                {{
-                    "system_id": "987654321",
-                    "system_name": "my-other-system"
-                }}
-            ]
-    """
-@mcp.tool(description = DYNAMIC_DESCRIPTION)
+@mcp.tool()
 async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, Any]]:
+    """List systems in one group.
+
+    Inputs: `group_name`.
+    Returns: list of `system_id` and `system_name`.
+    """
     log_string = f"Listing systems in group '{group_name}'"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1864,48 +1724,24 @@ async def _list_group_systems(group_name: str, token: str) -> List[Dict[str, Any
                 logger.warning(msg)
     return filtered_systems
 
-DYNAMIC_DESCRIPTION = f"""
-    Adds systems to a system group.
-
-    Args:
-        group_name: The name of the system group.
-        system_identifiers: A list of system names or IDs to add to the group.
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    Returns:
-        A success message if the systems were added.
-
-        Example:
-            Successfully added 1 systems to/from group 'test-group'.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+@write_tool()
 async def add_systems_to_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context, confirm: Union[bool, str] = False) -> str:
+    """Add systems to a group.
+
+    Inputs: `group_name`, `system_identifiers`; optional `confirm`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
+    Call once with `confirm=false`, then call again with `confirm=true`.
+    """
     return await _manage_group_systems(group_name, system_identifiers, True, ctx, confirm)
 
-DYNAMIC_DESCRIPTION = f"""
-    Removes systems from a system group.
-
-    Args:
-        group_name: The name of the system group.
-        system_identifiers: A list of system names or IDs to remove from the group.
-        confirm: User confirmation is required to execute this action. This parameter
-                 is `False` by default. To obtain the confirmation message that must
-                 be presented to the user, the model must first call the tool with
-                 `confirm=False`. If the user agrees, the model should call the tool
-                 a second time with `confirm=True`.
-
-    Returns:
-        A success message if the systems were removed.
-
-        Example:
-            Successfully removed 1 systems to/from group 'test-group'.
-    """
-@write_tool(description = DYNAMIC_DESCRIPTION)
+@write_tool()
 async def remove_systems_from_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context, confirm: Union[bool, str] = False) -> str:
+    """Remove systems from a group.
+
+    Inputs: `group_name`, `system_identifiers`; optional `confirm`.
+    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
+    Call once with `confirm=false`, then call again with `confirm=true`.
+    """
     return await _manage_group_systems(group_name, system_identifiers, False, ctx, confirm)
 
 async def _manage_group_systems(group_name: str, system_identifiers: List[Union[str, int]], add: bool, ctx: Context, confirm: Union[bool, str] = False) -> str:
