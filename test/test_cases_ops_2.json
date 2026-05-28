@@ -1,6 +1,6 @@
 [
   { "id": "TC-OPS-2-Pre",
-    "prompt": "The system with name {new_system_host} should not be in the list of systems in {product_name}. Can you confirm it is not?",
+    "prompt": "The system with name {new_system_host} should not be in the list of systems in {product_name}. Can you verify it is not?",
     "expected_output": "A message that the system is not in {product_name}",
     "geval_config": {
       "evaluation_steps": [
@@ -10,19 +10,8 @@
     }
   },
   {
-    "id": "TC-OPS-2-001_confirm_request",
-    "prompt": "Add a new system at host {new_system_host} with activation key '{key_deblike}'?",
-    "expected_output": "Return a message requiring confirmation.",
-    "geval_config": {
-      "evaluation_steps": [
-        "Check if the output requests confirmation to add a new system.",
-        "Verify that the output mentions the correct host and activation key."
-      ]
-    }
-  },
-  {
-    "id": "TC-OPS-2-001_confirmed",
-    "prompt": "Add a new system at host {new_system_host} with activation key '{key_deblike}', confirmation set to true",
+    "id": "TC-OPS-2-001",
+    "prompt": "Add a new system at host {new_system_host} with activation key '{key_deblike}'",
     "expected_output": "Return a message stating that the addition process started, and instructing the user to check the system list later for its status.",
     "geval_config": {
       "evaluation_steps": [
@@ -33,7 +22,7 @@
   },
   {
     "id": "TC-OPS-2-002",
-    "prompt": "Add system {build_host_name} with key {key_deblike} with confirmation set to true",
+    "prompt": "Add system {build_host_name} with key {key_deblike}",
     "expected_output": "Return a message stating that system already exists.",
     "geval_config": {
       "evaluation_steps": [
@@ -44,7 +33,7 @@
   },
   {
     "id": "TC-OPS-2-003",
-    "prompt": "Delete system with ID 999999999, confirmation set to true.",
+    "prompt": "Delete system with ID 999999999.",
     "expected_output": "Return a message stating that system with ID 999999999 was not found.",
     "geval_config": {
       "evaluation_steps": [
