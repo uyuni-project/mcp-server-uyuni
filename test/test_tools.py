@@ -57,7 +57,7 @@ async def test_list_systems(mock_uyuni):
 
     assert len(result) == 2
     assert result[0]['system_name'] == "system1.example.com"
-    assert result[0]['system_id'] == 1001
+    assert result[0]['system_id'] == "1001"
     assert route.called
 
 @pytest.mark.asyncio
@@ -589,7 +589,7 @@ async def test_check_all_systems_for_updates(mock_uyuni, mock_ctx):
     assert 'items' in result
     assert 'meta' in result
     assert len(result['items']) == 1
-    assert result['items'][0]['system_id'] == 1001
+    assert result['items'][0]['system_id'] == "1001"
     assert result['items'][0]['update_count'] == 1
     assert result['meta']['include_updates'] is False
     assert result['meta']['include_cves'] is False
@@ -668,7 +668,7 @@ async def test_check_all_systems_for_updates_pagination(mock_uyuni, mock_ctx):
     assert unscheduled_route.calls.last.request.url.params['sid'] == "1002"
 
     assert len(result['items']) == 1
-    assert result['items'][0]['system_id'] == 1002
+    assert result['items'][0]['system_id'] == "1002"
     assert result['meta']['total_count'] == 3
     assert result['meta']['limit'] == 1
     assert result['meta']['offset'] == 1
@@ -711,7 +711,7 @@ async def test_list_systems_needing_update_for_cve(mock_uyuni, mock_ctx):
     assert 'items' in result
     assert 'meta' in result
     assert len(result['items']) == 1
-    assert result['items'][0]['system_id'] == 1001
+    assert result['items'][0]['system_id'] == "1001"
     assert result['items'][0]['cve_identifier'] == cve
     assert result['meta']['returned_count'] == 1
     assert result['meta']['filters']['cve_identifier'] == cve
@@ -731,7 +731,7 @@ async def test_list_systems_needing_reboot(mock_uyuni, mock_ctx):
     assert 'items' in result
     assert 'meta' in result
     assert len(result['items']) == 1
-    assert result['items'][0]['system_id'] == 1001
+    assert result['items'][0]['system_id'] == "1001"
     assert result['items'][0]['reboot_status'] == 'reboot_required'
     assert result['meta']['returned_count'] == 1
     assert route.called
@@ -806,7 +806,7 @@ async def test_list_activation_keys(mock_uyuni, mock_ctx):
 @pytest.mark.asyncio
 async def test_get_unscheduled_errata(mock_uyuni, mock_ctx):
     base_url = server.CONFIG["UYUNI_SERVER"]
-    system_id = 1001
+    system_id = "1001"
 
     mock_data = [{"advisory_name": "ADV-1"}]
 
@@ -820,7 +820,7 @@ async def test_get_unscheduled_errata(mock_uyuni, mock_ctx):
     assert result[0]['advisory_name'] == "ADV-1"
     assert result[0]['system_id'] == system_id
     assert route.called
-    assert route.calls.last.request.url.params['sid'] == str(system_id)
+    assert route.calls.last.request.url.params['sid'] == system_id
 
 @pytest.mark.asyncio
 async def test_list_system_groups(mock_uyuni, mock_ctx):

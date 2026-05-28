@@ -159,7 +159,7 @@ async def list_systems(ctx: Context, limit: int = 50, offset: int = 0) -> Dict[s
         'meta': meta,
     }
 
-async def _list_systems(token: str) -> List[Dict[str, Union[str, int]]]:
+async def _list_systems(token: str) -> List[Dict[str, str]]:
 
     async with _make_client() as client:
         systems_data_result = await call_uyuni_api(
@@ -170,11 +170,11 @@ async def _list_systems(token: str) -> List[Dict[str, Union[str, int]]]:
             token=token
         )
 
-    filtered_systems = []
+    filtered_systems: List[Dict[str, str]] = []
     if isinstance(systems_data_result, list):
         for system in systems_data_result:
             if isinstance(system, dict):
-                filtered_systems.append({'system_name': system.get('name'), 'system_id': system.get('id')})
+                filtered_systems.append({'system_name': system.get('name'), 'system_id': str(system.get('id'))})
             else:
                 logger.warning(f"Unexpected item format in system list: {system}")
     elif systems_data_result:
@@ -183,7 +183,7 @@ async def _list_systems(token: str) -> List[Dict[str, Union[str, int]]]:
     return filtered_systems
 
 @mcp.tool()
-async def get_system_details(system_identifier: Union[str, int], ctx: Context):
+async def get_system_details(system_identifier: str, ctx: Context):
     """Get details for one system.
 
     Inputs: `system_identifier` (`system_name` or `system_id`).
@@ -199,7 +199,7 @@ async def get_system_details(system_identifier: Union[str, int], ctx: Context):
 
     return await _get_system_details(system_identifier, ctx, token)
 
-async def _get_system_details(system_identifier: Union[str, int],ctx: Context, token: str) -> Dict[str, Any]:
+async def _get_system_details(system_identifier: str, ctx: Context, token: str) -> Dict[str, Any]:
     system_id = await _resolve_system_id(system_identifier, ctx, token)
 
     async with _make_client() as client:
@@ -309,7 +309,7 @@ async def _get_system_details(system_identifier: Union[str, int],ctx: Context, t
     return {}
 
 @mcp.tool()
-async def get_system_event_history(system_identifier: Union[str, int], ctx: Context, offset: int = 0, limit: int = 10, earliest_date: Optional[str] = None):
+async def get_system_event_history(system_identifier: str, ctx: Context, offset: int = 0, limit: int = 10, earliest_date: Optional[str] = None):
     """List events for one system.
 
     Inputs: `system_identifier` (`system_name` or `system_id`); optional `offset`, `limit`, `earliest_date`.
@@ -325,7 +325,7 @@ async def get_system_event_history(system_identifier: Union[str, int], ctx: Cont
 
     return await _get_system_event_history(system_identifier, limit, offset, earliest_date, ctx, token)
 
-async def _get_system_event_history(system_identifier: Union[str, int], limit: int, offset: int, earliest_date: str, ctx: Context, token: str) -> list[Any]:
+async def _get_system_event_history(system_identifier: str, limit: int, offset: int, earliest_date: str, ctx: Context, token: str) -> list[Any]:
     system_id = await _resolve_system_id(system_identifier, ctx, token)
 
     async with _make_client() as client:
@@ -350,7 +350,7 @@ async def _get_system_event_history(system_identifier: Union[str, int], limit: i
     return []
 
 @mcp.tool()
-async def get_system_event_details(system_identifier: Union[str, int], event_id: int, ctx: Context):
+async def get_system_event_details(system_identifier: str, event_id: int, ctx: Context):
     """Get one event detail.
 
     Inputs: `system_identifier` (`system_name` or `system_id`), `event_id`.
@@ -366,7 +366,7 @@ async def get_system_event_details(system_identifier: Union[str, int], event_id:
 
     return await _get_system_event_details(system_identifier, event_id, ctx, token)
 
-async def _get_system_event_details(system_identifier: Union[str, int], event_id: int, ctx: Context, token: str) -> Dict[str, Any]:
+async def _get_system_event_details(system_identifier: str, event_id: int, ctx: Context, token: str) -> Dict[str, Any]:
     system_id = await _resolve_system_id(system_identifier, ctx, token)
 
     async with _make_client() as client:
@@ -416,7 +416,7 @@ async def find_systems_by_name(
     }
 
 
-async def _find_systems_by_name(name: str, token: str) -> List[Dict[str, Union[str, int]]]:
+async def _find_systems_by_name(name: str, token: str) -> List[Dict[str, str]]:
     async with _make_client() as client:
         systems_data_result = await call_uyuni_api(
             client=client,
@@ -427,11 +427,11 @@ async def _find_systems_by_name(name: str, token: str) -> List[Dict[str, Union[s
             token=token
         )
 
-    filtered_systems = []
+    filtered_systems: List[Dict[str, str]] = []
     if isinstance(systems_data_result, list):
         for system in systems_data_result:
             if isinstance(system, dict):
-                filtered_systems.append({'system_name': system.get('name'), 'system_id': system.get('id')})
+                filtered_systems.append({'system_name': system.get('name'), 'system_id': str(system.get('id'))})
             else:
                 logger.warning(f"Unexpected item format in system list: {system}")
     elif systems_data_result:
@@ -467,7 +467,7 @@ async def find_systems_by_ip(
     }
 
 
-async def _find_systems_by_ip(ip_address: str, token: str) -> List[Dict[str, Union[str, int]]]:
+async def _find_systems_by_ip(ip_address: str, token: str) -> List[Dict[str, str]]:
     async with _make_client() as client:
         systems_data_result = await call_uyuni_api(
             client=client,
@@ -478,11 +478,15 @@ async def _find_systems_by_ip(ip_address: str, token: str) -> List[Dict[str, Uni
             token=token
         )
 
-    filtered_systems = []
+    filtered_systems: List[Dict[str, str]] = []
     if isinstance(systems_data_result, list):
         for system in systems_data_result:
             if isinstance(system, dict):
-                filtered_systems.append({'system_name': system.get('name'), 'system_id': system.get('id'), 'ip': system.get('ip')})
+                filtered_systems.append({
+                    'system_name': system.get('name'),
+                    'system_id': str(system.get('id')),
+                    'ip': str(system.get('ip'))
+                })
             else:
                 logger.warning(f"Unexpected item format in system list: {system}")
     elif systems_data_result:
@@ -490,7 +494,7 @@ async def _find_systems_by_ip(ip_address: str, token: str) -> List[Dict[str, Uni
 
     return filtered_systems
 
-async def _resolve_system_id(system_identifier: Union[str, int], ctx: Context, token: str) -> str:
+async def _resolve_system_id(system_identifier: str, ctx: Context, token: str) -> str:
     """
     Resolves a system identifier, which can be a name or an ID, to a numeric system ID string.
 
@@ -498,7 +502,7 @@ async def _resolve_system_id(system_identifier: Union[str, int], ctx: Context, t
     If it's a non-numeric string, it's treated as a name and the ID is looked up via the system.getId API endpoint.
 
     Args:
-        system_identifier: The system name (e.g., "buildhost.example.com") or system ID (e.g., 1000010000).
+        system_identifier: The system name (e.g., "buildhost.example.com") or system ID (e.g., "1000010000").
 
     Returns:
         str: The numeric system ID as a string.
@@ -595,7 +599,7 @@ async def _fetch_cves_for_erratum(client: httpx.AsyncClient, advisory_name: str,
     return processed_cves
 
 @mcp.tool()
-async def get_system_updates(system_identifier: Union[str, int], ctx: Context) -> Dict[str, Any]:
+async def get_system_updates(system_identifier: str, ctx: Context) -> Dict[str, Any]:
     """Get pending updates for one system.
 
     Inputs: `system_identifier` (`system_name` or `system_id`; prefer `system_id`).
@@ -623,7 +627,7 @@ async def get_system_updates(system_identifier: Union[str, int], ctx: Context) -
     )
 
 async def _get_system_updates(
-    system_identifier: Union[str, int],
+    system_identifier: str,
     token: str,
     ctx: Context,
     include_cves: bool = False,
@@ -777,7 +781,7 @@ async def _get_system_updates(
 
 @mcp.tool()
 async def summarize_system_updates(
-    system_identifier: Union[str, int],
+    system_identifier: str,
     ctx: Context,
     advisory_types: Optional[List[AdvisoryType]] = None,
 ) -> Dict[str, Any]:
@@ -817,7 +821,7 @@ async def summarize_system_updates(
 
 @mcp.tool()
 async def query_system_updates(
-    system_identifier: Union[str, int],
+    system_identifier: str,
     ctx: Context,
     limit: int = 25,
     offset: int = 0,
@@ -929,7 +933,7 @@ async def _check_all_systems_for_updates(
         await ctx.info(msg)
         # Use the existing get_system_updates tool
         update_check_result = await _get_system_updates(
-            system_id,
+            str(system_id),
             token,
             ctx,
             include_cves=include_cves,
@@ -1000,7 +1004,7 @@ async def summarize_fleet_updates(
     )
 
 @write_tool()
-async def schedule_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context) -> str:
+async def schedule_pending_updates_to_system(system_identifier: str, ctx: Context) -> str:
     """Schedule all pending updates for one system.
 
     Inputs: `system_identifier` (`system_name` or `system_id`).
@@ -1016,7 +1020,7 @@ async def schedule_pending_updates_to_system(system_identifier: Union[str, int],
     return await _schedule_pending_updates_to_system(system_identifier, token, ctx)
 
 
-async def _schedule_pending_updates_to_system(system_identifier: Union[str, int], token: str, ctx: Context) -> str:
+async def _schedule_pending_updates_to_system(system_identifier: str, token: str, ctx: Context) -> str:
     if not await elicit_approval(
         ctx,
         f"This will apply pending updates to system {system_identifier}. Continue?",
@@ -1078,7 +1082,7 @@ async def _schedule_pending_updates_to_system(system_identifier: Union[str, int]
 
 
 @write_tool()
-async def schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context) -> str:
+async def schedule_specific_update(system_identifier: str, errata_id: Union[str, int], ctx: Context) -> str:
     """Schedule one specific update for one system.
 
     Inputs: `system_identifier` (`system_name` or `system_id`), `errata_id`.
@@ -1094,7 +1098,7 @@ async def schedule_specific_update(system_identifier: Union[str, int], errata_id
     return await _schedule_specific_update(system_identifier, errata_id, ctx, token)
 
 
-async def _schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, token: str) -> str:
+async def _schedule_specific_update(system_identifier: str, errata_id: Union[str, int], ctx: Context, token: str) -> str:
     try:
         errata_id_int = int(errata_id)
     except (ValueError, TypeError):
@@ -1265,7 +1269,7 @@ async def _add_system(
     Returns: success or error message.
     This is a destructive operation.
     """)
-async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanup: bool = True) -> str:
+async def remove_system(system_identifier: str, ctx: Context, cleanup: bool = True) -> str:
     log_string = f"Attempting to remove system with id {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
@@ -1274,12 +1278,12 @@ async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanu
     return await _remove_system(system_identifier, ctx, token, cleanup)
 
 
-async def _remove_system(system_identifier: Union[str, int], ctx: Context, token: str, cleanup: bool = True) -> str:
+async def _remove_system(system_identifier: str, ctx: Context, token: str, cleanup: bool = True) -> str:
     system_id = await _resolve_system_id(system_identifier, ctx, token)
 
     # Check if the system exists before proceeding
     active_systems = await _list_systems(token)
-    if not any(s.get('system_id') == int(system_id) for s in active_systems):
+    if not any(s.get('system_id') == system_id for s in active_systems):
         message = f"System with ID {system_id} not found."
         logger.warning(message)
         return message
@@ -1405,7 +1409,7 @@ async def _list_systems_needing_update_for_cve(
                     if system_id is not None and system_name is not None:
                         if system_id not in affected_systems_map: # Add if new
                             affected_systems_map[system_id] = {
-                                'system_id': system_id,
+                                'system_id': str(system_id),
                                 'system_name': system_name,
                                 'cve_identifier': cve_identifier
                             }
@@ -1476,7 +1480,7 @@ async def _list_systems_needing_reboot(
                     system_name = system_info.get('name')
                     if system_id is not None and system_name is not None:
                         systems_needing_reboot_list.append({
-                            'system_id': system_id,
+                            'system_id': str(system_id),
                             'system_name': system_name,
                             'reboot_status': 'reboot_required'
                         })
@@ -1493,7 +1497,7 @@ async def _list_systems_needing_reboot(
     }
 
 @write_tool()
-async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context) -> str:
+async def schedule_system_reboot(system_identifier: str, ctx:Context) -> str:
     """Schedule an immediate reboot for one system.
 
     Inputs: `system_identifier` (`system_name` or `system_id`).
@@ -1508,7 +1512,7 @@ async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context
 
     return await _schedule_system_reboot(system_identifier, token, ctx)
 
-async def _schedule_system_reboot(system_identifier: Union[str, int], token: str, ctx: Context) -> str:
+async def _schedule_system_reboot(system_identifier: str, token: str, ctx: Context) -> str:
     system_id = await _resolve_system_id(system_identifier, ctx, token)
 
     if not await elicit_approval(
@@ -1709,22 +1713,24 @@ async def _list_activation_keys(token: str, ctx: Context) -> List[Dict[str, str]
 
 
 @mcp.tool()
-async def get_unscheduled_errata(system_id: int, ctx: Context) -> List[Dict[str, Any]]:
+async def get_unscheduled_errata(system_id: str, ctx: Context) -> List[Dict[str, Any]]:
     """List unscheduled errata for one system.
 
     Inputs: `system_id`.
-    This tool accepts numeric `system_id` only.
+    Provide `system_id` as a numeric string.
     Returns: errata list for that system.
     """
     log_string = f"Getting list of unscheduled errata for system {system_id}"
     logger.info(log_string)
     await ctx.info(log_string)
+    if not str(system_id).isdigit():
+        raise ValueError(f"Invalid system_id '{system_id}'. Provide system_id as a numeric string.")
 
     token = await extract_token(ctx)
     return await _get_unscheduled_errata(system_id, token)
 
 
-async def _get_unscheduled_errata(system_id: int, token: str) -> List[Dict[str, Any]]:
+async def _get_unscheduled_errata(system_id: str, token: str) -> List[Dict[str, Any]]:
     async with _make_client() as client:
         get_unscheduled_errata = "/rhn/manager/api/system/getUnscheduledErrata"
         payload = {'sid': str(system_id)}
@@ -1845,7 +1851,7 @@ async def list_group_systems(group_name: str, ctx: Context) -> List[Dict[str, An
 
     return await _list_group_systems(group_name, token)
 
-async def _list_group_systems(group_name: str, token: str) -> List[Dict[str, Any]]:
+async def _list_group_systems(group_name: str, token: str) -> List[Dict[str, str]]:
     list_systems_path = '/rhn/manager/api/systemgroup/listSystemsMinimal'
 
     async with _make_client() as client:
@@ -1858,12 +1864,12 @@ async def _list_group_systems(group_name: str, token: str) -> List[Dict[str, Any
             token=token
         )
 
-    filtered_systems = []
+    filtered_systems: List[Dict[str, str]] = []
     if isinstance(api_result, list):
         for system in api_result:
             if isinstance(system, dict):
                 filtered_systems.append({
-                    'system_id': system.get('id'),
+                    'system_id': str(system.get('id')),
                     'system_name': system.get('name')
                 })
             else:
@@ -1872,7 +1878,7 @@ async def _list_group_systems(group_name: str, token: str) -> List[Dict[str, Any
     return filtered_systems
 
 @write_tool()
-async def add_systems_to_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context) -> str:
+async def add_systems_to_group(group_name: str, system_identifiers: List[str], ctx: Context) -> str:
     """Add systems to a group.
 
     Inputs: `group_name`, `system_identifiers`.
@@ -1881,7 +1887,7 @@ async def add_systems_to_group(group_name: str, system_identifiers: List[Union[s
     return await _manage_group_systems(group_name, system_identifiers, True, ctx)
 
 @write_tool()
-async def remove_systems_from_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context) -> str:
+async def remove_systems_from_group(group_name: str, system_identifiers: List[str], ctx: Context) -> str:
     """Remove systems from a group.
 
     Inputs: `group_name`, `system_identifiers`.
@@ -1889,7 +1895,7 @@ async def remove_systems_from_group(group_name: str, system_identifiers: List[Un
     """
     return await _manage_group_systems(group_name, system_identifiers, False, ctx)
 
-async def _manage_group_systems(group_name: str, system_identifiers: List[Union[str, int]], add: bool, ctx: Context) -> str:
+async def _manage_group_systems(group_name: str, system_identifiers: List[str], add: bool, ctx: Context) -> str:
     """
     Internal helper to add or remove systems from a group.
     """
