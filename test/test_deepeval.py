@@ -134,10 +134,7 @@ async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list
                         "(e.g., listing systems and then fetching details for each). Do NOT ask for permission to "
                         "retrieve or show information. "
                         "2. STATE-CHANGING ACTIONS: For actions that modify the system (rebooting, removing systems, "
-                        "applying updates, creating groups), you MUST first call the tool with 'confirm=False' "
-                        "to show the user what will happen and wait for their confirmation. "
-                        "EXCEPTION: If the user's prompt already includes an explicit confirmation (e.g., 'Confirm yes', 'I confirm', or 'confirmation set to true'), "
-                        "you may proceed to call the tool with 'confirm=True' immediately."
+                        "applying updates, creating groups), call the relevant write tool directly using the real tool schema. "
                         "CRITICAL: Do NOT use example names or IDs from the tool documentation. Use ONLY the real data "
                         "returned by the tools in the current session."
                     )
@@ -150,7 +147,7 @@ async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list
                 "INSTRUCTION: Use available tools to fulfill this request. "
                 "Retain and report specific details like names and IDs. "
                 "If this is a state-changing action (reboot, remove, update, create), "
-                "you MUST ask for confirmation first by calling the tool with confirm=False."
+                "execute the write tool directly using the tool schema."
             )
 
             response = await chat.send_message(directive_prompt)

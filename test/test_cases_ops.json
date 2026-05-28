@@ -10,19 +10,8 @@
     }
   },
   {
-    "id": "TC-OPS-001_confirm_request",
-    "prompt": "Can you remove system {new_system_host}?",
-    "expected_output": "Return a message requiring confirmation.",
-    "geval_config": {
-      "evaluation_steps": [
-        "Check if the output is asking for confirmation to remove the system.",
-        "Verify that the request is about removing the specific system mentioned."
-      ]
-    }
-  },
-  {
-    "id": "TC-OPS-001_confirmed",
-    "prompt": "Remove system {new_system_host}, confirmation set to true",
+    "id": "TC-OPS-001",
+    "prompt": "Remove system {new_system_host}",
     "expected_output": "Return a message stating that that system was successfully removed.",
     "geval_config": {
       "evaluation_steps": [
