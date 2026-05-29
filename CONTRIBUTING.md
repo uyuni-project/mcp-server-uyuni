@@ -204,16 +204,7 @@ For more information on MCP elicitation, see the [MCP specification](https://mod
 
 To implement elicitation, you can use the `ctx.elicit()` method within your tool's logic. However, before attempting to use elicitation, you should check if the client supports it using `ctx.session.check_client_capability(types.ClientCapabilities(elicitation=types.ElicitationCapability()))`.
 
-If elicitation is not supported, provide a fallback mechanism, such as returning a message to the user asking for the required information directly.
-
-**Example:**
-```python
-if ctx.session.check_client_capability(types.ClientCapabilities(elicitation=types.ElicitationCapability())):
-    # Use elicitation to prompt the user for information
-else:
-    # Provide a fallback mechanism
-```
-```
+If elicitation is not supported, the current convention in this project is to trust the client invocation and proceed, leaving any confirmation UX to the client.
 
 ### Handle Expected Timeouts for Long-Running Actions
 

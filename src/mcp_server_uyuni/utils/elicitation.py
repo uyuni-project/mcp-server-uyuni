@@ -15,6 +15,7 @@ def client_supports_elicitation(ctx: Context) -> bool:
 
 async def elicit_approval(ctx: Context, prompt: str) -> bool:
     if not client_supports_elicitation(ctx):
+        # Clients without elicitation support are responsible for any confirmation UX
         return True
 
     result = await ctx.elicit(prompt, ActionApprovalSchema)
