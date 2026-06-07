@@ -56,8 +56,16 @@ def _get_public_base_url(config: Dict[str, Any]) -> str:
     return f'http://{public_host}:{config["UYUNI_MCP_PORT"]}'
 
 
+def _get_action_url(action_id: int) -> str:
+    return f"{CONFIG['UYUNI_SERVER']}/rhn/schedule/ActionDetails.do?aid={action_id}"
+
+
 base_url = _get_public_base_url(CONFIG)
-auth_provider = AuthProvider(CONFIG["AUTH_SERVER"], base_url, CONFIG["UYUNI_MCP_WRITE_TOOLS_ENABLED"]) if CONFIG["AUTH_SERVER"] else None
+auth_provider = AuthProvider(
+    auth_server=CONFIG["AUTH_SERVER"],
+    base_url=base_url,
+    write_enabled=CONFIG["UYUNI_MCP_WRITE_TOOLS_ENABLED"],
+) if CONFIG["AUTH_SERVER"] else None
 product = CONFIG["UYUNI_PRODUCT_NAME"] if CONFIG["UYUNI_PRODUCT_NAME"] else "Uyuni" 
 mcp = FastMCP(
     "mcp-server-uyuni",
@@ -70,6 +78,12 @@ logger = get_logger(
     transport=CONFIG["UYUNI_MCP_TRANSPORT"],
     log_level=CONFIG["UYUNI_MCP_LOG_LEVEL"]
 )
+
+if CONFIG["AUTH_SERVER"]:
+    logger.info(f"OAuth issuer configured: {CONFIG['AUTH_SERVER']}")
+else:
+    if CONFIG["UYUNI_MCP_TRANSPORT"] == Transport.HTTP.value:
+        logger.warning("HTTP transport is running without UYUNI_AUTH_SERVER; requests are unauthenticated.")
 
 def _make_client() -> httpx.AsyncClient:
     """Create an AsyncClient with the configured SSL and timeout settings."""
@@ -1074,7 +1088,7 @@ async def _schedule_pending_updates_to_system(system_identifier: str, token: str
         if isinstance(api_result, list) and api_result and isinstance(api_result[0], int):
             action_id = api_result[0]
             logger.info(f"Successfully scheduled action {action_id} to apply {len(errata_ids)} errata to system {system_identifier}.")
-            return "Update successfully scheduled at " + CONFIG["UYUNI_SERVER"] + "/rhn/schedule/ActionDetails.do?aid=" + str(action_id)
+            return f"Update successfully scheduled. Action URL: {_get_action_url(action_id)}"
         else:
             msg = f"Failed to schedule errata for system {system_identifier}. Unexpected API response format. Result: {api_result}"
             logger.error(msg)
@@ -1128,13 +1142,13 @@ async def _schedule_specific_update(system_identifier: str, errata_id: Union[str
 
         if isinstance(api_result, list) and api_result and isinstance(api_result[0], int):
             action_id = api_result[0]
-            success_message = f"Update (errata ID: {errata_id_int}) successfully scheduled for system {system_identifier}. Action URL: {CONFIG['UYUNI_SERVER']}/rhn/schedule/ActionDetails.do?aid={action_id}"
+            success_message = f"Update (errata ID: {errata_id_int}) successfully scheduled for system {system_identifier}. Action URL: {_get_action_url(action_id)}"
             logger.info(success_message)
             return success_message
         # Some schedule APIs might return int directly in result (though scheduleApplyErrata usually returns a list)
         elif isinstance(api_result, int): # Defensive check
             action_id = api_result
-            success_message = f"Update (errata ID: {errata_id_int}) successfully scheduled. Action URL: {CONFIG['UYUNI_SERVER']}/rhn/schedule/ActionDetails.do?aid={action_id}"
+            success_message = f"Update (errata ID: {errata_id_int}) successfully scheduled. Action URL: {_get_action_url(action_id)}"
             logger.info(success_message)
             return success_message
         else:
@@ -1540,7 +1554,7 @@ async def _schedule_system_reboot(system_identifier: str, token: str, ctx: Conte
         # uyuni's scheduleReboot API returns an integer action ID directly in 'result'
         if isinstance(api_result, int):
             action_id = api_result
-            action_detail_url = f"{CONFIG['UYUNI_SERVER']}/rhn/schedule/ActionDetails.do?aid={action_id}"
+            action_detail_url = _get_action_url(action_id)
             success_message = f"System reboot successfully scheduled. Action URL: {action_detail_url}"
             logger.info(success_message)
             return success_message

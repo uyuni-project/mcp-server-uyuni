@@ -18,7 +18,7 @@ class HTTPError(APIError):
     """
 
     def __init__(self, status_code: int, url: str, body: str | None = None):
-        msg = f"HTTP error {status_code} for {url}. Response body: {body!r}"
+        msg = f"Uyuni API request failed with HTTP {status_code} at {url}. Response body: {body!r}"
         super().__init__(msg)
         self.status_code = status_code
         self.url = url
@@ -42,11 +42,11 @@ class NetworkError(APIError):
     def __init__(self, url: str, original: Exception | None = None, timed_out: bool = False):
         if timed_out:
             msg = (
-                f"Timeout while contacting Uyuni at {url}. This may indicate a long-running "
-                "action or network issues. Original: {original}"
+                f"Uyuni API request timed out at {url}. This may indicate a long-running "
+                f"action or network issues. Original: {original}"
             )
         else:
-            msg = f"Network error while contacting Uyuni at {url}: {original}"
+            msg = f"Uyuni API request failed due to a network error at {url}. Original: {original}"
         super().__init__(msg)
         self.url = url
         self.original = original
@@ -63,7 +63,7 @@ class UnexpectedResponse(APIError):
     """
 
     def __init__(self, url: str, response: str | None = None):
-        msg = f"Unexpected response from Uyuni at {url}: {response!r}"
+        msg = f"Uyuni API returned an unexpected response at {url}: {response!r}"
         super().__init__(msg)
         self.url = url
         self.response = response

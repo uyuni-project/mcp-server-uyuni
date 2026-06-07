@@ -1,5 +1,4 @@
-import inspect
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Literal, Optional
 import httpx
 
 from .logging_config import get_logger
@@ -22,43 +21,69 @@ class UyuniApi:
         self.verify = verify
         self.timeout = timeout or httpx.Timeout(30.0, connect=10.0)
 
+
+async def _authenticate_client(
+    client: httpx.AsyncClient,
+    token: Optional[str] = None,
+    error_context: Optional[str] = None,
+) -> None:
+    """Authenticate an AsyncClient using token (OIDC) or username/password."""
+    login_url = CONFIG["UYUNI_SERVER"] + '/rhn/manager/api/login'
+
+    try:
+        if token:
+            login_url = CONFIG["UYUNI_SERVER"] + '/rhn/manager/api/oidcLogin'
+            response = await client.post(
+                login_url,
+                headers={"Authorization": f"Bearer {token}"}
+            )
+        elif CONFIG["UYUNI_USER"] and CONFIG["UYUNI_PASS"]:
+            response = await client.post(
+                login_url,
+                json={"login": CONFIG["UYUNI_USER"], "password": CONFIG["UYUNI_PASS"]}
+            )
+        else:
+            logger.warning(
+                "Skipping authentication%s: no token and no username/password configured.",
+                f" for {error_context}" if error_context else "",
+            )
+            return
+
+        response.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        status = e.response.status_code if e.response is not None else None
+        body = e.response.text if e.response is not None else ''
+        request_url = getattr(e.request, 'url', login_url)
+
+        if error_context is None:
+            logger.error(f"HTTP error during login: {request_url} - {status} - {body}")
+        else:
+            logger.error(f"HTTP error during login for {error_context}: {request_url} - {status} - {body}")
+
+        if status in (401, 403):
+            raise AuthError(status, login_url, body)
+        raise HTTPError(status or -1, login_url, body)
+    except httpx.RequestError as e:
+        request_url = getattr(e.request, 'url', login_url)
+
+        if error_context is None:
+            logger.exception(f"Request error during login: {request_url} - {e}")
+        else:
+            logger.exception(f"Request error during login for {error_context}: {request_url} - {e}")
+
+        raise NetworkError(login_url, e)
+
 async def login(client: httpx.AsyncClient, token: Optional[str] = None) -> None:
     """
     Authenticate the given AsyncClient against Uyuni.
     After this call the client holds a session cookie that can be reused
     for subsequent requests without re-logging in.
     """
-    try:
-        if token:
-            response = await client.post(
-                CONFIG["UYUNI_SERVER"] + '/rhn/manager/api/oidcLogin',
-                headers={"Authorization": f"Bearer {token}"}
-            )
-        elif CONFIG["UYUNI_USER"] and CONFIG["UYUNI_PASS"]:
-            response = await client.post(
-                CONFIG["UYUNI_SERVER"] + '/rhn/manager/api/login',
-                json={"login": CONFIG["UYUNI_USER"], "password": CONFIG["UYUNI_PASS"]}
-            )
-        else:
-            logger.warning("login() called but no token or username/password available; skipping.")
-            return
-        response.raise_for_status()
-    except httpx.HTTPStatusError as e:
-        status = e.response.status_code if e.response is not None else None
-        body = e.response.text if e.response is not None else ''
-        logger.error(f"HTTP error during login: {getattr(e.request, 'url', '')} - {status} - {body}")
-        from .errors import AuthError, HTTPError
-        if status in (401, 403):
-            raise AuthError(status, str(getattr(e.request, 'url', '')), body)
-        raise HTTPError(status or -1, str(getattr(e.request, 'url', '')), body)
-    except httpx.RequestError as e:
-        logger.exception(f"Request error during login: {getattr(e.request, 'url', '')} - {e}")
-        from .errors import NetworkError
-        raise NetworkError(getattr(e.request, 'url', ''), e)
+    await _authenticate_client(client, token=token)
 
 async def call(
     client: httpx.AsyncClient,
-    method: str,
+    method: Literal["GET", "POST"],
     api_path: str,
     error_context: str,
     token: Optional[str] = None,
@@ -73,9 +98,14 @@ async def call(
     Handles login, request execution, error handling, and basic response parsing.
     """
 
+    if method not in ("GET", "POST"):
+        raise APIError(
+            f"Unsupported HTTP method '{method}'. Expected 'GET' or 'POST'."
+        )
+
     # Safety check: Do not allow POST requests if write tools are disabled.
     # This acts as a secondary guard after the @write_tool decorator.
-    if method.upper() == 'POST' and not CONFIG["UYUNI_MCP_WRITE_TOOLS_ENABLED"]:
+    if method == 'POST' and not CONFIG["UYUNI_MCP_WRITE_TOOLS_ENABLED"]:
         error_msg = (
             f"Attempted to call a write API ({api_path}) while write tools are disabled. "
             "Please set UYUNI_MCP_WRITE_TOOLS_ENABLED to 'true' to enable them."
@@ -85,47 +115,24 @@ async def call(
 
     full_api_url = CONFIG["UYUNI_SERVER"] + api_path
     if perform_login:
-        try:
-            if token:
-                # Try OIDC login with provided token
-                login_response = await client.post(
-                    CONFIG["UYUNI_SERVER"] + '/rhn/manager/api/oidcLogin',
-                    headers={"Authorization": f"Bearer {token}"}
-                )
-                login_response.raise_for_status()
-            elif CONFIG["UYUNI_USER"] and CONFIG["UYUNI_PASS"]:
-                login_response = await client.post(
-                    CONFIG["UYUNI_SERVER"] + '/rhn/manager/api/login',
-                    json={"login": CONFIG["UYUNI_USER"], "password": CONFIG["UYUNI_PASS"]}
-                )
-                login_response.raise_for_status()
-            else:
-                logger.warning(f"perform_login=True but no token or username/password available for {error_context}; skipping login.")
-        except httpx.HTTPStatusError as e:
-            status = e.response.status_code if e.response is not None else None
-            body = e.response.text if e.response is not None else ''
-            logger.error(f"HTTP error during login for {error_context}: {getattr(e.request,'url',full_api_url)} - {status} - {body}")
-            if status in (401, 403):
-                raise AuthError(status, str(getattr(e.request, 'url', full_api_url)), body)
-            raise HTTPError(status or -1, str(getattr(e.request, 'url', full_api_url)), body)
-        except httpx.RequestError as e:
-            logger.exception(f"Request error during login for {error_context}: {getattr(e.request,'url',full_api_url)} - {e}")
-            raise NetworkError(getattr(e.request, 'url', full_api_url), e)
+        await _authenticate_client(
+            client,
+            token=token,
+            error_context=error_context,
+        )
 
     try:
-        method_upper = method.upper()
-        if method_upper == 'GET':
-            logger.info(f"GETting from {full_api_url}")
-            response = await client.get(full_api_url, params=params)
-            logger.debug(f"GET response status: {response.status_code}")
-            logger.debug(f"GET response text: {response.text}")
-        elif method_upper == 'POST':
-            logger.info(f"POSTing to {full_api_url}")
-            response = await client.post(full_api_url, json=json_body, params=params)
-            logger.debug(f"POST response status: {response.status_code}")
-            logger.debug(f"POST response text: {response.text}")
-        else:
-            raise APIError(f"Unsupported HTTP method '{method}' for {error_context}.")
+        logger.info(f"{method} request to {full_api_url}")
+
+        response = await client.request(
+            method=method,
+            url=full_api_url,
+            params=params,
+            json=json_body,
+        )
+
+        logger.debug(f"{method} response status: {response.status_code}")
+        logger.debug(f"{method} response text: {response.text}")
 
         response.raise_for_status()
 
@@ -150,23 +157,40 @@ async def call(
     except httpx.HTTPStatusError as e:
         status = e.response.status_code if e.response is not None else None
         body = e.response.text if e.response is not None else ''
-        logger.error(f"HTTP error occurred while {error_context}: {getattr(e.request,'url',full_api_url)} - {status} - {body}")
+        request_url = getattr(e.request, "url", full_api_url)
+        logger.error(
+            f"HTTP error occurred while {error_context}: "
+            f"{request_url} - {status} - {body}"
+        )
         if status in (401, 403):
-            raise AuthError(status, str(getattr(e.request, 'url', full_api_url)), body)
-        raise HTTPError(status or -1, str(getattr(e.request, 'url', full_api_url)), body)
+            raise AuthError(status, full_api_url, body)
+        raise HTTPError(status or -1, full_api_url, body)
+
     except httpx.TimeoutException as e:
         logger.debug(f"Timeout! timeout expected? {expect_timeout}")
+        request_url = getattr(e.request, "url", full_api_url)
         if expect_timeout:
-            logger.info(f"A timeout occurred while {error_context} (expected for a long-running action): {getattr(e.request,'url',full_api_url)} - {e}")
+            logger.info(
+                f"A timeout occurred while {error_context} "
+                f"(expected for a long-running action): {request_url} - {e}"
+            )
             return TIMEOUT_HAPPENED
-        logger.warning(f"A timeout occurred while {error_context}: {getattr(e.request,'url',full_api_url)} - {e}")
-        raise NetworkError(getattr(e.request, 'url', full_api_url), e, timed_out=True)
+        logger.warning(
+            f"A timeout occurred while {error_context}: {request_url} - {e}"
+        )
+        raise NetworkError(full_api_url, e, timed_out=True)
+
     except httpx.RequestError as e:
-        logger.exception(f"Request error occurred while {error_context}: {getattr(e.request,'url',full_api_url)} - {e}")
-        raise NetworkError(getattr(e.request, 'url', full_api_url), e)
+        request_url = getattr(e.request, "url", full_api_url)
+        logger.exception(
+            f"Request error occurred while {error_context}: {request_url} - {e}"
+        )
+        raise NetworkError(full_api_url, e)
+
     except UnexpectedResponse:
         # Propagate API-specific failures unchanged
         raise
-    except Exception as e: # Catch other potential errors like JSONDecodeError
+
+    except Exception as e:  # Catch other potential errors like JSONDecodeError
         logger.exception(f"An unexpected error occurred while {error_context}: {e}")
         raise APIError(f"Unexpected error while {error_context}: {e}")

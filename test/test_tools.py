@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, AsyncMock, patch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-os.environ.setdefault("UYUNI_SERVER", "mock-server.local")
+os.environ.setdefault("UYUNI_SERVER", "https://mock-server.local")
 os.environ.setdefault("UYUNI_USER", "mock-user")
 os.environ.setdefault("UYUNI_PASS", "mock-pass")
 os.environ.setdefault("UYUNI_MCP_WRITE_TOOLS_ENABLED", "true")
@@ -349,6 +349,7 @@ async def test_schedule_specific_update(mock_uyuni, mock_ctx):
 
     result = await server._schedule_specific_update(system_id, errata_id, mock_ctx, "mock_token")
     assert "successfully scheduled" in result
+    assert f"{base_url}/rhn/schedule/ActionDetails.do?aid=12345" in result
     assert route.called
 
     payload = json.loads(route.calls.last.request.content)
@@ -377,6 +378,7 @@ async def test_schedule_pending_updates_to_system(mock_uyuni, mock_ctx):
 
     result = await server._schedule_pending_updates_to_system(system_id, "mock_token", mock_ctx)
     assert "successfully scheduled" in result
+    assert f"{base_url}/rhn/schedule/ActionDetails.do?aid=12345" in result
     assert route_schedule.called
 
     payload = json.loads(route_schedule.calls.last.request.content)
@@ -412,6 +414,7 @@ async def test_schedule_system_reboot(mock_uyuni, mock_ctx):
 
     result = await server._schedule_system_reboot(system_id, "mock_token", mock_ctx)
     assert "successfully scheduled" in result
+    assert f"{base_url}/rhn/schedule/ActionDetails.do?aid=12346" in result
     assert route_reboot.called
 
 @pytest.mark.asyncio
@@ -854,6 +857,7 @@ async def test_api_error_500(mock_uyuni):
     with pytest.raises(HTTPError) as excinfo:
         await server._list_systems("mock_token")
     assert excinfo.value.status_code == 500
+    assert f"{base_url}/rhn/manager/api/system/listSystems" in str(excinfo.value)
 
 @pytest.mark.asyncio
 async def test_auth_failure_401(mock_uyuni):
@@ -865,6 +869,7 @@ async def test_auth_failure_401(mock_uyuni):
     with pytest.raises(AuthError) as excinfo:
         await server._list_systems("mock_token")
     assert excinfo.value.status_code == 401
+    assert f"{base_url}/rhn/manager/api/oidcLogin" in str(excinfo.value)
 
 @pytest.mark.asyncio
 async def test_add_system_already_exists(mock_uyuni, mock_ctx, monkeypatch):
@@ -949,6 +954,7 @@ async def test_resolve_system_id_by_name_multiple_found(mock_uyuni, mock_ctx):
     with pytest.raises(UnexpectedResponse) as excinfo:
         await server._get_system_details(name, mock_ctx, "mock_token")
     assert "Multiple systems found" in str(excinfo.value)
+    assert f"{base_url}/rhn/manager/api/system/getId" in str(excinfo.value)
 
 @pytest.mark.asyncio
 async def test_malformed_api_response(mock_uyuni):

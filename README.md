@@ -70,7 +70,7 @@ Create a file (e.g., `uyuni-config.env`) to store your environment variables. Yo
 # Required fields
 #
 # Basic API parameters
-UYUNI_SERVER=192.168.1.124:8443
+UYUNI_SERVER=https://192.168.1.124:8443
 
 # Optional fields
 #
@@ -94,7 +94,7 @@ UYUNI_MCP_PORT=8080
 UYUNI_MCP_PUBLIC_URL=http://127.0.0.1:8080
 
 # OAuth 2.0 authorization server
-UYUNI_AUTH_SERVER=auth.example.com
+UYUNI_AUTH_SERVER=https://auth.example.com
 
 # Set the path for the server log file. Defaults to logging to the console.
 UYUNI_MCP_LOG_FILE_PATH=/var/log/mcp-server-uyuni.log
@@ -175,7 +175,7 @@ Pre-built container images are available on the GitHub Container Registry. Refer
           "command": "docker",
           "args": [
             "run", "-i", "--rm",
-            "-e", "UYUNI_SERVER=192.168.1.124:8443",
+            "-e", "UYUNI_SERVER=https://192.168.1.124:8443",
             "-e", "UYUNI_USER=admin",
             "-e", "UYUNI_PASS=admin",
             "ghcr.io/uyuni-project/mcp-server-uyuni:VERSION"
@@ -196,7 +196,7 @@ UYUNI_MCP_TRANSPORT=http
 UYUNI_MCP_HOST=0.0.0.0 # Or a specific interface
 UYUNI_MCP_PORT=8080
 UYUNI_MCP_PUBLIC_URL=https://mcp.example.com # Client-facing MCP base URL used for OAuth discovery
-UYUNI_AUTH_SERVER=auth.example.com
+UYUNI_AUTH_SERVER=https://auth.example.com
 ```
 
 `UYUNI_MCP_HOST` controls where the server binds. `UYUNI_MCP_PUBLIC_URL` controls the URL advertised to OAuth-capable clients. Do not set the public URL to `0.0.0.0`.
