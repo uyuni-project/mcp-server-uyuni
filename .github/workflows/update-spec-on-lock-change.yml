@@ -23,7 +23,7 @@ jobs:
           # Reads the python version from your .python-version file
           python-version-file: '.python-version'
       - name: Set up uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
 
       - name: Run pydeps.py to update spec file
         run: uv run python release/pydeps.py release/packages/mlm/python-mcp-server-mlm/python-mcp-server-mlm.spec
