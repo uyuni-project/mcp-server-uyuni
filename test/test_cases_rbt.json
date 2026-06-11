@@ -11,19 +11,8 @@
     }
   },
   {
-    "id": "TC-RBT-002_confirm_request",
-    "prompt": "Can you schedule a reboot for system {rhlike_minion_name}?",
-    "expected_output": "Return a message requiring confirmation",
-    "geval_config": {
-      "evaluation_steps": [
-        "Check if the output requests confirmation to schedule a reboot.",
-        "Verify the system name in the confirmation request matches the requested system."
-      ]
-    }
-  },
-  {
-    "id": "TC-RBT-003_confirmed",
-    "prompt": "Can you schedule a reboot for system {rhlike_minion_name}?, confirmation set to true",
+    "id": "TC-RBT-002",
+    "prompt": "Schedule a reboot for system {rhlike_minion_name}.",
     "expected_output": "Return a message that system reboot has been successfully scheduled and give the URL of the action details.",
     "geval_config": {
       "evaluation_steps": [
@@ -33,8 +22,8 @@
     }
   },
   {
-    "id": "TC-RBT-004",
-    "prompt": "Schedule a reboot for system 999999999 with confirmation.",
+    "id": "TC-RBT-003",
+    "prompt": "Schedule a reboot for system 999999999.",
     "expected_output": "Returns an empty string or error message; no action scheduled.",
     "geval_config": {
       "evaluation_steps": [

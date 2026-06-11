@@ -22,7 +22,6 @@ from pydantic import BaseModel
 
 from fastmcp.server.middleware import Middleware, MiddlewareContext
 from fastmcp import FastMCP, Context
-from mcp import types
 
 from .constants import Transport, AdvisoryType
 from .logging_config import get_logger
@@ -34,11 +33,12 @@ from .errors import (
     NotFoundError
 )
 from .utils import (
-    to_bool,
     normalize_pagination,
     build_list_meta,
     paginate_items,
     matches_optional_filter,
+    client_supports_elicitation,
+    elicit_approval,
 )
 
 class ActivationKeySchema(BaseModel):
@@ -1000,13 +1000,12 @@ async def summarize_fleet_updates(
     )
 
 @write_tool()
-async def schedule_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
+async def schedule_pending_updates_to_system(system_identifier: Union[str, int], ctx: Context) -> str:
     """Schedule all pending updates for one system.
 
-    Inputs: `system_identifier` (`system_name` or `system_id`); optional `confirm`.
+    Inputs: `system_identifier` (`system_name` or `system_id`).
     Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
-    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise scheduled action URL or error text.
-    Call once with `confirm=false`, then call again with `confirm=true`.
+    Returns: scheduled action URL or error text.
     """
     msg = f"Attempting to apply pending updates for system ID: {system_identifier}"
     logger.info(msg)
@@ -1014,13 +1013,15 @@ async def schedule_pending_updates_to_system(system_identifier: Union[str, int],
 
     token = await extract_token(ctx)
 
-    return await _schedule_pending_updates_to_system(system_identifier, token, ctx, confirm)
+    return await _schedule_pending_updates_to_system(system_identifier, token, ctx)
 
 
-async def _schedule_pending_updates_to_system(system_identifier: Union[str, int], token: str, ctx: Context, confirm: Union[bool, str] = False) -> str:
-    is_confirmed = to_bool(confirm)
-    if not is_confirmed:
-        return f"CONFIRMATION REQUIRED: This will apply pending updates to the system {system_identifier}.  Do you confirm?"
+async def _schedule_pending_updates_to_system(system_identifier: Union[str, int], token: str, ctx: Context) -> str:
+    if not await elicit_approval(
+        ctx,
+        f"This will apply pending updates to system {system_identifier}. Continue?",
+    ):
+        return "Operation cancelled."
 
     update_info = await _get_system_updates(
         system_identifier=system_identifier,
@@ -1077,13 +1078,12 @@ async def _schedule_pending_updates_to_system(system_identifier: Union[str, int]
 
 
 @write_tool()
-async def schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, confirm: Union[bool, str] = False) -> str:
+async def schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context) -> str:
     """Schedule one specific update for one system.
 
-    Inputs: `system_identifier` (`system_name` or `system_id`), `errata_id`; optional `confirm`.
+    Inputs: `system_identifier` (`system_name` or `system_id`), `errata_id`.
     Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
-    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise scheduled action URL or error text.
-    Call once with `confirm=false`, then call again with `confirm=true`.
+    Returns: scheduled action URL or error text.
     """
     log_string = f"Attempting to apply specific update (errata ID: {errata_id}) to system ID: {system_identifier}"
     logger.info(log_string)
@@ -1091,12 +1091,10 @@ async def schedule_specific_update(system_identifier: Union[str, int], errata_id
 
     token = await extract_token(ctx)
 
-    return await _schedule_specific_update(system_identifier, errata_id, ctx, token, confirm)
+    return await _schedule_specific_update(system_identifier, errata_id, ctx, token)
 
 
-async def _schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, token: str, confirm: Union[bool, str] = False) -> str:
-    is_confirmed = to_bool(confirm)
-
+async def _schedule_specific_update(system_identifier: Union[str, int], errata_id: Union[str, int], ctx: Context, token: str) -> str:
     try:
         errata_id_int = int(errata_id)
     except (ValueError, TypeError):
@@ -1106,8 +1104,11 @@ async def _schedule_specific_update(system_identifier: Union[str, int], errata_i
 
     logger.info(f"Attempting to apply specific update (errata ID: {errata_id}) to system: {system_identifier}")
 
-    if not is_confirmed:
-        return f"CONFIRMATION REQUIRED: This will apply specific update (errata ID: {errata_id}) to the system {system_identifier}. Do you confirm?"
+    if not await elicit_approval(
+        ctx,
+        f"This will apply update {errata_id_int} to system {system_identifier}. Continue?",
+    ):
+        return "Operation cancelled."
 
     async with _make_client() as client:
         # The API expects a list of errata IDs, even if it's just one.
@@ -1139,8 +1140,8 @@ async def _schedule_specific_update(system_identifier: Union[str, int], errata_i
 
 @write_tool(description=f"""
     Register a new system in {product} via SSH bootstrap.
-    Inputs: `host`; optional `activation_key`, `ssh_port`, `ssh_user`, `proxy_id`, `salt_ssh`, `confirm`.
-    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
+    Inputs: `host`; optional `activation_key`, `ssh_port`, `ssh_user`, `proxy_id`, `salt_ssh`.
+    Returns: success or error message.
     Requires `UYUNI_SSH_PRIV_KEY` on the server.
     """)
 async def add_system(
@@ -1151,7 +1152,6 @@ async def add_system(
     ssh_user: str = "root",
     proxy_id: int = None,
     salt_ssh: bool = False,
-    confirm: Union[bool, str] = False,
 ) -> str:
     log_string = f"Attempting to add system ID: {host}"
     logger.info(log_string)
@@ -1159,7 +1159,7 @@ async def add_system(
 
     token = await extract_token(ctx)
 
-    return await _add_system(host, token, ctx, activation_key, ssh_port, ssh_user, proxy_id, salt_ssh, confirm)
+    return await _add_system(host, token, ctx, activation_key, ssh_port, ssh_user, proxy_id, salt_ssh)
 
 async def _add_system(
     host: str,
@@ -1170,15 +1170,12 @@ async def _add_system(
     ssh_user: str = "root",
     proxy_id: int = None,
     salt_ssh: bool = False,
-    confirm: Union[bool, str] = False,
 ) -> str:
     log_string = f"Attempting to add system ID: {host}"
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = to_bool(confirm)
-
-    if ctx.session.check_client_capability(types.ClientCapabilities(elicitation=types.ElicitationCapability())):
+    if client_supports_elicitation(ctx):
         # Check for activation key
         if not activation_key:
             logger.info("Activation key not provided, prompting user for input.")
@@ -1204,8 +1201,11 @@ async def _add_system(
             await ctx.info(message)
             return message
 
-    if not is_confirmed:
-        return f"CONFIRMATION REQUIRED: This will add system {host} with activation key {activation_key} to {product}. Do you confirm?"
+    if not await elicit_approval(
+        ctx,
+        f"This will add system {host} to {product}. Continue?",
+    ):
+        return "Operation cancelled."
 
     ssh_priv_key_raw = os.environ.get('UYUNI_SSH_PRIV_KEY')
     if not ssh_priv_key_raw:
@@ -1260,23 +1260,21 @@ async def _add_system(
 
 @write_tool(description=f"""
     Remove a system from {product}.
-    Inputs: `system_identifier` (`system_name` or `system_id`); optional `cleanup`, `confirm`.
+    Inputs: `system_identifier` (`system_name` or `system_id`); optional `cleanup`.
     Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
-    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
+    Returns: success or error message.
     This is a destructive operation.
     """)
-async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanup: bool = True, confirm: Union[bool, str] = False) -> str:
+async def remove_system(system_identifier: Union[str, int], ctx: Context, cleanup: bool = True) -> str:
     log_string = f"Attempting to remove system with id {system_identifier}"
     logger.info(log_string)
     await ctx.info(log_string)
 
     token = await extract_token(ctx)
-    return await _remove_system(system_identifier, ctx, token, cleanup, confirm)
+    return await _remove_system(system_identifier, ctx, token, cleanup)
 
 
-async def _remove_system(system_identifier: Union[str, int], ctx: Context, token: str, cleanup: bool = True, confirm: Union[bool, str] = False) -> str:
-    is_confirmed = to_bool(confirm)
-
+async def _remove_system(system_identifier: Union[str, int], ctx: Context, token: str, cleanup: bool = True) -> str:
     system_id = await _resolve_system_id(system_identifier, ctx, token)
 
     # Check if the system exists before proceeding
@@ -1286,9 +1284,14 @@ async def _remove_system(system_identifier: Union[str, int], ctx: Context, token
         logger.warning(message)
         return message
 
-    if not is_confirmed:
-        return (f"CONFIRMATION REQUIRED: This will permanently remove system {system_id} from {product}. "
-                f"Client-side cleanup is currently {'ENABLED' if cleanup else 'DISABLED'}. Do you confirm?")
+    if not await elicit_approval(
+        ctx,
+        (
+            f"This will permanently remove system {system_id} from {product}. "
+            f"Cleanup is {'enabled' if cleanup else 'disabled'}. Continue?"
+        ),
+    ):
+        return "Operation cancelled."
 
     cleanup_type = "FORCE_DELETE" if cleanup else "NO_CLEANUP"
 
@@ -1490,13 +1493,12 @@ async def _list_systems_needing_reboot(
     }
 
 @write_tool()
-async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context, confirm: Union[bool, str] = False) -> str:
+async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context) -> str:
     """Schedule an immediate reboot for one system.
 
-    Inputs: `system_identifier` (`system_name` or `system_id`); optional `confirm`.
+    Inputs: `system_identifier` (`system_name` or `system_id`).
     Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
-    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise reboot action URL or error text.
-    Call once with `confirm=false`, then call again with `confirm=true`.
+    Returns: reboot action URL or error text.
     """
     log_string = f"Schedule system reboot for system {system_identifier}"
     logger.info(log_string)
@@ -1504,15 +1506,16 @@ async def schedule_system_reboot(system_identifier: Union[str, int], ctx:Context
 
     token = await extract_token(ctx)
 
-    return await _schedule_system_reboot(system_identifier, token, ctx, confirm)
+    return await _schedule_system_reboot(system_identifier, token, ctx)
 
-async def _schedule_system_reboot(system_identifier: Union[str, int], token: str, ctx: Context, confirm: Union[bool, str] = False) -> str:
-    is_confirmed = to_bool(confirm)
-
+async def _schedule_system_reboot(system_identifier: Union[str, int], token: str, ctx: Context) -> str:
     system_id = await _resolve_system_id(system_identifier, ctx, token)
 
-    if not is_confirmed:
-        return f"CONFIRMATION REQUIRED: This will reboot system {system_identifier}. Do you confirm?"
+    if not await elicit_approval(
+        ctx,
+        f"This will reboot system {system_identifier}. Continue?",
+    ):
+        return "Operation cancelled."
 
     schedule_reboot_path = '/rhn/manager/api/system/scheduleReboot'
 
@@ -1628,30 +1631,30 @@ async def _list_all_scheduled_actions(
     }
 
 @write_tool()
-async def cancel_action(action_id: int, ctx: Context, confirm: Union[bool, str] = False) -> str:
+async def cancel_action(action_id: int, ctx: Context) -> str:
     """Cancel a scheduled action.
 
-    Inputs: `action_id`; optional `confirm`.
-    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
-    Call once with `confirm=false`, then call again with `confirm=true`.
+    Inputs: `action_id`.
+    Returns: success or error message.
     """
     log_string = f"Cancel action {action_id}"
     logger.info(log_string)
     await ctx.info(log_string)
 
     token = await extract_token(ctx)
-    return await _cancel_action(action_id, token, confirm)
+    return await _cancel_action(action_id, token, ctx)
 
-async def _cancel_action(action_id: int, token: str, confirm: Union[bool, str] = False) -> str:
-    is_confirmed = to_bool(confirm)
-
+async def _cancel_action(action_id: int, token: str, ctx: Context) -> str:
     cancel_actions_path = '/rhn/manager/api/schedule/cancelActions'
 
     if not isinstance(action_id, int): # Basic type check, though FastMCP might handle this
         return "Invalid action ID provided. Must be an integer."
 
-    if not is_confirmed:
-        return f"CONFIRMATION REQUIRED: This will schedule action {action_id} to be canceled. Do you confirm?"
+    if not await elicit_approval(
+        ctx,
+        f"This will cancel action {action_id}. Continue?",
+    ):
+        return "Operation cancelled."
 
     async with _make_client() as client:
         payload = {"actionIds": [action_id]} # API expects a list
@@ -1782,25 +1785,25 @@ async def _list_system_groups(token: str, ctx: Context) -> List[Dict[str, str]]:
 @write_tool(description=f"""
     Create a new system group in {product}.
 
-    Inputs: `name`; optional `description`, `confirm`.
+    Inputs: `name`; optional `description`.
     System groups in {product} are flat (no nesting).
-    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
-    Call once with `confirm=false`, then call again with `confirm=true`.
+    Returns: success or error message.
     """)
-async def create_system_group(name: str, ctx: Context, description: str = "", confirm: Union[bool, str] = False) -> str:
+async def create_system_group(name: str, ctx: Context, description: str = "") -> str:
     log_string = f"Creating system group '{name}'"
     logger.info(log_string)
     await ctx.info(log_string)
 
     token = await extract_token(ctx)
-    return await _create_system_group(name, token, description, confirm)
+    return await _create_system_group(name, token, ctx, description)
 
 
-async def _create_system_group(name: str, token: str, description: str = "", confirm: Union[bool, str] = False) -> str:
-    is_confirmed = to_bool(confirm)
-
-    if not is_confirmed:
-        return f"CONFIRMATION REQUIRED: This will create a new system group named '{name}' with description '{description}'. Do you confirm?"
+async def _create_system_group(name: str, token: str, ctx: Context, description: str = "") -> str:
+    if not await elicit_approval(
+        ctx,
+        f"This will create system group '{name}'. Continue?",
+    ):
+        return "Operation cancelled."
 
     create_group_path = '/rhn/manager/api/systemgroup/create'
 
@@ -1869,26 +1872,24 @@ async def _list_group_systems(group_name: str, token: str) -> List[Dict[str, Any
     return filtered_systems
 
 @write_tool()
-async def add_systems_to_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context, confirm: Union[bool, str] = False) -> str:
+async def add_systems_to_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context) -> str:
     """Add systems to a group.
 
-    Inputs: `group_name`, `system_identifiers`; optional `confirm`.
-    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
-    Call once with `confirm=false`, then call again with `confirm=true`.
+    Inputs: `group_name`, `system_identifiers`.
+    Returns: success or error message.
     """
-    return await _manage_group_systems(group_name, system_identifiers, True, ctx, confirm)
+    return await _manage_group_systems(group_name, system_identifiers, True, ctx)
 
 @write_tool()
-async def remove_systems_from_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context, confirm: Union[bool, str] = False) -> str:
+async def remove_systems_from_group(group_name: str, system_identifiers: List[Union[str, int]], ctx: Context) -> str:
     """Remove systems from a group.
 
-    Inputs: `group_name`, `system_identifiers`; optional `confirm`.
-    Returns: `CONFIRMATION REQUIRED...` when `confirm=false`; otherwise success or error message.
-    Call once with `confirm=false`, then call again with `confirm=true`.
+    Inputs: `group_name`, `system_identifiers`.
+    Returns: success or error message.
     """
-    return await _manage_group_systems(group_name, system_identifiers, False, ctx, confirm)
+    return await _manage_group_systems(group_name, system_identifiers, False, ctx)
 
-async def _manage_group_systems(group_name: str, system_identifiers: List[Union[str, int]], add: bool, ctx: Context, confirm: Union[bool, str] = False) -> str:
+async def _manage_group_systems(group_name: str, system_identifiers: List[Union[str, int]], add: bool, ctx: Context) -> str:
     """
     Internal helper to add or remove systems from a group.
     """
@@ -1897,11 +1898,13 @@ async def _manage_group_systems(group_name: str, system_identifiers: List[Union[
     logger.info(log_string)
     await ctx.info(log_string)
 
-    is_confirmed = to_bool(confirm)
     token = await extract_token(ctx)
 
-    if not is_confirmed:
-        return f"CONFIRMATION REQUIRED: This will {action_str[0]} {len(system_identifiers)} systems {action_str[1]} group '{group_name}'. Do you confirm?"
+    if not await elicit_approval(
+        ctx,
+        f"This will {action_str[0]} {len(system_identifiers)} systems {action_str[1]} group '{group_name}'. Continue?",
+    ):
+        return "Operation cancelled."
 
     # Resolve all system IDs in parallel
     resolved_sid_values = await asyncio.gather(

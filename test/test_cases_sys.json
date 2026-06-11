@@ -65,7 +65,7 @@
   {
     "id": "TC-SYS-007",
     "prompt": "Create a new system group named 'test-group-2' with description 'Test Group Description'.",
-    "expected_output": "CONFIRMATION REQUIRED: This will create a new system group named 'test-group-2' with description 'Test Group Description'. Do you confirm?",
+    "expected_output": "Successfully created system group 'test-group-2'.",
     "expected_tools": [
       {
         "name": "create_system_group",
@@ -77,15 +77,10 @@
     ],
     "geval_config": {
       "evaluation_steps": [
-        "Check if the output is asking for confirmation to create a system group.",
+        "Check if the output confirms successful creation.",
         "Verify the group name in the output is 'test-group-2'.",
-        "Verify the description in the output is 'Test Group Description'."
+        "If the description is included, verify it is 'Test Group Description'."
       ]
     }
-  },
-  {
-    "id": "TC-SYS-008",
-    "prompt": "Create a new system group named 'test-group-2' with description 'Test Group Description'. Confirm yes.",
-    "expected_output": "Successfully created system group 'test-group-2'."
   }
 ]

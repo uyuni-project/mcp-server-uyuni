@@ -76,11 +76,9 @@ This stateful pause makes it significantly more difficult for a client to bypass
 
 ### Fallback Mechanism
 
-Since elicitation is a recent addition to the MCP specification, not all clients support it. Therefore, tools in this server **must** implement both mechanisms:
-1.  Check if the client supports elicitation. If so, use `ctx.elicit()` for confirmations or to request missing data.
-2.  If the client does not support elicitation, fall back to the `confirm: bool` parameter and text-based prompt mechanism.
+Many clients including autonomous agents do not support elicitation. In this server, tools should use elicitation when the client advertises it.
 
-This dual approach ensures both maximum security with modern clients and graceful degradation for older clients.
+If a client does not support elicitation, the server assumes the client is responsible for any confirmation UX it wants to provide before invoking a destructive tool. In other words, the request is treated as already authorized by the client, and the operation proceeds without an extra round-trip.
 
 ## SSH Private Key Management (`add_system` tool)
 

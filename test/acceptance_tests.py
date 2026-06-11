@@ -27,13 +27,11 @@ Your task is to determine if the 'Actual Output' from the tool meets the criteri
 
 4.  **Descriptive Expectations:** The 'Expected Output' might be a description of the desired result (e.g., "Returns a list of dicts", "Returns an empty dict"). In this case, you must verify that the 'Actual Output' is a valid representation of that description. For example, if the expectation is "Returns an empty list", an actual output of `[]` is a PASS.
 
-5.  **Confirmation Prompts:** If the 'Expected Output' contains "CONFIRMATION REQUIRED", the 'Actual Output' does not need to contain that exact phrase. Instead, it must semantically ask the user for confirmation to proceed with the action. For example, "Do you want to continue?" is a valid confirmation prompt.
+5.  **Dynamic Content:** If the 'Expected Output' contains placeholders like "...'", it means the beginning of the 'Actual Output' should match the part before the placeholder.
 
-6.  **Dynamic Content:** If the 'Expected Output' contains placeholders like "...'", it means the beginning of the 'Actual Output' should match the part before the placeholder.
+6.  **Skip thinking:** Skip any reasoning or thinking process in your response. Skip any content between <think> and </think>.
 
-7.  **Skip thinking:** Skip any reasoning or thinking process in your response. Skip any content between <think> and </think>.
-
-8.  **Ignore Thinking Steps in Actual Output:** If the 'Actual Output' contains thinking steps (e.g., content within <think>...</think> tags), ignore them. Evaluate the test based only on the final output.
+7.  **Ignore Thinking Steps in Actual Output:** If the 'Actual Output' contains thinking steps (e.g., content within <think>...</think> tags), ignore them. Evaluate the test based only on the final output.
 
 **Input for Evaluation:**
 
