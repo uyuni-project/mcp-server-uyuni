@@ -30,6 +30,7 @@ jobs:
 
       - name: Create Pull Request with updated spec file
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        id: cpr
         with:
           # The token is automatically provided by GitHub
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -44,3 +45,21 @@ jobs:
           labels: "dependencies, automation"
           reviewers: ${{ !endsWith(github.actor, '[bot]') && github.actor || '' }}
           sign-commits: true
+
+      - name: Create issue for dependency review
+        if: steps.cpr.outputs.pull-request-number != ''
+        uses: peter-evans/create-issue@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: "review packages dependencies"
+          body: |
+            Python dependencies have changed in `uv.lock`.
+
+            Please review the auto-generated PR: ${{ steps.cpr.outputs.pull-request-url }}
+
+            Also, review the RPM dependencies in the build service: https://build.opensuse.org/project/show/systemsmanagement:Uyuni:AI
+
+            ### Definition of Done
+            - [ ] Dependencies updated in GitHub (PR merged)
+            - [ ] Dependencies updated in build.opensuse.org
+          labels: "dependencies, automation"
