@@ -11,12 +11,19 @@ RPM_NAME_MAP = {
     # Mapping from PyPI name to RPM package name suffix (e.g., "authlib" -> "Authlib")
     "authlib": "Authlib",
     "markupsafe": "MarkupSafe",
+    "jaraco-classes": "jaraco.classes",
+    "jaraco-context": "jaraco.context",
+    "jaraco-functools": "jaraco.functools",
+    "pyjwt": "PyJWT",
     "pyyaml": "PyYAML",
     "werkzeug": "Werkzeug",
+    "secretstorage": "SecretStorage"
 }
 
 RPM_SPECIAL_REQUIRES_MAP = {
     # Special cases for packages that don't follow the %{python_module ...} macro convention
+    # e.g. backports-tarfile -> python311-backports.tarfile
+    "backports-tarfile": "%{pythons}-backports.tarfile",
     "python-dotenv": "%{pythons}-python-dotenv",
     "python-multipart": "%{pythons}-python-multipart",
 }
@@ -83,7 +90,8 @@ class SpecUpdater:
         }
 
         all_deps = set()
-        worklist = list(main_project.get('dependencies', []))
+        worklist = list(main_project.get('dependencies', []))  # Start with main dependencies
+
         processed = {dep['name'] for dep in worklist}
 
         while worklist:
@@ -101,6 +109,16 @@ class SpecUpdater:
                 continue
 
             all_deps.add(dep_name)
+
+            # If the dependency requests extras, add those optional dependencies to the worklist
+            if 'extra' in dep:
+                optional_deps_of_dep = dep_details.get('optional-dependencies', {})
+                for extra_name in dep['extra']:
+                    for extra_dep in optional_deps_of_dep.get(extra_name, []):
+                        if extra_dep['name'] not in processed:
+                            processed.add(extra_dep['name'])
+                            worklist.append(extra_dep)
+
             for sub_dep in dep_details.get('dependencies', []):
                 if sub_dep['name'] not in processed:
                     processed.add(sub_dep['name'])
