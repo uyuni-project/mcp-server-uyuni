@@ -637,18 +637,6 @@ wheels = [
 ]
 
 [[package]]
-name = "fastmcp"
-version = "3.3.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "fastmcp-slim", extra = ["client", "server"] },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3b/a9/5c5a01b6abd5346bf60b97cfd29e4a86661940c27dd562bfcda07fd03519/fastmcp-3.3.1.tar.gz", hash = "sha256:979362ea557de42a5f40342563c7e4b236bcc8e7cd192715f50030695d1a71cd", size = 28681699, upload-time = "2026-05-15T15:50:39.673Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9f/11/6b1bdada6ccfe647d615ae63f9106f8136aec17971e9361546af01c7d38e/fastmcp-3.3.1-py3-none-any.whl", hash = "sha256:862440c5c4d281363a5995eee59d77f0f7cac1f18869038729cecf03b02fc522", size = 7903, upload-time = "2026-05-15T15:50:36.424Z" },
-]
-
-[[package]]
 name = "fastmcp-slim"
 version = "3.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -666,14 +654,6 @@ wheels = [
 ]
 
 [package.optional-dependencies]
-client = [
-    { name = "authlib" },
-    { name = "exceptiongroup" },
-    { name = "httpx" },
-    { name = "mcp" },
-    { name = "opentelemetry-api" },
-    { name = "py-key-value-aio", extra = ["filetree", "keyring", "memory"] },
-]
 server = [
     { name = "authlib" },
     { name = "cyclopts" },
@@ -1303,10 +1283,8 @@ name = "mcp-server-uyuni"
 version = "0.5.2"
 source = { editable = "." }
 dependencies = [
-    { name = "fastmcp" },
+    { name = "fastmcp-slim", extra = ["server"] },
     { name = "httpx" },
-    { name = "mcp" },
-    { name = "pathable" },
     { name = "pydantic" },
 ]
 
@@ -1321,10 +1299,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastmcp", specifier = "==3.3.1" },
+    { name = "fastmcp-slim", extras = ["server"], specifier = "==3.3.1" },
     { name = "httpx" },
-    { name = "mcp" },
-    { name = "pathable", specifier = "==0.6.0" },
     { name = "pydantic" },
 ]
 
