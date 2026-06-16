@@ -11,12 +11,17 @@ RPM_NAME_MAP = {
     # Mapping from PyPI name to RPM package name suffix (e.g., "authlib" -> "Authlib")
     "authlib": "Authlib",
     "markupsafe": "MarkupSafe",
+    "jaraco-classes": "jaraco.classes",
+    "jaraco-context": "jaraco.context",
+    "jaraco-functools": "jaraco.functools",
     "pyyaml": "PyYAML",
     "werkzeug": "Werkzeug",
 }
 
 RPM_SPECIAL_REQUIRES_MAP = {
     # Special cases for packages that don't follow the %{python_module ...} macro convention
+    # e.g. backports-tarfile -> python311-backports.tarfile
+    "backports-tarfile": "%{pythons}-backports.tarfile",
     "python-dotenv": "%{pythons}-python-dotenv",
     "python-multipart": "%{pythons}-python-multipart",
 }
