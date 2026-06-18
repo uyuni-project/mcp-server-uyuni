@@ -105,7 +105,7 @@ Requires:       %{python_module typing-extensions = 4.15.0}
 Requires:       %{python_module typing-inspection = 0.4.2}
 Requires:       %{python_module uncalled-for = 0.2.0}
 Requires:       %{python_module uvicorn = 0.40.0}
-Requires:       %{python_module watchfiles = 1.2.0}
+Requires:       %{python_module watchfiles = 1.1.1}
 Requires:       %{python_module websockets = 16.0}
 Requires:       %{python_module zipp = 4.1.0}
 # End
