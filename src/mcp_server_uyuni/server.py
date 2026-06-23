@@ -96,7 +96,7 @@ class AuthTokenMiddleware(Middleware):
         else:
             logger.debug("No Authorization header found in the request.")
 
-        fastmcp_ctx.set_state('token', token)
+        await fastmcp_ctx.set_state('token', token)
         result = await call_next(ctx)
         return result
 

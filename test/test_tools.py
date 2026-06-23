@@ -987,14 +987,14 @@ async def test_auth_middleware_extracts_token():
     mock_ctx = MagicMock()
     # Mock the nested structure: ctx.fastmcp_context.request_context.request.headers
     mock_ctx.fastmcp_context.request_context.request.headers = {'authorization': 'Bearer my-token'}
-    mock_ctx.fastmcp_context.set_state = MagicMock()
+    mock_ctx.fastmcp_context.set_state = AsyncMock()
 
     async def call_next(ctx):
         return "ok"
 
     await middleware.on_call_tool(mock_ctx, call_next)
 
-    mock_ctx.fastmcp_context.set_state.assert_called_with('token', 'my-token')
+    mock_ctx.fastmcp_context.set_state.assert_awaited_once_with('token', 'my-token')
 
 @pytest.mark.asyncio
 async def test_auth_middleware_missing_header():
@@ -1002,14 +1002,14 @@ async def test_auth_middleware_missing_header():
 
     mock_ctx = MagicMock()
     mock_ctx.fastmcp_context.request_context.request.headers = {}
-    mock_ctx.fastmcp_context.set_state = MagicMock()
+    mock_ctx.fastmcp_context.set_state = AsyncMock()
 
     async def call_next(ctx):
         return "ok"
 
     await middleware.on_call_tool(mock_ctx, call_next)
 
-    mock_ctx.fastmcp_context.set_state.assert_called_with('token', None)
+    mock_ctx.fastmcp_context.set_state.assert_awaited_once_with('token', None)
 
 @pytest.mark.asyncio
 async def test_auth_middleware_malformed_header():
@@ -1017,14 +1017,14 @@ async def test_auth_middleware_malformed_header():
 
     mock_ctx = MagicMock()
     mock_ctx.fastmcp_context.request_context.request.headers = {'authorization': 'Basic user:pass'}
-    mock_ctx.fastmcp_context.set_state = MagicMock()
+    mock_ctx.fastmcp_context.set_state = AsyncMock()
 
     async def call_next(ctx):
         return "ok"
 
     await middleware.on_call_tool(mock_ctx, call_next)
 
-    mock_ctx.fastmcp_context.set_state.assert_called_with('token', None)
+    mock_ctx.fastmcp_context.set_state.assert_awaited_once_with('token', None)
 
 def test_main_cli_stdio(monkeypatch):
     monkeypatch.setitem(server.CONFIG, "UYUNI_MCP_TRANSPORT", "stdio")
