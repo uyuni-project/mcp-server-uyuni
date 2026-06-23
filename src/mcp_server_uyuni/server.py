@@ -1061,7 +1061,7 @@ async def _schedule_pending_updates_to_system(system_identifier: str, token: str
     await ctx.info(msg)
 
     async with _make_client() as client:
-        payload = {"sid": int(system_id), "errataIds": errata_ids}
+        payload = {"sid": int(system_id), "errataIds": errata_ids, "allowModules": True}
         api_result = await call_uyuni_api(
             client=client,
             method="POST",
@@ -1116,7 +1116,7 @@ async def _schedule_specific_update(system_identifier: str, errata_id: Union[str
 
     async with _make_client() as client:
         # The API expects a list of errata IDs, even if it's just one.
-        payload = {"sid": int(system_id), "errataIds": [errata_id_int]}
+        payload = {"sid": int(system_id), "errataIds": [errata_id_int], "allowModules": True}
         api_result = await call_uyuni_api(
             client=client,
             method="POST",

@@ -351,6 +351,11 @@ async def test_schedule_specific_update(mock_uyuni, mock_ctx):
     assert "successfully scheduled" in result
     assert route.called
 
+    payload = json.loads(route.calls.last.request.content)
+    assert payload['sid'] == system_id
+    assert payload['errataIds'] == [errata_id]
+    assert payload['allowModules'] is True
+
 @pytest.mark.asyncio
 async def test_schedule_pending_updates_to_system(mock_uyuni, mock_ctx):
     base_url = server.CONFIG["UYUNI_SERVER"]
@@ -377,6 +382,7 @@ async def test_schedule_pending_updates_to_system(mock_uyuni, mock_ctx):
     payload = json.loads(route_schedule.calls.last.request.content)
     assert payload['sid'] == system_id
     assert payload['errataIds'] == [501]
+    assert payload['allowModules'] is True
 
 @pytest.mark.asyncio
 async def test_remove_system(mock_uyuni, mock_ctx):
