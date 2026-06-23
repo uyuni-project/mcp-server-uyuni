@@ -2,13 +2,13 @@
 # Use openSUSE Leap as the base, then install Python and uv.
 FROM opensuse/leap:latest AS builder
 
-# Install Python 3.11, pip, and build dependencies from openSUSE repositories.
+# Install Python 3.13, pip, and build dependencies from openSUSE repositories.
 RUN zypper -n --gpg-auto-import-keys ref && \
-    zypper -n in python311-pip python311-devel gcc && \
+    zypper -n in python313-pip python313-devel gcc && \
     zypper -n clean --all
 
 # Install uv using pip.
-RUN python3.11 -m pip install uv
+RUN python3.13 -m pip install uv
 
 WORKDIR /app
 
@@ -19,7 +19,7 @@ COPY pyproject.toml uv.lock ./
 # Create a virtual environment and install third-party dependencies into it.
 # We use --no-install-project because we will install the project itself in a later step.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv venv && \
+    uv venv --python /usr/bin/python3.13 && \
     . .venv/bin/activate && \
     uv sync --frozen --no-dev --no-editable --no-install-project
 
@@ -31,7 +31,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     . .venv/bin/activate && uv pip install . --no-deps
 # STAGE 2: Final Image
 FROM opensuse/leap:latest
-RUN zypper -n --gpg-auto-import-keys ref && zypper -n in python311 && zypper -n dup && zypper -n clean --all
+RUN zypper -n --gpg-auto-import-keys ref && zypper -n in python313 && zypper -n dup && zypper -n clean --all
 
 WORKDIR /app
  

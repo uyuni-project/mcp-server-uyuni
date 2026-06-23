@@ -1,12 +1,12 @@
 # Use openSUSE Leap as the base to match the production Dockerfile.
 FROM opensuse/leap:latest
 
-# Install Python 3.11, pip, uv, and build dependencies.
+# Install Python 3.13, pip, uv, and build dependencies.
 RUN zypper -n --gpg-auto-import-keys ref && \
-    zypper -n in python311-pip python311-devel gcc && \
+    zypper -n in python313-pip python313-devel gcc && \
     zypper -n clean --all
 
-RUN python3.11 -m pip install uv
+RUN python3.13 -m pip install uv
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ COPY pyproject.toml uv.lock ./
 
 # Create a virtual environment and install all dependencies, including dev dependencies for testing.
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv venv && \
+    uv venv --python /usr/bin/python3.13 && \
     . .venv/bin/activate && \
     uv sync --frozen --dev --no-install-project
 
