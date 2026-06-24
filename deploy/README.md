@@ -19,6 +19,7 @@ cp deploy/stack.env.example deploy/stack.env
 ```
 
 2. Edit `deploy/stack.env` and set:
+- `UYUNI_PUBLIC_HOSTNAME`
 - `UYUNI_MCP_PUBLIC_URL`
 - `KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD`
 
@@ -256,7 +257,7 @@ Use it when your client sends non-Keycloak DCR metadata and Keycloak rejects it.
 - Issuer mismatch errors:
   Re-check all issuer values in the alignment section.
 - MCP cannot reach Uyuni:
-  Confirm `UYUNI_SERVER=uyuni-server` and shared `uyuni` network.
+  Confirm that Uyuni is reachable at `uyuni-server` inside shared `uyuni` network.
 - Watch service logs during auth and tool calls:
 
 ```bash
