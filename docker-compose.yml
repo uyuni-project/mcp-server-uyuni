@@ -41,7 +41,11 @@ services:
       - uyuni
 
   keycloak:
-    image: quay.io/keycloak/keycloak:${KEYCLOAK_IMAGE_TAG:-26.1.4}
+    build:
+      context: ./deploy/keycloak
+      args:
+        KEYCLOAK_IMAGE_TAG: ${KEYCLOAK_IMAGE_TAG:-26.1.4}
+    image: mcp-server-uyuni-keycloak:local
     restart: unless-stopped
     ports:
       - "${KEYCLOAK_BIND_PORT:-8080}:8080"
@@ -61,7 +65,6 @@ services:
       KC_HOSTNAME_PORT: ${KEYCLOAK_PUBLIC_PORT:-8080}
     volumes:
       - keycloak-data:/opt/keycloak/data/h2
-      - ./deploy/keycloak/import:/opt/keycloak/data/import:ro,z
     networks:
       - uyuni
 
