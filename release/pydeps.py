@@ -16,6 +16,7 @@ RPM_NAME_MAP = {
     "jaraco-functools": "jaraco.functools",
     "pyyaml": "PyYAML",
     "werkzeug": "Werkzeug",
+    "secretstorage": "SecretStorage"
 }
 
 RPM_SPECIAL_REQUIRES_MAP = {
