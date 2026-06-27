@@ -14,6 +14,7 @@ RPM_NAME_MAP = {
     "jaraco-classes": "jaraco.classes",
     "jaraco-context": "jaraco.context",
     "jaraco-functools": "jaraco.functools",
+    "pyjwt": "PyJWT",
     "pyyaml": "PyYAML",
     "werkzeug": "Werkzeug",
     "secretstorage": "SecretStorage"
