@@ -64,10 +64,10 @@ def parse_package_metadata(raw_pkg_name, project_name):
     has_primary = pkg_clean.endswith(":primary")
     base_str = pkg_clean[:-8] if has_primary else pkg_clean
 
-    # Updated fallback string to reference the dynamic target project argument
     origin_repo = f"New Package from {project_name} (No suffix origin)"
     target_list = "standard"
     clean_name = base_str
+    suffix_used = None
 
     if base_str.endswith(".new"):
         target_list = "updates"
@@ -76,20 +76,20 @@ def parse_package_metadata(raw_pkg_name, project_name):
         
         suffix_match = re.search(r'\.(dlp|dlpb|dlpn|Mf|dtc)$', name_without_new)
         if suffix_match:
-            found_sfx = suffix_match.group(1)
+            suffix_used = suffix_match.group(1)
             clean_name = name_without_new[:suffix_match.start()]
-            origin_repo = f"Update for {SUFFIX_MAPPING[found_sfx]}"
+            origin_repo = f"Update for {SUFFIX_MAPPING[suffix_used]}"
         else:
             clean_name = name_without_new
     else:
         suffix_match = re.search(r'\.(dlp|dlpb|dlpn|Mf|dtc)$', base_str)
         if suffix_match:
-            found_sfx = suffix_match.group(1)
+            suffix_used = suffix_match.group(1)
             clean_name = base_str[:suffix_match.start()]
-            target_list = found_sfx
-            origin_repo = f"From {SUFFIX_MAPPING[found_sfx]}"
+            target_list = suffix_used
+            origin_repo = f"From {SUFFIX_MAPPING[suffix_used]}"
 
-    return clean_name, target_list, origin_repo
+    return clean_name, target_list, origin_repo, suffix_used
 
 def fetch_obs_spec(base_url, api_pkg_name):
     """Fetches the raw spec file content and version from OBS for a specific package."""
@@ -125,10 +125,11 @@ def evaluate_gitea_sync(gitea_url, headers, pkg_data, obs_hash):
         f_text, f_ver = get_gitea_spec_content_and_version(gitea_url, pkg_data['name'], "factory", headers)
         m_text, m_ver = get_gitea_spec_content_and_version(gitea_url, pkg_data['name'], "mlm-mcp-main", headers)
         
+        pkg_data["factory_version"] = f_ver if f_ver else "[Not Found/Empty]"
         f_hash = calculate_hash(f_text)
         m_hash = calculate_hash(m_text)
 
-        # 1. Check exact cryptographic layout match (handles macros)
+        # 1. Check exact cryptographic layout match
         if obs_hash and obs_hash == f_hash:
             return "factory_match"
         if obs_hash and obs_hash == m_hash:
@@ -144,7 +145,7 @@ def evaluate_gitea_sync(gitea_url, headers, pkg_data, obs_hash):
 
     return "mismatch_or_missing"
 
-def print_final_reports(gitea_lists, categorized_packages):
+def print_final_reports(gitea_lists, categorized_packages, build_service):
     """Outputs clear tabular synchronization breakdowns to stdout."""
     print("=" * 65)
     print(" GITEA REPOSITORY SYNC EVALUATIONS")
@@ -168,7 +169,21 @@ def print_final_reports(gitea_lists, categorized_packages):
     print("\n### Packages Mismatched (Must be updated to Gitea with a Pull Request) ###")
     if not gitea_lists["mismatch_or_missing"]: print("  [None]")
     for p in gitea_lists["mismatch_or_missing"]:
-        print(f"  {p['name']:<40} | OBS Target: {p['version']:<10} | Origin: {p['origin']}")
+        gitea_ver_str = ""
+        if "factory_version" in p:
+            gitea_ver_str = f" | Gitea Factory: {p['factory_version']:<10}"
+            
+        # Fetch the baseline version from the origin development repository if applicable
+        origin_ver_str = ""
+        if p.get("suffix") in SUFFIX_MAPPING:
+            origin_project = SUFFIX_MAPPING[p["suffix"]]
+            origin_base_url = f"https://{build_service}/public/source/{origin_project}"
+            # Look up package by its true non-suffixed name in its upstream repository
+            _, origin_ver = fetch_obs_spec(origin_base_url, p["name"])
+            if origin_ver and not origin_ver.startswith("["):
+                origin_ver_str = f" | Origin Repo Ver: {origin_ver:<10}"
+
+        print(f"  {p['name']:<40} | OBS Target: {p['version']:<10}{gitea_ver_str}{origin_ver_str} | Origin: {p['origin']}")
 
     print("\n### ERROR SUMMARY: Packages containing Raw Macros in OBS Version Definition (Must be updated to Gitea with a Pull Request) ###")
     if not categorized_packages["invalid_version"]: print("  [None]")
@@ -211,12 +226,13 @@ def get_project_packages_and_versions(project_name, build_service, gitea_host, g
             obs_text, obs_version = fetch_obs_spec(base_url, api_pkg_name)
             obs_hash = calculate_hash(obs_text)
 
-            # 2. Extract and sanitize package parameters (Now passing the project_name parameter)
-            clean_name, target_list, origin_repo = parse_package_metadata(pkg, project_name)
+            # 2. Extract and sanitize package parameters
+            clean_name, target_list, origin_repo, suffix_used = parse_package_metadata(pkg, project_name)
             
             package_data = {
                 "name": clean_name, "raw_name": pkg, "version": obs_version,
-                "origin": origin_repo, "has_macro": "%" in obs_version or "[" in obs_version
+                "origin": origin_repo, "suffix": suffix_used,
+                "has_macro": "%" in obs_version or "[" in obs_version
             }
 
             # 3. Handle list distributions
@@ -228,7 +244,7 @@ def get_project_packages_and_versions(project_name, build_service, gitea_host, g
             gitea_lists[gitea_key].append(package_data)
 
         sys.stderr.write(f"[Progress] Completed 100% ({total_count}/{total_count})\n\n")
-        print_final_reports(gitea_lists, categorized_packages)
+        print_final_reports(gitea_lists, categorized_packages, build_service)
         return gitea_lists, categorized_packages
 
     except Exception as e:
@@ -261,3 +277,4 @@ if __name__ == "__main__":
     
     sys.stderr.write("\n[HEALTH CHECK] PASSED: Sync ecosystem is 100% healthy.\n")
     sys.exit(0)
+
