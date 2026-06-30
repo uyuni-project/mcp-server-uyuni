@@ -5,11 +5,12 @@ services:
     image: mcp-server-uyuni:local
     restart: unless-stopped
     depends_on:
+      - uyuni-server-public
       - keycloak
     ports:
       - "${MCP_BIND_PORT:-8000}:8000"
     environment:
-      UYUNI_SERVER: ${UYUNI_SERVER:-uyuni-server}
+      UYUNI_SERVER: ${UYUNI_PUBLIC_HOSTNAME:-uyuni-server}
       UYUNI_MCP_TRANSPORT: http
       UYUNI_MCP_HOST: 0.0.0.0
       UYUNI_MCP_PORT: ${MCP_BIND_PORT:-8000}
@@ -24,6 +25,17 @@ services:
       UYUNI_SSH_PRIV_KEY_PASS: ${UYUNI_SSH_PRIV_KEY_PASS:-}
     networks:
       - uyuni
+
+  uyuni-server-public:
+    image: docker.io/alpine/socat:1.8.0.3
+    restart: unless-stopped
+    command:
+      - "TCP-LISTEN:443,fork,reuseaddr"
+      - "TCP:uyuni-server:443"
+    networks:
+      uyuni:
+        aliases:
+          - ${UYUNI_PUBLIC_HOSTNAME:-uyuni-server}
 
   keycloak-dcr-proxy:
     profiles:
@@ -41,7 +53,11 @@ services:
       - uyuni
 
   keycloak:
-    image: quay.io/keycloak/keycloak:${KEYCLOAK_IMAGE_TAG:-26.1.4}
+    build:
+      context: ./deploy/keycloak
+      args:
+        KEYCLOAK_IMAGE_TAG: ${KEYCLOAK_IMAGE_TAG:-26.1.4}
+    image: mcp-server-uyuni-keycloak:local
     restart: unless-stopped
     ports:
       - "${KEYCLOAK_BIND_PORT:-8080}:8080"
@@ -61,7 +77,6 @@ services:
       KC_HOSTNAME_PORT: ${KEYCLOAK_PUBLIC_PORT:-8080}
     volumes:
       - keycloak-data:/opt/keycloak/data/h2
-      - ./deploy/keycloak/import:/opt/keycloak/data/import:ro,z
     networks:
       - uyuni
 

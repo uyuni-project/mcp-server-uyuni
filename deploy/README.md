@@ -19,6 +19,7 @@ cp deploy/stack.env.example deploy/stack.env
 ```
 
 2. Edit `deploy/stack.env` and set:
+- `UYUNI_PUBLIC_HOSTNAME`
 - `UYUNI_MCP_PUBLIC_URL`
 - `KEYCLOAK_BOOTSTRAP_ADMIN_PASSWORD`
 
@@ -30,6 +31,8 @@ For most setups, leave everything else at defaults.
 docker compose --env-file deploy/stack.env up -d --build
 docker compose --env-file deploy/stack.env ps
 ```
+
+This builds a small Keycloak image that includes the realm import files from `deploy/keycloak/import`.
 
 4. Verify endpoints:
 
@@ -128,6 +131,8 @@ ssh -fnNT -L /tmp/remote-podman.sock:/run/podman/podman.sock <user>@<remote-host
 export DOCKER_HOST="unix:///tmp/remote-podman.sock"
 docker info
 ```
+
+The Keycloak realm import files are copied into the Keycloak image during `docker compose build`, so they are sent to the remote daemon with the build context. This avoids bind-mounting `./deploy/keycloak/import`, which would otherwise have to exist on the remote host filesystem.
 
 Cleanup when finished with deployment:
 
@@ -252,7 +257,7 @@ Use it when your client sends non-Keycloak DCR metadata and Keycloak rejects it.
 - Issuer mismatch errors:
   Re-check all issuer values in the alignment section.
 - MCP cannot reach Uyuni:
-  Confirm `UYUNI_SERVER=uyuni-server` and shared `uyuni` network.
+  Confirm that Uyuni is reachable at `uyuni-server` inside shared `uyuni` network.
 - Watch service logs during auth and tool calls:
 
 ```bash
