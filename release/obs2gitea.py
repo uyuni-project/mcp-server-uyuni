@@ -127,18 +127,51 @@ def load_product_submodules(product_repo_path):
         path = match.group(2)
         basename = os.path.basename(path.rstrip("/"))
 
-        submodules[path] = commit
-        submodules[basename] = commit
+        submodule_data = {"commit": commit, "path": path}
+        submodules[path] = submodule_data
+        submodules[basename] = submodule_data
 
-    sys.stderr.write(f"[product-repo] Loaded {len(submodules)} submodule references from git tree\n")
+    sys.stderr.write(
+        f"[product-repo] Loaded {len(set(s['commit'] for s in submodules.values()))} "
+        "submodule references from git tree\n"
+    )
     return submodules
 
 
-def find_product_submodule_commit(pkg_name, product_submodules):
+def find_product_submodule(pkg_name, product_submodules):
     for candidate in normalize_python_package_name(pkg_name):
         if candidate in product_submodules:
             return product_submodules[candidate]
     return None
+
+
+def read_local_submodule_spec_version(product_repo_path, submodule_path):
+    if not product_repo_path or not submodule_path:
+        return None
+
+    submodule_dir = os.path.join(product_repo_path, submodule_path)
+
+    if not os.path.isdir(submodule_dir):
+        return None
+
+    try:
+        spec_file = next(
+            (filename for filename in os.listdir(submodule_dir) if filename.endswith(".spec")),
+            None,
+        )
+
+        if not spec_file:
+            return None
+
+        spec_path = os.path.join(submodule_dir, spec_file)
+        with open(spec_path, "r", encoding="utf-8", errors="ignore") as f:
+            return extract_spec_version(f.read())
+
+    except Exception as e:
+        sys.stderr.write(
+            f"[product-repo] Error reading spec from {submodule_path}: {e}\n"
+        )
+        return None
 
 
 def get_gitea_spec_content_and_version(gitea_url, repo_name, ref, headers):
@@ -247,26 +280,24 @@ def attach_uv_lock_status(pkg_data, uv_lock_versions):
     pkg_data["uv_lock_mismatch"] = bool(uv_version and uv_version != pkg_data["version"])
 
 
-def attach_product_submodule_status(gitea_url, headers, pkg_data, product_submodules):
+def attach_product_submodule_status(pkg_data, product_submodules, product_repo_path):
     if not product_submodules:
         return
 
-    commit = find_product_submodule_commit(pkg_data["name"], product_submodules)
+    submodule = find_product_submodule(pkg_data["name"], product_submodules)
 
-    if not commit:
+    if not submodule:
         pkg_data["product_submodule_commit"] = "[Not Found]"
         pkg_data["product_submodule_version"] = "[Not Found]"
         pkg_data["product_submodule_mismatch"] = True
         return
 
+    commit = submodule["commit"]
+    path = submodule["path"]
+
     pkg_data["product_submodule_commit"] = commit[:12]
 
-    _, product_ver = get_gitea_spec_content_and_version(
-        gitea_url,
-        pkg_data["name"],
-        commit,
-        headers,
-    )
+    product_ver = read_local_submodule_spec_version(product_repo_path, path)
 
     pkg_data["product_submodule_version"] = product_ver if product_ver else "[Not Found]"
     pkg_data["product_submodule_mismatch"] = product_ver != pkg_data["version"]
@@ -517,10 +548,9 @@ def get_project_packages_and_versions(
 
             attach_uv_lock_status(package_data, uv_lock_versions)
             attach_product_submodule_status(
-                gitea_url,
-                gitea_headers,
                 package_data,
                 product_submodules,
+                product_repo_path,
             )
 
             list_key = "invalid_version" if package_data["has_macro"] else target_list
