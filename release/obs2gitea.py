@@ -107,12 +107,19 @@ def load_product_submodules(product_repo_path):
     if not product_repo_path:
         return {}
 
-    output = run_git_command(product_repo_path, ["submodule", "status", "--recursive"])
+    output = run_git_command(product_repo_path, ["ls-tree", "-r", "HEAD"])
     submodules = {}
 
     for line in output.splitlines():
         line = line.strip()
-        match = re.match(r"^[ +-U]?([0-9a-f]{40})\s+([^\s]+)", line)
+
+        # Example:
+        # 160000 commit ed9b4eff... python-fastmcp
+        match = re.match(
+            r"^160000\s+commit\s+([0-9a-f]{40}|[0-9a-f]{64})\s+(.+)$",
+            line,
+        )
+
         if not match:
             continue
 
@@ -123,7 +130,7 @@ def load_product_submodules(product_repo_path):
         submodules[path] = commit
         submodules[basename] = commit
 
-    sys.stderr.write(f"[product-repo] Loaded {len(submodules)} submodule references\n")
+    sys.stderr.write(f"[product-repo] Loaded {len(submodules)} submodule references from git tree\n")
     return submodules
 
 
