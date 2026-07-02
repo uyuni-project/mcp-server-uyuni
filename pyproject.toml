@@ -24,7 +24,8 @@ dev-dependencies = [
     "pytest-asyncio>=0.26.0",
     "respx>=0.22.0",
     "deepeval==3.8.9",
-    "google-genai"
+    "google-genai",
+    "requests>=2.33.1",
 ]
 # For a flat layout with mcp_server_uyuni.py in the root,
 # Hatchling's auto-detection will find it when 'packages' is omitted.
