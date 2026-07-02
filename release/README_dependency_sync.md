@@ -436,3 +436,147 @@ Default runtime dependencies in uv.lock
 
 When the invariant fails, the checker should show exactly which layer is out of sync and what action should be taken next.
 
+
+## Testing Product Submodules Against `factory`
+
+The product repository pins each package repository as a Git submodule at an exact commit. In normal product builds, the submodules should point to commits from the product-specific package branch, for example `mlm-mcp-main`.
+
+The `factory` branch should not be used as the final product state. It is useful as a diagnostic baseline:
+
+```text
+OBS staging is based on Factory
+        ↓
+test product submodules locally against factory
+        ↓
+if sync is fixed, rebase/update mlm-mcp-main from factory
+        ↓
+automation opens the product PR updating submodule pointers
+```
+
+### Inspecting the current state
+
+From the product repository:
+
+```bash
+git status
+git submodule status --recursive
+git diff --submodule
+```
+
+`git submodule status` prefixes are useful:
+
+```text
+<space>  matches the commit pinned by the product
++        local submodule checkout differs from the pinned product commit
+-        submodule is not initialized
+U        submodule conflict
+```
+
+Initialize submodules if needed:
+
+```bash
+git submodule update --init --recursive
+```
+
+### Testing whether `factory` would fix the sync
+
+To test one package locally, move only the local submodule checkout to `origin/factory`:
+
+```bash
+cd python-fastmcp
+git fetch origin
+git checkout origin/factory
+grep -i "^Version:" python-fastmcp.spec
+cd ..
+```
+
+Now the product repository should show the submodule as locally modified:
+
+```bash
+git status
+git diff --submodule
+```
+
+Run the dependency synchronization checker:
+
+```bash
+python dependency_sync_check.py <OBS_PROJECT> \
+  --uv-lock /path/to/uv.lock \
+  --product-repo .
+```
+
+If the mismatch disappears, that means the product-specific branch is behind Factory. The fix is **not** to commit the product submodule pointing directly to `factory`; the fix is to update/rebase the package’s product branch, for example `mlm-mcp-main`, from `factory`.
+
+### Testing all submodules against `factory`
+
+This is useful to estimate whether rebasing the product package branches from Factory would solve the current sync drift.
+
+```bash
+git submodule update --init --recursive
+
+git submodule foreach --recursive '
+  git fetch origin &&
+  git checkout origin/factory
+'
+```
+
+Then run:
+
+```bash
+git status
+git diff --submodule
+
+python dependency_sync_check.py <OBS_PROJECT> \
+  --uv-lock /path/to/uv.lock \
+  --product-repo .
+```
+
+If the checker improves or passes, the next step is to update the corresponding `mlm-mcp-main` branches in the package pool from `factory`.
+
+### Returning to the product-pinned state
+
+The `factory` checkout test is local only. To discard it and return all submodules to the commits currently pinned by the product:
+
+```bash
+git submodule update --init --recursive
+```
+
+For a single submodule:
+
+```bash
+git submodule update --init python-fastmcp
+```
+
+### Promoting the real fix
+
+Once the local `factory` test confirms the expected versions, update the relevant package branches in the pool.
+
+Conceptually:
+
+```bash
+cd <package-repo>
+git fetch origin
+git checkout mlm-mcp-main
+git rebase origin/factory
+git push
+```
+
+or, depending on the team workflow, merge/cherry-pick the required Factory commits into `mlm-mcp-main`.
+
+After the package branch is updated, the product automation should create a PR that updates the product submodule pointer to the new commit on `mlm-mcp-main`.
+
+The product should only be committed once the submodule pointer references the intended product branch state and the dependency synchronization checker passes.
+
+### Removing an obsolete submodule
+
+Only remove a submodule after confirming that it is not required by the product build closure.
+
+```bash
+git submodule deinit -f python-old-package
+git rm -f python-old-package
+git commit -m "Remove obsolete python-old-package submodule"
+git push
+```
+
+This removes the submodule reference from the product repository and `.gitmodules`. It does not delete the source repository from the package pool.
+
