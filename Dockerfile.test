@@ -1,6 +1,8 @@
 # Use openSUSE Leap as the base to match the production Dockerfile.
 FROM opensuse/tumbleweed:latest
 
+ENV PATH "$PATH:/root/.local/bin"
+
 # Install Python 3.13, pip, uv, and build dependencies.
 RUN zypper -n --gpg-auto-import-keys ref && \
     zypper -n in python313-pip python313-pipx python313-devel gcc && \
