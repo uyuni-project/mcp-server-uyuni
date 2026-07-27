@@ -19,30 +19,82 @@ To run any tests that perform write actions, the UYUNI_MCP_WRITE_TOOLS_ENABLED e
 |--------------|-----------------------|--------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------|-----------------------------------------------------------------------------------------|
 | TC-ADV-001   | Elicitation           | Trigger elicitation for activation key in `add_system` | Verify that when `add_system` is called without an activation key, a compatible client (e.g., VS Code) prompts the user for the key, and the system is added successfully after providing it. | Pass ✅         | Client-specific test. Not automated due to lack of elicitation support in the test harness. |
 
-
 ## Running Automated Acceptance Tests
 
-The test cases in this document have been automated in the `test/acceptance_tests.py` script. This script uses an LLM-as-a-judge to evaluate the results.
+The acceptance test cases in this document are automated using the **DeepEval** framework. To ensure an isolated and reproducible execution environment, tests are run inside a Docker container (used both locally and in CI pipelines).
 
-To run the tests, use the following command from the project root:
+The test suite is defined in `test/test_deepeval.py` and outputs results in JUnit XML format.
+
+> **Note on Model Selection:** Do not use `flash-lite` model variants for acceptance testing. While `flash-lite` is optimized for fast conversational responses, it is prone to hallucinations during complex agent executions. Use `google:gemini-2.5-flash`, which is specifically optimized for Model Context Protocol (MCP) and reliable tool interaction.
+
+### Prerequisites
+
+1. **Docker**: Ensure Docker with the `buildx` plugin is installed.
+2. **Secrets Configuration**: Create an environment secrets file at `$HOME/.ai_secrets` containing required credentials and sensitive settings:
+   ```env
+   GOOGLE_API_KEY="your-google-api-key"
+   UYUNI_USER="your-uyuni-username"
+   UYUNI_PASS="your-uyuni-password"
+   UYUNI_SSH_PRIV_KEY="your-ssh-private-key"
+   UYUNI_SSH_PRIV_KEY_PASS="your-ssh-key-passphrase"
+   UYUNI_OAUTH_CLIENT_SECRET="your-oauth-client-secret"
+   ```
+3. **Target Environment Configuration**: Ensure the `.venv/config` file exists with the necessary MCP and server settings.
+
+### Execution Steps
+
+#### 1. Build the Docker Image
+Build the testing container using `Dockerfile.test` from the root of the project:
 
 ```bash
-uv run python3 test/acceptance_tests.py [OPTIONS]
+docker build -f Dockerfile.test -t acceptance-tests:latest .
 ```
 
-**Note:** If you are using a Google Gemini model (the default for both testing and judging), make sure to set the `GOOGLE_API_KEY` environment variable:
+#### 2. Set Up Environment Configuration
+Generate or update the `.venv/config` file with your target server parameters:
 
 ```bash
-export GOOGLE_API_KEY="your-api-key-here"
+cat <<EOF> .venv/config
+UYUNI_SERVER=uyuni-server.example.com
+UYUNI_MCP_WRITE_TOOLS_ENABLED=true
+UYUNI_MCP_TRANSPORT=stdio
+UYUNI_MCP_LOG_FILE_PATH=/tmp/mcp-server-uyuni.log
+UYUNI_MCP_LOG_LEVEL=DEBUG
+UYUNI_MCP_SSL_VERIFY=true
+EOF
 ```
 
-### Options
+#### 3. Run the Test Suite
+Execute the test container by passing the models, config mounts, and secrets:
 
-You can customize the test run with the following command-line arguments. If you do not specify them, the script will use the defaults.
+```bash
+docker run --rm \
+  --env-file .venv/config \
+  -e AGENT_MODEL="google:gemini-2.5-flash" \
+  -e JUDGE_MODEL="google:gemini-2.5-flash" \
+  --env-file $HOME/.ai_secrets \
+  -v $(pwd)/results:/app/results \
+  -v $(pwd)/test/test_config.json:/app/test_config.json \
+  --network=host \
+  acceptance-tests:latest -s test/test_deepeval.py --junit-xml=results/test_results_all.VERSION.xml
+```
 
-*   `--config <path>`: Path to the `config.json` file (default: `config.json`).
-*   `--model <model_name>`: The model to use for running the test prompts (default: `google:gemini-2.5-flash`).
-*   `--judge-model <model_name>`: The model to use for evaluating the test results. Defaults to the test model.
+### Configuration Parameters & Environment Variables
+
+| Variable / Parameter | Description |
+| :--- | :--- |
+| `AGENT_MODEL` | Target model evaluated by the test suite (default: `google:gemini-2.5-flash`). |
+| `JUDGE_MODEL` | Evaluator model used by DeepEval (default: `google:gemini-2.5-flash`). |
+| `GOOGLE_API_KEY` | API key required for Gemini model calls. |
+| `UYUNI_SERVER` | Target host or domain for the Uyuni server instance (e.g., `uyuni-server.example.com`). |
+| `UYUNI_USER` / `UYUNI_PASS` | Authentication credentials for the Uyuni server. |
+| `UYUNI_SSH_PRIV_KEY` | Private SSH key for server access. |
+| `UYUNI_SSH_PRIV_KEY_PASS` | Passphrase for the SSH private key (if applicable). |
+| `UYUNI_OAUTH_CLIENT_SECRET` | Secret token for OAuth authentication. |
+| `UYUNI_MCP_SSL_VERIFY` | Toggles SSL certificate validation for MCP connections (`true`/`false`). |
+| `$HOME/.ai_secrets` | Path to environment file holding API keys and sensitive credentials. |
+| `.venv/config` | Path to environment file holding MCP server target settings. |
+| `-v .../results` | Mounts local directory to capture test logs and `--junit-xml` outputs. |
 
 ## How to Update for a New Tag/Release
 
@@ -55,7 +107,7 @@ You can customize the test run with the following command-line arguments. If you
     *   `Blocked`: The test case could not be executed (e.g., due to an external dependency or an unresolved bug in another area).
     *   `N/A`: The test case is not applicable to this version.
 5.  Commit this `TEST_CASES.md` file with a message like "Update manual test statuses for v1.0.1".
-6.  Run the automated tests with "--output-file test/results/test_results_foo.vx.y.z.json". Replace `foo` with the feature to test and `vx.y.z` with the new version.
-7.  Add the tests result file to git and commit with a message like "Update automatic test results for v1.0.1".
+6.  Run the automated tests with "--junit-xml=results/test_results_all.VERSION.xml". Replace `VERSION` with the new version.
+7.  Add the tests result file to git and commit with a message like "Update automatic test results for vVERSION".
 8.  Push the changes to GitHub.
 
