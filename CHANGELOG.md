@@ -1,3 +1,55 @@
+## 0.6.0 (2026-07-27)
+
+### Security
+
+* **deps:** upgrade `fastmcp` to 3.3.1 to patch CVE-2026-32871, CVE-2026-27124, and CVE-2025-64340
+* **deps:** upgrade `lupa` to patch CVE-2026-34444
+* **deps:** update `cryptography` to 46.0.7 to resolve Dependabot security alerts (#12, #22)
+* **deps:** update `authlib` to 1.6.12 to resolve Dependabot security alerts (#13, #15, #16, #17)
+* **deps:** update core Python dependencies (`urllib3`, `aiohttp`, `requests`, `python-multipart`, `idna`, `certifi`) to address indirect security advisories and maintain compatibility
+
+### Features
+
+* **auth:** enable PKCE in Keycloak and harden auth config contract
+* **core:** optimize context usage with pagination and update query tools
+* **core:** add configurable HTTP timeout
+* **core:** share login authentication across concurrent API calls
+* **elicitation:** use elicitation mechanisms to confirm write actions
+* **deploy:** add local Keycloak dev stack, realm import, and deployment stack
+* **deploy:** add public Uyuni hostname routing via socat
+
+### Bug Fixes
+
+* **api:** fix scheduling updates for Red Hat-like systems
+* **auth:** await FastMCP context `set_state` in middleware
+* **logging:** prevent duplicate log entries
+* **tools:** remove `union` types from tool signatures
+* **docker:** update Uyuni image Dockerfiles to use Python 3.13
+
+### Refactoring & Infrastructure
+
+* **auth:** refactor token extraction and system ID resolution helper methods
+* **utils:** split utility modules by domain functionality
+
+### Testing & Quality Assurance
+
+* **e2e:** implement E2E testing framework using DeepEval
+* **eval:** improve evaluation agentic loop with multi-turn data accumulation
+* **oauth2:** add acceptance tests and headless OIDC flow for CI integration
+* **testsuite:** reword prompts to direct instructions and update test configurations
+
+### CI/CD & DevOps
+
+* **ci:** add multi-arch container image builds (`amd64` + `arm64`)
+* **ci:** generate container image provenance attestations and SBOMs
+* **ci:** pin GitHub Actions to commit SHAs for supply-chain security
+* **deps:** add Python dependency monitoring to Dependabot and automate spec file updates
+
+### Documentation
+
+* **docs:** add OAuth2 setup instructions, Keycloak realm details, and architecture diagrams to `deploy/README.md`
+* **docs:** explicitly describe confirmation behavior and shorten MCP tool descriptions
+
 ## 0.5.2 (2026-02-09)
 
 ### Bug Fixes
