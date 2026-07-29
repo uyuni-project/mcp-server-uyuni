@@ -4,6 +4,7 @@ import os
 import warnings
 import re
 import asyncio
+from pathlib import Path
 import glob
 from google import genai
 from google.genai import types
@@ -98,11 +99,25 @@ def remove_additional_properties(schema: dict) -> dict:
 async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list]:
     if not model:
         model = os.environ.get("AGENT_MODEL", "gemini-2.5-flash-lite")
-    server_params = StdioServerParameters(
-        command="uv",
-        args=["run", "mcp-server-uyuni"],
-        env={**os.environ, "UYUNI_MCP_WRITE_TOOLS_ENABLED": "true"}
-    )
+
+    config_path = Path("/app/config.json")
+    if config_path.exists():
+        # Container mode: Read command from config.json
+        with open(config_path, 'r') as f:
+            mcp_config = json.load(f)
+        server_config = mcp_config.get("mcpServers", {}).get("mcp-server-uyuni", {})
+        command = server_config.get("command")
+        args = server_config.get("args", [])
+        if not command:
+            raise ValueError("`command` not found in /app/config.json for mcp-server-uyuni")
+        server_params = StdioServerParameters(command=command, args=args, env=os.environ)
+    else:
+        # Branch mode: Run from source using uv
+        server_params = StdioServerParameters(
+            command="uv",
+            args=["run", "mcp-server-uyuni"],
+            env={**os.environ, "UYUNI_MCP_WRITE_TOOLS_ENABLED": "true"}
+        )
 
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
