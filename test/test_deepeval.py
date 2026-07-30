@@ -110,6 +110,7 @@ async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list
         args = server_config.get("args", [])
         if not command:
             raise ValueError("`command` not found in /app/config.json for mcp-server-uyuni")
+        print(f"Starting MCP server with command: {command} and args: {args}")
         server_params = StdioServerParameters(command=command, args=args, env=os.environ)
     else:
         # Branch mode: Run from source using uv
