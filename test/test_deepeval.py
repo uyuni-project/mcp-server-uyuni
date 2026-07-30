@@ -114,6 +114,7 @@ async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list
         server_params = StdioServerParameters(command=command, args=args, env=os.environ)
     else:
         # Branch mode: Run from source using uv
+        print("Starting MCP server in branch mode using 'uv run mcp-server-uyuni'")
         server_params = StdioServerParameters(
             command="uv",
             args=["run", "mcp-server-uyuni"],
