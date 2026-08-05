@@ -1954,6 +1954,52 @@ async def _manage_group_systems(group_name: str, system_identifiers: List[str], 
             msg = f"Failed to {action_str[0]} systems. Check server logs. (API Result: {api_result})"
             logger.error(msg)
 
+@write_tool()
+async def schedule_apply_highstate_system(system_identifier: str, ctx: Context) -> str:
+    """Schedule application of a Salt highstate to one system.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`; prefer `system_id`).
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Best for action ID of the highstate task.
+    Returns: action ID of the highstate task`.
+    """
+
+    log_string = f"Scheduling highstate for {system_identifier}"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    token = await extract_token(ctx)
+
+    return await _schedule_apply_highstate_system(system_identifier, token, ctx)
+
+async def _schedule_apply_highstate_system(system_identifier: str, token: str, ctx: Context) -> str:
+    """Fetch, enrich, filter, and paginate updates for a single system."""
+    system_id = await _resolve_system_id(system_identifier, ctx, token)
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    schedule_apply_highstate_system = '/rhn/manager/api/system/scheduleApplyHighstate'
+
+    async with _make_client() as client:
+        payload = {"sid": int(system_id), "earliestOccurrence": now_iso}
+        api_result = await call_uyuni_api(
+            client=client,
+            method="POST",
+            api_path=schedule_apply_highstate_system,
+            json_body=payload,
+            error_context=f"scheduling highstate for system {system_identifier}",
+            token=token
+        )
+
+        # uyuni's scheduleApplyHighstate API returns an integer action ID directly in 'result'
+        if isinstance(api_result, int):
+            action_id = api_result
+            action_detail_url = _get_action_url(action_id)
+            success_message = f"System highstate successfully scheduled. Action URL: {action_detail_url}"
+            logger.info(success_message)
+            return success_message
+        else:
+            return "Unexpected API response format when scheduling highstate. Check server logs for details."
+
 def main_cli():
 
     logger.info("Running {product} MCP server.")
