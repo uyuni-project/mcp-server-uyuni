@@ -1980,7 +1980,7 @@ async def _schedule_apply_highstate_system(system_identifier: str, token: str, c
     schedule_apply_highstate_system = '/rhn/manager/api/system/scheduleApplyHighstate'
 
     async with _make_client() as client:
-        payload = {"sid": int(system_id), "earliestOccurrence": now_iso}
+        payload = {"sid": int(system_id), "earliestOccurrence": now_iso, "test": False}
         api_result = await call_uyuni_api(
             client=client,
             method="POST",
