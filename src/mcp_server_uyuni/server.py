@@ -2136,7 +2136,6 @@ async def search_channel_to_contentmanagement_project_and_environment(channel: s
     return await _search_channel_to_contentmanagement_project_and_environment(channel, token, ctx)
 
 async def _search_channel_to_contentmanagement_project_and_environment(channel: str, token: str, ctx: Context) -> dict[str, str | None | Any] | set[None]:
-    list_project_environments = '/rhn/manager/api/contentmanagement/listProjectEnvironments'
 
     projects = _list_contentmanagement_project(token, ctx)
 
@@ -2165,6 +2164,42 @@ async def _search_channel_to_contentmanagement_project_and_environment(channel: 
     logger.info(msg)
     return {None, None}
 
+@mcp.tool()
+async def search_system_to_contentmanagement_project_and_environment(system_identifier: str, ctx: Context) -> List[Dict[str, Any]]:
+    """Search to which CLM a channel belongs.
+
+    Inputs: channel.
+    Returns: CLM project and Stage.
+    """
+    log_string = f"Listing of all contextmanagement projects"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    token = await extract_token(ctx)
+
+    return await _search_system_to_contentmanagement_project_and_environment(system_identifier, token, ctx)
+
+async def _search_system_to_contentmanagement_project_and_environment(system_identifier: str, token: str, ctx: Context) -> dict[str, str | None | Any] | set[None]:
+
+    system_id = await _resolve_system_id(system_identifier, ctx, token)
+    get_subscribed_basechannel = '/rhn/manager/api/system/getSubscribedBaseChannel'
+
+    async with _make_client() as client:
+        payload = {"sid": int(system_id)}
+        api_result = await call_uyuni_api(
+            client=client,
+            method="POST",
+            api_path=get_subscribed_basechannel,
+            json_body=payload,
+            error_context=f"fetching subscribed base channel for system {system_identifier}",
+            token=token
+        )
+
+        if isinstance(api_result, list):
+            base_channel = api_result['label']
+            return await _search_channel_to_contentmanagement_project_and_environment(base_channel, token, ctx)
+        else:
+            return "Unexpected API response. Check server logs for details."
 
 
 
