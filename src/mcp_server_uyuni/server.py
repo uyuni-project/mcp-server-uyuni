@@ -2120,6 +2120,50 @@ async def _list_contentmanagement_listProjectEnvironments(project: str, token: s
                 await ctx.warning(msg)
     return filtered_project_environments
 
+@mcp.tool()
+async def search_channel_to_contentmanagement_project_and_environment(channel: str, ctx: Context) -> List[Dict[str, Any]]:
+    """Search to which CLM a channel belongs.
+
+    Inputs: channel.
+    Returns: CLM project and Stage.
+    """
+    log_string = f"Listing of all contextmanagement projects"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    token = await extract_token(ctx)
+
+    return await _search_channel_to_contentmanagement_project_and_environment(channel, token, ctx)
+
+async def _search_channel_to_contentmanagement_project_and_environment(channel: str, token: str, ctx: Context) -> dict[str, str | None | Any] | set[None]:
+    list_project_environments = '/rhn/manager/api/contentmanagement/listProjectEnvironments'
+
+    projects = _list_contentmanagement_project(token, ctx)
+
+    if isinstance(projects, list):
+        for project_data in projects:
+            if isinstance(project_data, dict):
+                if channel.startswith(project_data.get('label')):
+                    environment_data = await _list_contentmanagement_listProjectEnvironments(project_data.get('name'), token, ctx)
+                    for environment_data_item in environment_data:
+                        if isinstance(environment_data, list):
+                            if channel.startswith(f"{project_data.get('label')}-{environment_data_item.get('label')}"):
+                                return {"project": project_data.get('name'), "environment": environment_data_item.get('name')}
+                        else:
+                            msg = f"Unexpected item format in contentmanager project environments for {project_data.get('label')}"
+                            logger.warning(msg)
+                            await ctx.warning(msg)
+            else:
+                msg = "Unexpected item format in projects"
+                logger.warning(msg)
+                await ctx.warning(msg)
+    else:
+        msg = f"Unexpected item format in contentmanager project environments for {channel}"
+        logger.warning(msg)
+        await ctx.warning(msg)
+    msg = f"No project found for {channel}"
+    logger.info(msg)
+    return {None, None}
 
 
 
