@@ -2188,7 +2188,7 @@ async def _search_system_to_clm_project_and_environment(system_identifier: str, 
         payload = {"sid": int(system_id)}
         api_result = await call_uyuni_api(
             client=client,
-            method="POST",
+            method="GET",
             api_path=get_subscribed_basechannel,
             json_body=payload,
             error_context=f"fetching subscribed base channel for system {system_identifier}",
