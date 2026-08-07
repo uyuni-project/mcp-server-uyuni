@@ -2165,7 +2165,7 @@ async def _search_channel_to_contentmanagement_project_and_environment(channel: 
     return {None, None}
 
 @mcp.tool()
-async def search_system_to_contentmanagement_project_and_environment(system_identifier: str, ctx: Context) -> List[Dict[str, Any]]:
+async def search_system_to_clm_project_and_environment(system_identifier: str, ctx: Context) -> dict[str, str | None | Any] | set[None]:
     """Search to which CLM a channel belongs.
 
     Inputs: channel.
@@ -2177,9 +2177,9 @@ async def search_system_to_contentmanagement_project_and_environment(system_iden
 
     token = await extract_token(ctx)
 
-    return await _search_system_to_contentmanagement_project_and_environment(system_identifier, token, ctx)
+    return await _search_system_to_clm_project_and_environment(system_identifier, token, ctx)
 
-async def _search_system_to_contentmanagement_project_and_environment(system_identifier: str, token: str, ctx: Context) -> dict[str, str | None | Any] | set[None]:
+async def _search_system_to_clm_project_and_environment(system_identifier: str, token: str, ctx: Context) -> dict[str, str | None | Any] | set[None]:
 
     system_id = await _resolve_system_id(system_identifier, ctx, token)
     get_subscribed_basechannel = '/rhn/manager/api/system/getSubscribedBaseChannel'
@@ -2196,8 +2196,15 @@ async def _search_system_to_contentmanagement_project_and_environment(system_ide
         )
 
         if isinstance(api_result, list):
-            base_channel = api_result['label']
-            return await _search_channel_to_contentmanagement_project_and_environment(base_channel, token, ctx)
+            for channel_data in api_result:
+                if isinstance(channel_data, dict):
+                    if channel_data.get('label') is not None:
+                        logger.info(f"System {system_identifier} has base channel {channel_data.get('label')}")
+                        return await _search_channel_to_contentmanagement_project_and_environment(channel_data.get('label'), token, ctx)
+                else:
+                    msg = f"Unexpected item format in contentmanager project environments for {channel_data.get('label')}"
+                    logger.warning(msg)
+                    await ctx.warning(msg)
         else:
             return "Unexpected API response. Check server logs for details."
 
