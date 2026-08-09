@@ -2121,7 +2121,7 @@ async def _list_contentmanagement_listProjectEnvironments(project: str, token: s
     return filtered_project_environments
 
 @mcp.tool()
-async def search_channel_to_contentmanagement_project_and_environment(channel: str, ctx: Context) -> List[Dict[str, Any]]:
+async def search_channel_to_clm(channel: str, ctx: Context) -> List[Dict[str, Any]]:
     """Search to which CLM a channel belongs.
 
     Inputs: channel.
@@ -2133,9 +2133,9 @@ async def search_channel_to_contentmanagement_project_and_environment(channel: s
 
     token = await extract_token(ctx)
 
-    return await _search_channel_to_contentmanagement_project_and_environment(channel, token, ctx)
+    return await _search_channel_to_clm(channel, token, ctx)
 
-async def _search_channel_to_contentmanagement_project_and_environment(channel: str, token: str, ctx: Context) -> dict[str, str | None | Any] | set[None]:
+async def _search_channel_to_clm(channel: str, token: str, ctx: Context) -> dict[str, str | None | Any] | set[None]:
 
     projects = _list_contentmanagement_project(token, ctx)
 
@@ -2165,7 +2165,7 @@ async def _search_channel_to_contentmanagement_project_and_environment(channel: 
     return {None, None}
 
 @mcp.tool()
-async def search_system_to_clm_project_and_environment(system_identifier: str, ctx: Context) -> dict[str, str | None | Any] | set[None]:
+async def search_system_to_clm(system_identifier: str, ctx: Context) -> dict[str, str | None | Any] | set[None]:
     """Search to which CLM a channel belongs.
 
     Inputs: channel.
@@ -2177,9 +2177,13 @@ async def search_system_to_clm_project_and_environment(system_identifier: str, c
 
     token = await extract_token(ctx)
 
-    return await _search_system_to_clm_project_and_environment(system_identifier, token, ctx)
+    return await _search_system_to_clm(system_identifier, token, ctx)
 
-async def _search_system_to_clm_project_and_environment(system_identifier: str, token: str, ctx: Context) -> dict[str, str | None | Any] | set[None]:
+async def _search_system_to_clm(system_identifier: str, token: str, ctx: Context) -> None | \
+                                                                                                             dict[
+                                                                                                                 str, str | None | Any] | \
+                                                                                                             set[
+                                                                                                                 None] | str:
 
     system_id = await _resolve_system_id(system_identifier, ctx, token)
     get_subscribed_basechannel = '/rhn/manager/api/system/getSubscribedBaseChannel'
@@ -2194,13 +2198,13 @@ async def _search_system_to_clm_project_and_environment(system_identifier: str, 
             error_context=f"fetching subscribed base channel for system {system_identifier}",
             token=token
         )
-
+        logger.info(f"MB: Subscribed base channel for system {system_identifier}: {api_result}")
         if isinstance(api_result, list):
             for channel_data in api_result:
                 if isinstance(channel_data, dict):
                     if channel_data.get('label') is not None:
                         logger.info(f"System {system_identifier} has base channel {channel_data.get('label')}")
-                        return await _search_channel_to_contentmanagement_project_and_environment(channel_data.get('label'), token, ctx)
+                        return await _search_channel_to_clm(channel_data.get('label'), token, ctx)
                 else:
                     msg = f"Unexpected item format in contentmanager project environments for {channel_data.get('label')}"
                     logger.warning(msg)
