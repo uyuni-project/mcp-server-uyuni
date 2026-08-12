@@ -21,7 +21,6 @@
 * **core:** add configurable HTTP timeout
 * **core:** share login authentication across concurrent API calls
 * **elicitation:** use elicitation mechanisms to confirm write actions
-* **proxy:** add DCR sanitizer proxy to support Amazon Quick
 * **deploy:** add local Keycloak dev stack, realm import, and deployment stack
 * **deploy:** add public Uyuni hostname routing via socat
 

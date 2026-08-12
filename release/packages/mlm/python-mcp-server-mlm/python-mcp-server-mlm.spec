@@ -23,6 +23,7 @@
 %bcond_with libalternatives
 %endif
 %global p_version 0.6.1
+
 %global git_revision %(tar xfO %{SOURCE0} mcp-server-uyuni-%{p_version}/last-commit)
 
 Name:           python-mcp-server-mlm
