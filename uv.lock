@@ -1292,7 +1292,7 @@ wheels = [
 
 [[package]]
 name = "mcp-server-uyuni"
-version = "0.6.0"
+version = "0.6.1"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp-slim", extra = ["server"] },

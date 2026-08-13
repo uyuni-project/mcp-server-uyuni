@@ -22,7 +22,8 @@
 %else
 %bcond_with libalternatives
 %endif
-%global p_version 0.6.0
+%global p_version 0.6.1
+
 %global git_revision %(tar xfO %{SOURCE0} mcp-server-uyuni-%{p_version}/last-commit)
 
 Name:           python-mcp-server-mlm
@@ -52,7 +53,7 @@ Requires:       %{python_module caio = 0.9.25}
 Requires:       %{python_module certifi = 2026.5.20}
 Requires:       %{python_module cffi = 2.0.0}
 Requires:       %{python_module click = 8.3.3}
-Requires:       %{python_module cryptography = 49.0.0}
+Requires:       %{python_module cryptography = 50.0.0}
 Requires:       %{python_module cyclopts = 4.20.0}
 Requires:       %{python_module docstring-parser = 0.18.0}
 Requires:       %{python_module exceptiongroup = 1.3.1}

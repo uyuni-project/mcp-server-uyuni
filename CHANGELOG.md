@@ -1,3 +1,9 @@
+## 0.6.1 (2026-08-12)
+
+### Security
+
+* **deps:* upgrade `crytopgraphy`to 0.5.0 to patch CVE-2026-69247 - Dependabot securit alert #83
+
 ## 0.6.0 (2026-07-27)
 
 ### Security
