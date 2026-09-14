@@ -4,6 +4,7 @@ import os
 import warnings
 import re
 import asyncio
+import subprocess
 import glob
 from google import genai
 from google.genai import types
@@ -38,6 +39,43 @@ def load_vars():
 
 VARS = load_vars()
 
+class Goose(DeepEvalBaseLLM):
+    def __init__(self, model="ministral-3:3b"):
+        self.model = model
+
+    def load_model(self):
+        return self.model
+
+    def generate(self, prompt: str) -> str:
+        command = ["goose", "run", "--text", prompt, "--model", self.model, "--quiet"]
+        try:
+            print(f"Executing command: {' '.join(command)}")
+            result = subprocess.run(
+                command, stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True, encoding="utf-8"
+            )
+            return result.stdout.strip()
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            error_message = f"Goose command failed: {e}"
+            if hasattr(e, 'stderr'):
+                error_message += f"\nStderr: {e.stderr.strip()}"
+            warnings.warn(error_message)
+            return f"COMMAND_FAILED: {error_message}"
+
+    async def a_generate(self, prompt: str) -> str:
+        command = ["goose", "run", "--text", prompt, "--model", self.model, "--quiet"]
+        print(f"Executing command: {' '.join(command)}")
+        proc = await asyncio.create_subprocess_exec(
+            *command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            error_message = f"Goose command failed with code {proc.returncode}:\n{stderr.decode('utf-8').strip()}"
+            warnings.warn(error_message)
+            return f"COMMAND_FAILED: {error_message}"
+        return stdout.decode('utf-8').strip()
+
+    def get_model_name(self):
+        return self.model
 class GoogleGemini(DeepEvalBaseLLM):
     def __init__(self, model="gemini-2.5-flash-lite"):
         self.model_name = model
@@ -96,8 +134,10 @@ def remove_additional_properties(schema: dict) -> dict:
     return schema
 
 async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list]:
-    if not model:
-        model = os.environ.get("AGENT_MODEL", "gemini-2.5-flash-lite")
+    agent_provider = os.environ.get("AGENT_PROVIDER", "gemini").lower()
+    default_model = "ministral-3:3b" if agent_provider == "goose" else "gemini-2.5-flash-lite"
+    model = model or os.environ.get("AGENT_MODEL", default_model)
+
     server_params = StdioServerParameters(
         command="uv",
         args=["run", "mcp-server-uyuni"],
@@ -110,22 +150,69 @@ async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list
 
             mcp_tools = await session.list_tools()
             
-            gemini_tools = []
+            formatted_tools = []
             for tool in mcp_tools.tools:
                 # Convert the inputSchema to a clean dictionary and strip extra fields
                 cleaned_schema = remove_additional_properties(dict(tool.inputSchema))
 
-                gemini_tools.append({
+                formatted_tools.append({
                     "name": tool.name,
                     "description": tool.description,
                     "parameters": cleaned_schema
                 })
 
+            # Prepend a strong directive to the user prompt
+            directive_prompt = (
+                f"{prompt}\n\n"
+                "INSTRUCTION: Use available tools to fulfill this request. "
+                "Retain and report specific details like names and IDs. "
+                "If this is a state-changing action (reboot, remove, update, create), "
+                "execute the write tool directly using the tool schema."
+            )
+
+            if agent_provider == "goose":
+                # The goose CLI does not support native tool calling, so we will simulate it
+                # by providing the tool definitions in the prompt and parsing the output.
+                # This is a simplified, single-turn implementation.
+                tools_json_str = json.dumps(formatted_tools, indent=2)
+                goose_prompt = (
+                    f"You have access to the following tools:\n"
+                    f"```json\n{tools_json_str}\n```\n"
+                    f"Based on the user's request, decide if a tool should be called. "
+                    f"If so, respond with a single JSON object containing 'tool_name' and 'arguments'. "
+                    f"If not, respond with a natural language summary.\n\n"
+                    f"User Request: {prompt}"
+                )
+                
+                goose_model = Goose(model=model)
+                response_text = await goose_model.a_generate(goose_prompt)
+
+                try:
+                    # Attempt to parse the response as a tool call
+                    parsed_json = json.loads(response_text)
+                    if "tool_name" in parsed_json and "arguments" in parsed_json:
+                        tool_name = parsed_json["tool_name"]
+                        tool_args = parsed_json["arguments"]
+                        
+                        # Execute the tool call
+                        result = await session.call_tool(tool_name, tool_args)
+                        tool_output_text = "\n".join([c.text for c in result.content if c.type == "text"])
+                        
+                        # For this simplified flow, we return the tool output as the final answer
+                        return tool_output_text, [ToolCall(name=tool_name, input_parameters=tool_args)], [tool_output_text]
+                except (json.JSONDecodeError, TypeError):
+                    # If parsing fails, assume it's a natural language response
+                    pass
+
+                # Return the direct text response if no tool was called or parsed
+                return response_text, [], []
+
+            # --- Gemini Agent Logic ---
             client = genai.Client(api_key=os.environ.get("GOOGLE_API_KEY"))
             chat = client.aio.chats.create(
                 model=model,
                 config=types.GenerateContentConfig(
-                    tools=[types.Tool(function_declarations=gemini_tools)],
+                    tools=[types.Tool(function_declarations=formatted_tools)],
                     system_instruction=(
                         "You are an autonomous assistant specialized in Uyuni infrastructure management. "
                         "Fulfill requests by using tools directly. "
@@ -140,16 +227,6 @@ async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list
                     )
                 )
             )
-
-            # Prepend a strong directive to the user prompt
-            directive_prompt = (
-                f"{prompt}\n\n"
-                "INSTRUCTION: Use available tools to fulfill this request. "
-                "Retain and report specific details like names and IDs. "
-                "If this is a state-changing action (reboot, remove, update, create), "
-                "execute the write tool directly using the tool schema."
-            )
-
             response = await chat.send_message(directive_prompt)
             tool_calls = []
             tool_outputs = []
@@ -233,7 +310,13 @@ def test_uyuni_mcp_deepeval(test_case, record_property):
     actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt)
     actual_output = actual_output or "(No output returned by the model)"
 
-    judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash-lite")
+    judge_provider = os.environ.get("JUDGE_PROVIDER", "gemini").lower()
+    if judge_provider == "goose":
+        judge_model = os.environ.get("JUDGE_MODEL", "ministral-3:3b")
+        judge_instance = Goose(model=judge_model)
+    else:
+        judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash-lite")
+        judge_instance = GoogleGemini(model=judge_model)
     default_rubric = [
         Rubric(score_range=(0, 3), expected_outcome="The actual output is incorrect or irrelevant."),
         Rubric(score_range=(4, 6), expected_outcome="The actual output is partially correct or misses some key details."),
@@ -248,12 +331,15 @@ def test_uyuni_mcp_deepeval(test_case, record_property):
         "evaluation_params": [LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
         "threshold": 0.7,
         "verbose_mode": True,
-        "model": GoogleGemini(model=judge_model),
+        "model": judge_instance,
     }
     geval_kwargs.update(user_geval_config)
 
     if isinstance(geval_kwargs["model"], str):
-        geval_kwargs["model"] = GoogleGemini(model=geval_kwargs["model"])
+        if judge_provider == "goose":
+            geval_kwargs["model"] = Goose(model=geval_kwargs["model"])
+        else:
+            geval_kwargs["model"] = GoogleGemini(model=geval_kwargs["model"])
 
     used_criteria = geval_kwargs.get("criteria")
     used_steps = geval_kwargs.get("evaluation_steps")
@@ -272,10 +358,14 @@ def test_uyuni_mcp_deepeval(test_case, record_property):
     correctness_metric = GEval(**geval_kwargs)
     metrics = [correctness_metric]
 
-    actual_tools = [
-        ToolCall(name=call.name, input_parameters=dict(call.args or {}))
-        for call in actual_tool_calls
-    ]
+    actual_tools = []
+    for call in actual_tool_calls:
+        if isinstance(call, ToolCall):
+            # Already a deepeval.ToolCall, use as-is (from Goose provider)
+            actual_tools.append(call)
+        else:
+            # Convert from another type (e.g., gemini's FunctionCall)
+            actual_tools.append(ToolCall(name=call.name, input_parameters=dict(getattr(call, 'args', {}) or {})))
 
     expected_tools = None
     if "expected_tools" in test_case:
