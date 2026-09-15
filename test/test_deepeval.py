@@ -49,7 +49,6 @@ class Goose(DeepEvalBaseLLM):
     def generate(self, prompt: str) -> str:
         command = ["goose", "run", "--text", prompt, "--model", self.model, "--quiet"]
         try:
-            print(f"Executing command: {' '.join(command)}")
             result = subprocess.run(
                 command, stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True, encoding="utf-8"
             )
@@ -63,7 +62,6 @@ class Goose(DeepEvalBaseLLM):
 
     async def a_generate(self, prompt: str) -> str:
         command = ["goose", "run", "--text", prompt, "--model", self.model, "--quiet"]
-        print(f"Executing command: {' '.join(command)}")
         proc = await asyncio.create_subprocess_exec(
             *command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
