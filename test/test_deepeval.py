@@ -49,7 +49,7 @@ class Goose(DeepEvalBaseLLM):
         return self.model
 
     def generate(self, prompt: str) -> str:
-        command = ["goose", "run", "--text", prompt, "--model", self.model, "--quiet", "--stats", "--test-id", self.test_id]
+        command = ["goose", "run", "--text", prompt, "--model", self.model, "--quiet", "--stats"]
         try:
             result = subprocess.run(
                 command, stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True, encoding="utf-8"
@@ -68,7 +68,7 @@ class Goose(DeepEvalBaseLLM):
             return f"COMMAND_FAILED: {error_message}"
 
     async def a_generate(self, prompt: str) -> str:
-        command = ["goose", "run", "--text", prompt, "--model", self.model, "--quiet", "--stats", "--test-id", self.test_id]
+        command = ["goose", "run", "--text", prompt, "--model", self.model, "--quiet", "--stats"]
         proc = await asyncio.create_subprocess_exec(
             *command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
