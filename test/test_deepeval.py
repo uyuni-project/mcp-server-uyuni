@@ -304,7 +304,6 @@ def load_test_cases():
                     all_test_cases.extend(cases)
     return all_test_cases
 
-@pytest.mark.parametrize("test_case", load_test_cases())
 # Load test cases once and generate descriptive IDs for pytest
 ALL_TEST_CASES = load_test_cases()
 
