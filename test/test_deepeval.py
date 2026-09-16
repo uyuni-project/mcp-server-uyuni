@@ -5,6 +5,7 @@ import warnings
 import re
 import asyncio
 import subprocess
+import statistics
 import glob
 from google import genai
 from google.genai import types
@@ -40,34 +41,44 @@ def load_vars():
 VARS = load_vars()
 
 class Goose(DeepEvalBaseLLM):
-    def __init__(self, model="ministral-3:3b"):
+    def __init__(self, model="ministral-3:3b", stats_collector=None, test_id=None):
         self.model = model
+        self.stats_collector = stats_collector
+        self.test_id = test_id or "unknown"
 
     def load_model(self):
         return self.model
 
     def generate(self, prompt: str) -> str:
-        command = ["goose", "run", "--text", prompt, "--model", self.model, "--quiet"]
+        command = ["goose", "run", "--text", prompt, "--model", self.model, "--quiet", "--stats", "--test-id", self.test_id]
         try:
             result = subprocess.run(
                 command, stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True, encoding="utf-8"
             )
+            if self.stats_collector is not None and result.stderr:
+                self.stats_collector.append((self.test_id, result.stderr))
             return result.stdout.strip()
         except (subprocess.CalledProcessError, FileNotFoundError) as e:
             error_message = f"Goose command failed: {e}"
             if hasattr(e, 'stderr'):
-                error_message += f"\nStderr: {e.stderr.strip()}"
+                stderr_str = e.stderr.strip()
+                error_message += f"\nStderr: {stderr_str}"
+                if self.stats_collector is not None:
+                    self.stats_collector.append((self.test_id, stderr_str))
             warnings.warn(error_message)
             return f"COMMAND_FAILED: {error_message}"
 
     async def a_generate(self, prompt: str) -> str:
-        command = ["goose", "run", "--text", prompt, "--model", self.model, "--quiet"]
+        command = ["goose", "run", "--text", prompt, "--model", self.model, "--quiet", "--stats", "--test-id", self.test_id]
         proc = await asyncio.create_subprocess_exec(
             *command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
         stdout, stderr = await proc.communicate()
+        stderr_str = stderr.decode('utf-8').strip()
+        if self.stats_collector is not None and stderr_str:
+            self.stats_collector.append((self.test_id, stderr_str))
         if proc.returncode != 0:
-            error_message = f"Goose command failed with code {proc.returncode}:\n{stderr.decode('utf-8').strip()}"
+            error_message = f"Goose command failed with code {proc.returncode}:\n{stderr_str}"
             warnings.warn(error_message)
             return f"COMMAND_FAILED: {error_message}"
         return stdout.decode('utf-8').strip()
@@ -131,7 +142,7 @@ def remove_additional_properties(schema: dict) -> dict:
 
     return schema
 
-async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list]:
+async def run_mcp_agent(prompt: str, model: str = None, test_id: str = None, stats_collector: list = None) -> tuple[str, list, list]:
     agent_provider = os.environ.get("AGENT_PROVIDER", "gemini").lower()
     default_model = "ministral-3:3b" if agent_provider == "goose" else "gemini-2.5-flash-lite"
     model = model or os.environ.get("AGENT_MODEL", default_model)
@@ -182,7 +193,7 @@ async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list
                     f"User Request: {prompt}"
                 )
                 
-                goose_model = Goose(model=model)
+                goose_model = Goose(model=model, test_id=test_id, stats_collector=stats_collector)
                 response_text = await goose_model.a_generate(goose_prompt)
 
                 try:
@@ -274,8 +285,8 @@ async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list
 
             return "\n".join(full_text), tool_calls, tool_outputs
 
-def query_mcp_server(prompt: str) -> tuple[str, list, list]:
-    return asyncio.run(run_mcp_agent(prompt))
+def query_mcp_server(prompt: str, test_id: str, stats_collector: list) -> tuple[str, list, list]:
+    return asyncio.run(run_mcp_agent(prompt, test_id=test_id, stats_collector=stats_collector))
 
 def load_test_cases():
     test_dir = os.path.dirname(__file__)
@@ -294,7 +305,15 @@ def load_test_cases():
     return all_test_cases
 
 @pytest.mark.parametrize("test_case", load_test_cases())
-def test_uyuni_mcp_deepeval(test_case, record_property):
+# Load test cases once and generate descriptive IDs for pytest
+ALL_TEST_CASES = load_test_cases()
+
+@pytest.mark.parametrize(
+    "test_case",
+    ALL_TEST_CASES,
+    ids=[case.get("id", f"unnamed_case_{i}") for i, case in enumerate(ALL_TEST_CASES)]
+)
+def test_uyuni_mcp_deepeval(test_case, record_property, goose_stats_collector):
     prompt_template = test_case.get("prompt")
     expected_template = test_case.get("expected_output")
     test_id = test_case.get("id", "unknown")
@@ -305,13 +324,13 @@ def test_uyuni_mcp_deepeval(test_case, record_property):
     prompt = prompt_template.format(**VARS)
     expected_output = expected_template.format(**VARS)
 
-    actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt)
+    actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt, test_id, goose_stats_collector)
     actual_output = actual_output or "(No output returned by the model)"
 
     judge_provider = os.environ.get("JUDGE_PROVIDER", "gemini").lower()
     if judge_provider == "goose":
         judge_model = os.environ.get("JUDGE_MODEL", "ministral-3:3b")
-        judge_instance = Goose(model=judge_model)
+        judge_instance = Goose(model=judge_model, test_id=f"{test_id}-judge", stats_collector=goose_stats_collector)
     else:
         judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash-lite")
         judge_instance = GoogleGemini(model=judge_model)
@@ -335,7 +354,7 @@ def test_uyuni_mcp_deepeval(test_case, record_property):
 
     if isinstance(geval_kwargs["model"], str):
         if judge_provider == "goose":
-            geval_kwargs["model"] = Goose(model=geval_kwargs["model"])
+            geval_kwargs["model"] = Goose(model=geval_kwargs["model"], test_id=f"{test_id}-judge", stats_collector=goose_stats_collector)
         else:
             geval_kwargs["model"] = GoogleGemini(model=geval_kwargs["model"])
 
@@ -436,3 +455,56 @@ def test_uyuni_mcp_deepeval(test_case, record_property):
             f"Original Error: {e}"
         )
         raise AssertionError(error_message) from e
+
+def pytest_configure(config):
+    """
+    Hook to initialize a list for storing stats on the pytest config object.
+    This makes it available across the entire test session.
+    """
+    config.goose_stats = []
+
+@pytest.fixture(scope="function")
+def goose_stats_collector(request):
+    """
+    A fixture that provides access to the session-wide stats collector.
+    """
+    return request.config.goose_stats
+
+def pytest_sessionfinish(session, exitstatus):
+    """
+    This hook is called after the entire test session finishes.
+    It will parse all collected stats and print an aggregated summary.
+    """
+    print("\n--- Goose Stats Summary ---")
+    all_stats = session.config.goose_stats
+    if not all_stats:
+        print("No goose stats were collected.")
+        return
+
+    first_token_times = []
+    tokens_per_sec_rates = []
+    total_output_tokens = 0
+
+    for test_id, stat_block in all_stats:
+        print(f"  - Test: {test_id}")
+        for line in stat_block.splitlines():
+            if "Time to first token:" in line:
+                match = re.search(r"(\d+\.\d+)s", line)
+                if match:
+                    first_token_times.append(float(match.group(1)))
+            if "Tokens/sec:" in line:
+                match = re.search(r"(\d+\.\d+)", line)
+                if match:
+                    tokens_per_sec_rates.append(float(match.group(1)))
+            if "Output tokens:" in line:
+                match = re.search(r"(\d+)", line)
+                if match:
+                    total_output_tokens += int(match.group(1))
+
+    print(f"Total Goose Runs: {len(all_stats)}")
+    print(f"Total Output Tokens: {total_output_tokens}")
+    if first_token_times:
+        print(f"Avg. Time to First Token: {statistics.mean(first_token_times):.2f}s (min: {min(first_token_times):.2f}s, max: {max(first_token_times):.2f}s)")
+    if tokens_per_sec_rates:
+        print(f"Avg. Tokens/Sec: {statistics.mean(tokens_per_sec_rates):.2f} (min: {min(tokens_per_sec_rates):.2f}, max: {max(tokens_per_sec_rates):.2f})")
+    print("--------------------------")
