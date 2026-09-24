@@ -28,4 +28,4 @@ jobs:
         run: uv sync --frozen
 
       - name: Run tests
-        run: uv run --with pytest --with pytest-asyncio --with respx pytest test/test_tools.py
+        run: uv run --with pytest --with pytest-asyncio --with respx pytest --ignore test/test_deepeval.py test/
