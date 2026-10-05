@@ -1,0 +1,1921 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="6" skipped="0" tests="33" time="197.330" timestamp="2026-10-05T22:49:21.669488+00:00" hostname="sumadocker4"><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case0]" time="8.599" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case1]" time="4.692" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case2]" time="4.825" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case3]" time="4.250" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case4]" time="5.029"><failure message="AssertionError: &#10;--- Deepeval Test Failed ---&#10;Test Case ID: TC-OPS-Pre&#10;Prompt: Is system with name 10.145.211.247 in Multi Linux Manager (MLM)?&#10;Expected Output Hint: A confirmation that the system exists&#10;----- EVALUATION DETAILS -----&#10;Evaluation Steps:&#10;[&#10;  &quot;Check if the output confirms that the system exists.&quot;,&#10;  &quot;Verify that the system name corresponds to the one requested.&quot;&#10;]&#10;----- ACTUAL OUTPUT -----&#10;The system with IP address 10.145.211.247 was not found in the Multi Linux Manager (MLM). A search of all registered systems confirmed that it is not present in the inventory.&#10;----- END ACTUAL OUTPUT -----&#10;Original Error: Metrics: Correctness [GEval] (score: 0.0, threshold: 0.7, strict: False, error: None, reason: The output fails both evaluation steps: it explicitly confirms that the system does not exist in the Multi Linux Manager, whereas the expected outcome was a confirmation of the system's existence.) failed.">test_case = {'expected_output': 'A confirmation that the system exists', 'geval_config': {'evaluation_steps': ['Check if the outpu...nds to the one requested.']}, 'id': 'TC-OPS-Pre', 'prompt': 'Is system with name {new_system_host} in {product_name}?'}
+record_property = &lt;function record_property.&lt;locals&gt;.append_property at 0x7f05827f3b00&gt;
+
+    @pytest.mark.parametrize("test_case", load_test_cases())
+    def test_uyuni_mcp_deepeval(test_case, record_property):
+        prompt_template = test_case.get("prompt")
+        expected_template = test_case.get("expected_output")
+        test_id = test_case.get("id", "unknown")
+    
+        if not prompt_template or not expected_template:
+            pytest.skip(f"Skipping malformed test case: {test_id}")
+    
+        prompt = prompt_template.format(**VARS)
+        expected_output = expected_template.format(**VARS)
+    
+        actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt)
+        actual_output = actual_output or "(No output returned by the model)"
+    
+        judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash-lite")
+        default_rubric = [
+            Rubric(score_range=(0, 3), expected_outcome="The actual output is incorrect or irrelevant."),
+            Rubric(score_range=(4, 6), expected_outcome="The actual output is partially correct or misses some key details."),
+            Rubric(score_range=(7, 10), expected_outcome="The actual output matches the expected output in content and meaning."),
+        ]
+    
+        user_geval_config = test_case.get("geval_config", {}).copy()
+        rubric = user_geval_config.pop("rubric", default_rubric)
+    
+        geval_kwargs = {
+            "name": "Correctness",
+            "evaluation_params": [LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
+            "threshold": 0.7,
+            "verbose_mode": True,
+            "model": GoogleGemini(model=judge_model),
+        }
+        geval_kwargs.update(user_geval_config)
+    
+        if isinstance(geval_kwargs["model"], str):
+            geval_kwargs["model"] = GoogleGemini(model=geval_kwargs["model"])
+    
+        used_criteria = geval_kwargs.get("criteria")
+        used_steps = geval_kwargs.get("evaluation_steps")
+    
+        if not used_criteria:
+            if not used_steps:
+                used_criteria = f"The actual output must satisfy this requirement: {expected_output}"
+            else:
+                used_criteria = "Evaluate the actual output based on the provided evaluation steps."
+    
+        if used_criteria:
+            geval_kwargs["criteria"] = used_criteria
+    
+        geval_kwargs["rubric"] = rubric
+    
+        correctness_metric = GEval(**geval_kwargs)
+        metrics = [correctness_metric]
+    
+        actual_tools = [
+            ToolCall(name=call.name, input_parameters=dict(call.args or {}))
+            for call in actual_tool_calls
+        ]
+    
+        expected_tools = None
+        if "expected_tools" in test_case:
+            expected_tools = [
+                ToolCall(name=t["name"], input_parameters=t.get("arguments", {}))
+                for t in test_case["expected_tools"]
+            ]
+            metrics.append(ToolCorrectnessMetric(model=geval_kwargs["model"]))
+    
+        if "mcp_use_criteria" in test_case:
+            mcp_use_metric = MCPUseMetric(
+                criteria=test_case["mcp_use_criteria"],
+                model=geval_kwargs["model"]
+            )
+            metrics.append(mcp_use_metric)
+    
+        deepeval_case = LLMTestCase(
+            input=prompt,
+            actual_output=actual_output,
+            expected_output=expected_output,
+            tools_called=actual_tools,
+            expected_tools=expected_tools,
+            retrieval_context=actual_tool_outputs
+        )
+    
+        try:
+&gt;           assert_test(deepeval_case, metrics)
+
+test/test_deepeval.py:305: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+test_case = LLMTestCase(input='Is system with name 10.145.211.247 in Multi Linux Manager (MLM)?', actual_output='The system with I...servers=None, mcp_tools_called=None, mcp_resources_called=None, mcp_prompts_called=None, custom_column_key_values=None)
+metrics = [&lt;deepeval.metrics.g_eval.g_eval.GEval object at 0x7f0582921d90&gt;]
+golden = None, observed_callback = None, run_async = True
+
+    def assert_test(
+        test_case: Optional[Union[LLMTestCase, ConversationalTestCase]] = None,
+        metrics: Optional[
+            Union[
+                List[BaseMetric],
+                List[BaseConversationalMetric],
+            ]
+        ] = None,
+        golden: Optional[Golden] = None,
+        observed_callback: Optional[
+            Union[Callable[[str], Any], Callable[[str], Awaitable[Any]]]
+        ] = None,
+        run_async: bool = True,
+    ):
+        validate_assert_test_inputs(
+            golden=golden,
+            observed_callback=observed_callback,
+            test_case=test_case,
+            metrics=metrics,
+        )
+    
+        async_config = AsyncConfig(throttle_value=0, max_concurrent=100)
+        display_config = DisplayConfig(
+            verbose_mode=should_verbose_print(), show_indicator=True
+        )
+        error_config = ErrorConfig(
+            ignore_errors=should_ignore_errors(),
+            skip_on_missing_params=should_skip_on_missing_params(),
+        )
+        cache_config = CacheConfig(
+            write_cache=get_is_running_deepeval(), use_cache=should_use_cache()
+        )
+    
+        if golden and observed_callback:
+            if run_async:
+                loop = get_or_create_event_loop()
+                test_result = loop.run_until_complete(
+                    a_execute_agentic_test_cases(
+                        goldens=[golden],
+                        observed_callback=observed_callback,
+                        error_config=error_config,
+                        display_config=display_config,
+                        async_config=async_config,
+                        cache_config=cache_config,
+                        identifier=get_identifier(),
+                        _use_bar_indicator=True,
+                        _is_assert_test=True,
+                    )
+                )[0]
+            else:
+                test_result = execute_agentic_test_cases(
+                    goldens=[golden],
+                    observed_callback=observed_callback,
+                    error_config=error_config,
+                    display_config=display_config,
+                    cache_config=cache_config,
+                    identifier=get_identifier(),
+                    _use_bar_indicator=False,
+                    _is_assert_test=True,
+                )[0]
+    
+        elif test_case and metrics:
+            if run_async:
+                loop = get_or_create_event_loop()
+                test_result = loop.run_until_complete(
+                    a_execute_test_cases(
+                        [test_case],
+                        metrics,
+                        error_config=error_config,
+                        display_config=display_config,
+                        async_config=async_config,
+                        cache_config=cache_config,
+                        identifier=get_identifier(),
+                        _use_bar_indicator=True,
+                        _is_assert_test=True,
+                    )
+                )[0]
+            else:
+                test_result = execute_test_cases(
+                    [test_case],
+                    metrics,
+                    error_config=error_config,
+                    display_config=display_config,
+                    cache_config=cache_config,
+                    identifier=get_identifier(),
+                    _use_bar_indicator=False,
+                    _is_assert_test=True,
+                )[0]
+    
+        if not test_result.success:
+            failed_metrics_data: List[MetricData] = []
+            # even for conversations, test_result right now is just the
+            # result for the last message
+            for metric_data in test_result.metrics_data:
+                if metric_data.error is not None:
+                    failed_metrics_data.append(metric_data)
+                else:
+                    # This try block is for user defined custom metrics,
+                    # which might not handle the score == undefined case elegantly
+                    try:
+                        if not metric_data.success:
+                            failed_metrics_data.append(metric_data)
+                    except Exception:
+                        failed_metrics_data.append(metric_data)
+    
+            failed_metrics_str = ", ".join(
+                [
+                    f"{metrics_data.name} (score: {metrics_data.score}, threshold: {metrics_data.threshold}, strict: {metrics_data.strict_mode}, error: {metrics_data.error}, reason: {metrics_data.reason})"
+                    for metrics_data in failed_metrics_data
+                ]
+            )
+&gt;           raise AssertionError(f"Metrics: {failed_metrics_str} failed.")
+E           AssertionError: Metrics: Correctness [GEval] (score: 0.0, threshold: 0.7, strict: False, error: None, reason: The output fails both evaluation steps: it explicitly confirms that the system does not exist in the Multi Linux Manager, whereas the expected outcome was a confirmation of the system's existence.) failed.
+
+.venv/lib64/python3.13/site-packages/deepeval/evaluate/evaluate.py:182: AssertionError
+
+The above exception was the direct cause of the following exception:
+
+test_case = {'expected_output': 'A confirmation that the system exists', 'geval_config': {'evaluation_steps': ['Check if the outpu...nds to the one requested.']}, 'id': 'TC-OPS-Pre', 'prompt': 'Is system with name {new_system_host} in {product_name}?'}
+record_property = &lt;function record_property.&lt;locals&gt;.append_property at 0x7f05827f3b00&gt;
+
+    @pytest.mark.parametrize("test_case", load_test_cases())
+    def test_uyuni_mcp_deepeval(test_case, record_property):
+        prompt_template = test_case.get("prompt")
+        expected_template = test_case.get("expected_output")
+        test_id = test_case.get("id", "unknown")
+    
+        if not prompt_template or not expected_template:
+            pytest.skip(f"Skipping malformed test case: {test_id}")
+    
+        prompt = prompt_template.format(**VARS)
+        expected_output = expected_template.format(**VARS)
+    
+        actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt)
+        actual_output = actual_output or "(No output returned by the model)"
+    
+        judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash-lite")
+        default_rubric = [
+            Rubric(score_range=(0, 3), expected_outcome="The actual output is incorrect or irrelevant."),
+            Rubric(score_range=(4, 6), expected_outcome="The actual output is partially correct or misses some key details."),
+            Rubric(score_range=(7, 10), expected_outcome="The actual output matches the expected output in content and meaning."),
+        ]
+    
+        user_geval_config = test_case.get("geval_config", {}).copy()
+        rubric = user_geval_config.pop("rubric", default_rubric)
+    
+        geval_kwargs = {
+            "name": "Correctness",
+            "evaluation_params": [LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
+            "threshold": 0.7,
+            "verbose_mode": True,
+            "model": GoogleGemini(model=judge_model),
+        }
+        geval_kwargs.update(user_geval_config)
+    
+        if isinstance(geval_kwargs["model"], str):
+            geval_kwargs["model"] = GoogleGemini(model=geval_kwargs["model"])
+    
+        used_criteria = geval_kwargs.get("criteria")
+        used_steps = geval_kwargs.get("evaluation_steps")
+    
+        if not used_criteria:
+            if not used_steps:
+                used_criteria = f"The actual output must satisfy this requirement: {expected_output}"
+            else:
+                used_criteria = "Evaluate the actual output based on the provided evaluation steps."
+    
+        if used_criteria:
+            geval_kwargs["criteria"] = used_criteria
+    
+        geval_kwargs["rubric"] = rubric
+    
+        correctness_metric = GEval(**geval_kwargs)
+        metrics = [correctness_metric]
+    
+        actual_tools = [
+            ToolCall(name=call.name, input_parameters=dict(call.args or {}))
+            for call in actual_tool_calls
+        ]
+    
+        expected_tools = None
+        if "expected_tools" in test_case:
+            expected_tools = [
+                ToolCall(name=t["name"], input_parameters=t.get("arguments", {}))
+                for t in test_case["expected_tools"]
+            ]
+            metrics.append(ToolCorrectnessMetric(model=geval_kwargs["model"]))
+    
+        if "mcp_use_criteria" in test_case:
+            mcp_use_metric = MCPUseMetric(
+                criteria=test_case["mcp_use_criteria"],
+                model=geval_kwargs["model"]
+            )
+            metrics.append(mcp_use_metric)
+    
+        deepeval_case = LLMTestCase(
+            input=prompt,
+            actual_output=actual_output,
+            expected_output=expected_output,
+            tools_called=actual_tools,
+            expected_tools=expected_tools,
+            retrieval_context=actual_tool_outputs
+        )
+    
+        try:
+            assert_test(deepeval_case, metrics)
+        except AssertionError as e:
+            pass_threshold = geval_kwargs.get("threshold", 0.7)
+            partial_threshold = 0.4
+            if isinstance(rubric, list) and len(rubric) &gt; 1:
+                partial_threshold = rubric[1].score_range[0] / 10.0
+    
+            # Soft Pass Strategy:
+            # If the score is &gt;= partial_threshold (Rubric "Partial" tier start), we treat it as a PASS with a warning.
+            # This avoids binary failures for results that are semantically useful but not perfect.
+            current_score = metrics[0].score
+    
+            # Fallback: If the score isn't populated in the metric object, extract it directly from
+            # the error message. This guarantees we have the score that triggered the assertion failure.
+            # It seems DeepEval sometimes raises the error without updating the metric object in place (bug?)
+            # We try to parse the score from the error message: "Metrics: Correctness ... (score: 0.6, ...)"
+    
+            if current_score is None:
+                match = re.search(r"score: ([0-9.]+)", str(e))
+                if match:
+                    current_score = float(match.group(1))
+    
+            if current_score is not None and current_score &gt;= partial_threshold:
+                warning_msg = f"Test '{test_id}' passed with PARTIAL CORRECTNESS. Score: {current_score} (Threshold: {pass_threshold})"
+                warnings.warn(warning_msg)
+                record_property("warning", warning_msg)
+                return
+    
+            eval_info = ""
+            if used_steps:
+                eval_info = f"Evaluation Steps:\n{json.dumps(used_steps, indent=2)}\n"
+            elif used_criteria:
+                eval_info = f"Criteria/Rubric:\n{used_criteria}\n"
+    
+            error_message = (
+                f"\n--- Deepeval Test Failed ---\n"
+                f"Test Case ID: {test_id}\n"
+                f"Prompt: {prompt}\n"
+                f"Expected Output Hint: {expected_output}\n"
+                f"----- EVALUATION DETAILS -----\n"
+                f"{eval_info}"
+                f"----- ACTUAL OUTPUT -----\n{actual_output}\n"
+                f"----- END ACTUAL OUTPUT -----\n"
+                f"Original Error: {e}"
+            )
+&gt;           raise AssertionError(error_message) from e
+E           AssertionError: 
+E           --- Deepeval Test Failed ---
+E           Test Case ID: TC-OPS-Pre
+E           Prompt: Is system with name 10.145.211.247 in Multi Linux Manager (MLM)?
+E           Expected Output Hint: A confirmation that the system exists
+E           ----- EVALUATION DETAILS -----
+E           Evaluation Steps:
+E           [
+E             "Check if the output confirms that the system exists.",
+E             "Verify that the system name corresponds to the one requested."
+E           ]
+E           ----- ACTUAL OUTPUT -----
+E           The system with IP address 10.145.211.247 was not found in the Multi Linux Manager (MLM). A search of all registered systems confirmed that it is not present in the inventory.
+E           ----- END ACTUAL OUTPUT -----
+E           Original Error: Metrics: Correctness [GEval] (score: 0.0, threshold: 0.7, strict: False, error: None, reason: The output fails both evaluation steps: it explicitly confirms that the system does not exist in the Multi Linux Manager, whereas the expected outcome was a confirmation of the system's existence.) failed.
+
+test/test_deepeval.py:350: AssertionError</failure></testcase><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case5]" time="12.790"><failure message="AssertionError: &#10;--- Deepeval Test Failed ---&#10;Test Case ID: TC-OPS-001&#10;Prompt: Remove system 10.145.211.247&#10;Expected Output Hint: Return a message stating that that system was successfully removed.&#10;----- EVALUATION DETAILS -----&#10;Evaluation Steps:&#10;[&#10;  &quot;Check if the output confirms the system was successfully removed.&quot;,&#10;  &quot;Ensure there are no error messages indicating failure to remove.&quot;&#10;]&#10;----- ACTUAL OUTPUT -----&#10;No system with the IP address `10.145.211.247` was found in the Uyuni infrastructure. &#10;&#10;Currently, the following systems are registered:&#10;*   **mlm-test-ai-proxy.mgr.suse.de** (ID: 1000010000, IP: 10.145.210.130)&#10;*   **mlm-test-ai-rhlike-minion.mgr.suse.de** (ID: 1000010001, IP: 10.145.210.138)&#10;*   **mlm-test-ai-deblike-minion.mgr.suse.de** (ID: 1000010002, IP: 10.145.210.139)&#10;*   **mlm-test-ai-suse-minion.mgr.suse.de** (ID: 1000010003, IP: 10.145.210.134)&#10;*   **mlm-test-ai-build-host.mgr.suse.de** (ID: 1000010004, IP: 10.145.210.141)&#10;*   **mlm-test-ai-suse-sshminion.mgr.suse.de** (ID: 1000010005, IP: 10.145.210.136)&#10;&#10;Please verify the IP address and try again.&#10;----- END ACTUAL OUTPUT -----&#10;Original Error: Metrics: Correctness [GEval] (score: 0.2, threshold: 0.7, strict: False, error: None, reason: The output fails to confirm the removal of the system, instead indicating that the system with the specified IP address (10.145.211.247) could not be found in the infrastructure. It does not meet the expected outcome of verifying a successful removal.) failed.">test_case = {'expected_output': 'Return a message stating that that system was successfully removed.', 'geval_config': {'evaluatio...re no error messages indicating failure to remove.']}, 'id': 'TC-OPS-001', 'prompt': 'Remove system {new_system_host}'}
+record_property = &lt;function record_property.&lt;locals&gt;.append_property at 0x7f05827f2fc0&gt;
+
+    @pytest.mark.parametrize("test_case", load_test_cases())
+    def test_uyuni_mcp_deepeval(test_case, record_property):
+        prompt_template = test_case.get("prompt")
+        expected_template = test_case.get("expected_output")
+        test_id = test_case.get("id", "unknown")
+    
+        if not prompt_template or not expected_template:
+            pytest.skip(f"Skipping malformed test case: {test_id}")
+    
+        prompt = prompt_template.format(**VARS)
+        expected_output = expected_template.format(**VARS)
+    
+        actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt)
+        actual_output = actual_output or "(No output returned by the model)"
+    
+        judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash-lite")
+        default_rubric = [
+            Rubric(score_range=(0, 3), expected_outcome="The actual output is incorrect or irrelevant."),
+            Rubric(score_range=(4, 6), expected_outcome="The actual output is partially correct or misses some key details."),
+            Rubric(score_range=(7, 10), expected_outcome="The actual output matches the expected output in content and meaning."),
+        ]
+    
+        user_geval_config = test_case.get("geval_config", {}).copy()
+        rubric = user_geval_config.pop("rubric", default_rubric)
+    
+        geval_kwargs = {
+            "name": "Correctness",
+            "evaluation_params": [LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
+            "threshold": 0.7,
+            "verbose_mode": True,
+            "model": GoogleGemini(model=judge_model),
+        }
+        geval_kwargs.update(user_geval_config)
+    
+        if isinstance(geval_kwargs["model"], str):
+            geval_kwargs["model"] = GoogleGemini(model=geval_kwargs["model"])
+    
+        used_criteria = geval_kwargs.get("criteria")
+        used_steps = geval_kwargs.get("evaluation_steps")
+    
+        if not used_criteria:
+            if not used_steps:
+                used_criteria = f"The actual output must satisfy this requirement: {expected_output}"
+            else:
+                used_criteria = "Evaluate the actual output based on the provided evaluation steps."
+    
+        if used_criteria:
+            geval_kwargs["criteria"] = used_criteria
+    
+        geval_kwargs["rubric"] = rubric
+    
+        correctness_metric = GEval(**geval_kwargs)
+        metrics = [correctness_metric]
+    
+        actual_tools = [
+            ToolCall(name=call.name, input_parameters=dict(call.args or {}))
+            for call in actual_tool_calls
+        ]
+    
+        expected_tools = None
+        if "expected_tools" in test_case:
+            expected_tools = [
+                ToolCall(name=t["name"], input_parameters=t.get("arguments", {}))
+                for t in test_case["expected_tools"]
+            ]
+            metrics.append(ToolCorrectnessMetric(model=geval_kwargs["model"]))
+    
+        if "mcp_use_criteria" in test_case:
+            mcp_use_metric = MCPUseMetric(
+                criteria=test_case["mcp_use_criteria"],
+                model=geval_kwargs["model"]
+            )
+            metrics.append(mcp_use_metric)
+    
+        deepeval_case = LLMTestCase(
+            input=prompt,
+            actual_output=actual_output,
+            expected_output=expected_output,
+            tools_called=actual_tools,
+            expected_tools=expected_tools,
+            retrieval_context=actual_tool_outputs
+        )
+    
+        try:
+&gt;           assert_test(deepeval_case, metrics)
+
+test/test_deepeval.py:305: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+test_case = LLMTestCase(input='Remove system 10.145.211.247', actual_output='No system with the IP address `10.145.211.247` was fo...servers=None, mcp_tools_called=None, mcp_resources_called=None, mcp_prompts_called=None, custom_column_key_values=None)
+metrics = [&lt;deepeval.metrics.g_eval.g_eval.GEval object at 0x7f05827604d0&gt;]
+golden = None, observed_callback = None, run_async = True
+
+    def assert_test(
+        test_case: Optional[Union[LLMTestCase, ConversationalTestCase]] = None,
+        metrics: Optional[
+            Union[
+                List[BaseMetric],
+                List[BaseConversationalMetric],
+            ]
+        ] = None,
+        golden: Optional[Golden] = None,
+        observed_callback: Optional[
+            Union[Callable[[str], Any], Callable[[str], Awaitable[Any]]]
+        ] = None,
+        run_async: bool = True,
+    ):
+        validate_assert_test_inputs(
+            golden=golden,
+            observed_callback=observed_callback,
+            test_case=test_case,
+            metrics=metrics,
+        )
+    
+        async_config = AsyncConfig(throttle_value=0, max_concurrent=100)
+        display_config = DisplayConfig(
+            verbose_mode=should_verbose_print(), show_indicator=True
+        )
+        error_config = ErrorConfig(
+            ignore_errors=should_ignore_errors(),
+            skip_on_missing_params=should_skip_on_missing_params(),
+        )
+        cache_config = CacheConfig(
+            write_cache=get_is_running_deepeval(), use_cache=should_use_cache()
+        )
+    
+        if golden and observed_callback:
+            if run_async:
+                loop = get_or_create_event_loop()
+                test_result = loop.run_until_complete(
+                    a_execute_agentic_test_cases(
+                        goldens=[golden],
+                        observed_callback=observed_callback,
+                        error_config=error_config,
+                        display_config=display_config,
+                        async_config=async_config,
+                        cache_config=cache_config,
+                        identifier=get_identifier(),
+                        _use_bar_indicator=True,
+                        _is_assert_test=True,
+                    )
+                )[0]
+            else:
+                test_result = execute_agentic_test_cases(
+                    goldens=[golden],
+                    observed_callback=observed_callback,
+                    error_config=error_config,
+                    display_config=display_config,
+                    cache_config=cache_config,
+                    identifier=get_identifier(),
+                    _use_bar_indicator=False,
+                    _is_assert_test=True,
+                )[0]
+    
+        elif test_case and metrics:
+            if run_async:
+                loop = get_or_create_event_loop()
+                test_result = loop.run_until_complete(
+                    a_execute_test_cases(
+                        [test_case],
+                        metrics,
+                        error_config=error_config,
+                        display_config=display_config,
+                        async_config=async_config,
+                        cache_config=cache_config,
+                        identifier=get_identifier(),
+                        _use_bar_indicator=True,
+                        _is_assert_test=True,
+                    )
+                )[0]
+            else:
+                test_result = execute_test_cases(
+                    [test_case],
+                    metrics,
+                    error_config=error_config,
+                    display_config=display_config,
+                    cache_config=cache_config,
+                    identifier=get_identifier(),
+                    _use_bar_indicator=False,
+                    _is_assert_test=True,
+                )[0]
+    
+        if not test_result.success:
+            failed_metrics_data: List[MetricData] = []
+            # even for conversations, test_result right now is just the
+            # result for the last message
+            for metric_data in test_result.metrics_data:
+                if metric_data.error is not None:
+                    failed_metrics_data.append(metric_data)
+                else:
+                    # This try block is for user defined custom metrics,
+                    # which might not handle the score == undefined case elegantly
+                    try:
+                        if not metric_data.success:
+                            failed_metrics_data.append(metric_data)
+                    except Exception:
+                        failed_metrics_data.append(metric_data)
+    
+            failed_metrics_str = ", ".join(
+                [
+                    f"{metrics_data.name} (score: {metrics_data.score}, threshold: {metrics_data.threshold}, strict: {metrics_data.strict_mode}, error: {metrics_data.error}, reason: {metrics_data.reason})"
+                    for metrics_data in failed_metrics_data
+                ]
+            )
+&gt;           raise AssertionError(f"Metrics: {failed_metrics_str} failed.")
+E           AssertionError: Metrics: Correctness [GEval] (score: 0.2, threshold: 0.7, strict: False, error: None, reason: The output fails to confirm the removal of the system, instead indicating that the system with the specified IP address (10.145.211.247) could not be found in the infrastructure. It does not meet the expected outcome of verifying a successful removal.) failed.
+
+.venv/lib64/python3.13/site-packages/deepeval/evaluate/evaluate.py:182: AssertionError
+
+The above exception was the direct cause of the following exception:
+
+test_case = {'expected_output': 'Return a message stating that that system was successfully removed.', 'geval_config': {'evaluatio...re no error messages indicating failure to remove.']}, 'id': 'TC-OPS-001', 'prompt': 'Remove system {new_system_host}'}
+record_property = &lt;function record_property.&lt;locals&gt;.append_property at 0x7f05827f2fc0&gt;
+
+    @pytest.mark.parametrize("test_case", load_test_cases())
+    def test_uyuni_mcp_deepeval(test_case, record_property):
+        prompt_template = test_case.get("prompt")
+        expected_template = test_case.get("expected_output")
+        test_id = test_case.get("id", "unknown")
+    
+        if not prompt_template or not expected_template:
+            pytest.skip(f"Skipping malformed test case: {test_id}")
+    
+        prompt = prompt_template.format(**VARS)
+        expected_output = expected_template.format(**VARS)
+    
+        actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt)
+        actual_output = actual_output or "(No output returned by the model)"
+    
+        judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash-lite")
+        default_rubric = [
+            Rubric(score_range=(0, 3), expected_outcome="The actual output is incorrect or irrelevant."),
+            Rubric(score_range=(4, 6), expected_outcome="The actual output is partially correct or misses some key details."),
+            Rubric(score_range=(7, 10), expected_outcome="The actual output matches the expected output in content and meaning."),
+        ]
+    
+        user_geval_config = test_case.get("geval_config", {}).copy()
+        rubric = user_geval_config.pop("rubric", default_rubric)
+    
+        geval_kwargs = {
+            "name": "Correctness",
+            "evaluation_params": [LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
+            "threshold": 0.7,
+            "verbose_mode": True,
+            "model": GoogleGemini(model=judge_model),
+        }
+        geval_kwargs.update(user_geval_config)
+    
+        if isinstance(geval_kwargs["model"], str):
+            geval_kwargs["model"] = GoogleGemini(model=geval_kwargs["model"])
+    
+        used_criteria = geval_kwargs.get("criteria")
+        used_steps = geval_kwargs.get("evaluation_steps")
+    
+        if not used_criteria:
+            if not used_steps:
+                used_criteria = f"The actual output must satisfy this requirement: {expected_output}"
+            else:
+                used_criteria = "Evaluate the actual output based on the provided evaluation steps."
+    
+        if used_criteria:
+            geval_kwargs["criteria"] = used_criteria
+    
+        geval_kwargs["rubric"] = rubric
+    
+        correctness_metric = GEval(**geval_kwargs)
+        metrics = [correctness_metric]
+    
+        actual_tools = [
+            ToolCall(name=call.name, input_parameters=dict(call.args or {}))
+            for call in actual_tool_calls
+        ]
+    
+        expected_tools = None
+        if "expected_tools" in test_case:
+            expected_tools = [
+                ToolCall(name=t["name"], input_parameters=t.get("arguments", {}))
+                for t in test_case["expected_tools"]
+            ]
+            metrics.append(ToolCorrectnessMetric(model=geval_kwargs["model"]))
+    
+        if "mcp_use_criteria" in test_case:
+            mcp_use_metric = MCPUseMetric(
+                criteria=test_case["mcp_use_criteria"],
+                model=geval_kwargs["model"]
+            )
+            metrics.append(mcp_use_metric)
+    
+        deepeval_case = LLMTestCase(
+            input=prompt,
+            actual_output=actual_output,
+            expected_output=expected_output,
+            tools_called=actual_tools,
+            expected_tools=expected_tools,
+            retrieval_context=actual_tool_outputs
+        )
+    
+        try:
+            assert_test(deepeval_case, metrics)
+        except AssertionError as e:
+            pass_threshold = geval_kwargs.get("threshold", 0.7)
+            partial_threshold = 0.4
+            if isinstance(rubric, list) and len(rubric) &gt; 1:
+                partial_threshold = rubric[1].score_range[0] / 10.0
+    
+            # Soft Pass Strategy:
+            # If the score is &gt;= partial_threshold (Rubric "Partial" tier start), we treat it as a PASS with a warning.
+            # This avoids binary failures for results that are semantically useful but not perfect.
+            current_score = metrics[0].score
+    
+            # Fallback: If the score isn't populated in the metric object, extract it directly from
+            # the error message. This guarantees we have the score that triggered the assertion failure.
+            # It seems DeepEval sometimes raises the error without updating the metric object in place (bug?)
+            # We try to parse the score from the error message: "Metrics: Correctness ... (score: 0.6, ...)"
+    
+            if current_score is None:
+                match = re.search(r"score: ([0-9.]+)", str(e))
+                if match:
+                    current_score = float(match.group(1))
+    
+            if current_score is not None and current_score &gt;= partial_threshold:
+                warning_msg = f"Test '{test_id}' passed with PARTIAL CORRECTNESS. Score: {current_score} (Threshold: {pass_threshold})"
+                warnings.warn(warning_msg)
+                record_property("warning", warning_msg)
+                return
+    
+            eval_info = ""
+            if used_steps:
+                eval_info = f"Evaluation Steps:\n{json.dumps(used_steps, indent=2)}\n"
+            elif used_criteria:
+                eval_info = f"Criteria/Rubric:\n{used_criteria}\n"
+    
+            error_message = (
+                f"\n--- Deepeval Test Failed ---\n"
+                f"Test Case ID: {test_id}\n"
+                f"Prompt: {prompt}\n"
+                f"Expected Output Hint: {expected_output}\n"
+                f"----- EVALUATION DETAILS -----\n"
+                f"{eval_info}"
+                f"----- ACTUAL OUTPUT -----\n{actual_output}\n"
+                f"----- END ACTUAL OUTPUT -----\n"
+                f"Original Error: {e}"
+            )
+&gt;           raise AssertionError(error_message) from e
+E           AssertionError: 
+E           --- Deepeval Test Failed ---
+E           Test Case ID: TC-OPS-001
+E           Prompt: Remove system 10.145.211.247
+E           Expected Output Hint: Return a message stating that that system was successfully removed.
+E           ----- EVALUATION DETAILS -----
+E           Evaluation Steps:
+E           [
+E             "Check if the output confirms the system was successfully removed.",
+E             "Ensure there are no error messages indicating failure to remove."
+E           ]
+E           ----- ACTUAL OUTPUT -----
+E           No system with the IP address `10.145.211.247` was found in the Uyuni infrastructure. 
+E           
+E           Currently, the following systems are registered:
+E           *   **mlm-test-ai-proxy.mgr.suse.de** (ID: 1000010000, IP: 10.145.210.130)
+E           *   **mlm-test-ai-rhlike-minion.mgr.suse.de** (ID: 1000010001, IP: 10.145.210.138)
+E           *   **mlm-test-ai-deblike-minion.mgr.suse.de** (ID: 1000010002, IP: 10.145.210.139)
+E           *   **mlm-test-ai-suse-minion.mgr.suse.de** (ID: 1000010003, IP: 10.145.210.134)
+E           *   **mlm-test-ai-build-host.mgr.suse.de** (ID: 1000010004, IP: 10.145.210.141)
+E           *   **mlm-test-ai-suse-sshminion.mgr.suse.de** (ID: 1000010005, IP: 10.145.210.136)
+E           
+E           Please verify the IP address and try again.
+E           ----- END ACTUAL OUTPUT -----
+E           Original Error: Metrics: Correctness [GEval] (score: 0.2, threshold: 0.7, strict: False, error: None, reason: The output fails to confirm the removal of the system, instead indicating that the system with the specified IP address (10.145.211.247) could not be found in the infrastructure. It does not meet the expected outcome of verifying a successful removal.) failed.
+
+test/test_deepeval.py:350: AssertionError</failure></testcase><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case6]" time="10.525" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case7]" time="6.802"><failure message="AssertionError: &#10;--- Deepeval Test Failed ---&#10;Test Case ID: TC-OPS-2-001&#10;Prompt: Add a new system at host 10.145.211.247 with activation key '1-DEBLIKE-KEY'&#10;Expected Output Hint: Return a message stating that the addition process started, and instructing the user to check the system list later for its status.&#10;----- EVALUATION DETAILS -----&#10;Evaluation Steps:&#10;[&#10;  &quot;Check if the output indicates that the system addition (bootstrap) process has started.&quot;,&#10;  &quot;Verify that the message advises checking the system list later or implies the operation is asynchronous.&quot;&#10;]&#10;----- ACTUAL OUTPUT -----&#10;The attempt to add the system at `10.145.211.247` failed due to a connection error: `[An error has occurred during salt execution: unable to establish ssh connection.]`. Please verify that the host is accessible via SSH and that the server has the correct credentials configured.&#10;----- END ACTUAL OUTPUT -----&#10;Original Error: Metrics: Correctness [GEval] (score: 0.1, threshold: 0.7, strict: False, error: None, reason: The actual output reports a failure and a connection error rather than indicating that the bootstrap process has started. It fails both evaluation criteria, as it does not acknowledge an asynchronous process and instead provides an error message regarding SSH connectivity.) failed.">test_case = {'expected_output': 'Return a message stating that the addition process started, and instructing the user to check the....']}, 'id': 'TC-OPS-2-001', 'prompt': "Add a new system at host {new_system_host} with activation key '{key_deblike}'"}
+record_property = &lt;function record_property.&lt;locals&gt;.append_property at 0x7f05827f2020&gt;
+
+    @pytest.mark.parametrize("test_case", load_test_cases())
+    def test_uyuni_mcp_deepeval(test_case, record_property):
+        prompt_template = test_case.get("prompt")
+        expected_template = test_case.get("expected_output")
+        test_id = test_case.get("id", "unknown")
+    
+        if not prompt_template or not expected_template:
+            pytest.skip(f"Skipping malformed test case: {test_id}")
+    
+        prompt = prompt_template.format(**VARS)
+        expected_output = expected_template.format(**VARS)
+    
+        actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt)
+        actual_output = actual_output or "(No output returned by the model)"
+    
+        judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash-lite")
+        default_rubric = [
+            Rubric(score_range=(0, 3), expected_outcome="The actual output is incorrect or irrelevant."),
+            Rubric(score_range=(4, 6), expected_outcome="The actual output is partially correct or misses some key details."),
+            Rubric(score_range=(7, 10), expected_outcome="The actual output matches the expected output in content and meaning."),
+        ]
+    
+        user_geval_config = test_case.get("geval_config", {}).copy()
+        rubric = user_geval_config.pop("rubric", default_rubric)
+    
+        geval_kwargs = {
+            "name": "Correctness",
+            "evaluation_params": [LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
+            "threshold": 0.7,
+            "verbose_mode": True,
+            "model": GoogleGemini(model=judge_model),
+        }
+        geval_kwargs.update(user_geval_config)
+    
+        if isinstance(geval_kwargs["model"], str):
+            geval_kwargs["model"] = GoogleGemini(model=geval_kwargs["model"])
+    
+        used_criteria = geval_kwargs.get("criteria")
+        used_steps = geval_kwargs.get("evaluation_steps")
+    
+        if not used_criteria:
+            if not used_steps:
+                used_criteria = f"The actual output must satisfy this requirement: {expected_output}"
+            else:
+                used_criteria = "Evaluate the actual output based on the provided evaluation steps."
+    
+        if used_criteria:
+            geval_kwargs["criteria"] = used_criteria
+    
+        geval_kwargs["rubric"] = rubric
+    
+        correctness_metric = GEval(**geval_kwargs)
+        metrics = [correctness_metric]
+    
+        actual_tools = [
+            ToolCall(name=call.name, input_parameters=dict(call.args or {}))
+            for call in actual_tool_calls
+        ]
+    
+        expected_tools = None
+        if "expected_tools" in test_case:
+            expected_tools = [
+                ToolCall(name=t["name"], input_parameters=t.get("arguments", {}))
+                for t in test_case["expected_tools"]
+            ]
+            metrics.append(ToolCorrectnessMetric(model=geval_kwargs["model"]))
+    
+        if "mcp_use_criteria" in test_case:
+            mcp_use_metric = MCPUseMetric(
+                criteria=test_case["mcp_use_criteria"],
+                model=geval_kwargs["model"]
+            )
+            metrics.append(mcp_use_metric)
+    
+        deepeval_case = LLMTestCase(
+            input=prompt,
+            actual_output=actual_output,
+            expected_output=expected_output,
+            tools_called=actual_tools,
+            expected_tools=expected_tools,
+            retrieval_context=actual_tool_outputs
+        )
+    
+        try:
+&gt;           assert_test(deepeval_case, metrics)
+
+test/test_deepeval.py:305: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+test_case = LLMTestCase(input="Add a new system at host 10.145.211.247 with activation key '1-DEBLIKE-KEY'", actual_output='The at...servers=None, mcp_tools_called=None, mcp_resources_called=None, mcp_prompts_called=None, custom_column_key_values=None)
+metrics = [&lt;deepeval.metrics.g_eval.g_eval.GEval object at 0x7f05828d2c30&gt;]
+golden = None, observed_callback = None, run_async = True
+
+    def assert_test(
+        test_case: Optional[Union[LLMTestCase, ConversationalTestCase]] = None,
+        metrics: Optional[
+            Union[
+                List[BaseMetric],
+                List[BaseConversationalMetric],
+            ]
+        ] = None,
+        golden: Optional[Golden] = None,
+        observed_callback: Optional[
+            Union[Callable[[str], Any], Callable[[str], Awaitable[Any]]]
+        ] = None,
+        run_async: bool = True,
+    ):
+        validate_assert_test_inputs(
+            golden=golden,
+            observed_callback=observed_callback,
+            test_case=test_case,
+            metrics=metrics,
+        )
+    
+        async_config = AsyncConfig(throttle_value=0, max_concurrent=100)
+        display_config = DisplayConfig(
+            verbose_mode=should_verbose_print(), show_indicator=True
+        )
+        error_config = ErrorConfig(
+            ignore_errors=should_ignore_errors(),
+            skip_on_missing_params=should_skip_on_missing_params(),
+        )
+        cache_config = CacheConfig(
+            write_cache=get_is_running_deepeval(), use_cache=should_use_cache()
+        )
+    
+        if golden and observed_callback:
+            if run_async:
+                loop = get_or_create_event_loop()
+                test_result = loop.run_until_complete(
+                    a_execute_agentic_test_cases(
+                        goldens=[golden],
+                        observed_callback=observed_callback,
+                        error_config=error_config,
+                        display_config=display_config,
+                        async_config=async_config,
+                        cache_config=cache_config,
+                        identifier=get_identifier(),
+                        _use_bar_indicator=True,
+                        _is_assert_test=True,
+                    )
+                )[0]
+            else:
+                test_result = execute_agentic_test_cases(
+                    goldens=[golden],
+                    observed_callback=observed_callback,
+                    error_config=error_config,
+                    display_config=display_config,
+                    cache_config=cache_config,
+                    identifier=get_identifier(),
+                    _use_bar_indicator=False,
+                    _is_assert_test=True,
+                )[0]
+    
+        elif test_case and metrics:
+            if run_async:
+                loop = get_or_create_event_loop()
+                test_result = loop.run_until_complete(
+                    a_execute_test_cases(
+                        [test_case],
+                        metrics,
+                        error_config=error_config,
+                        display_config=display_config,
+                        async_config=async_config,
+                        cache_config=cache_config,
+                        identifier=get_identifier(),
+                        _use_bar_indicator=True,
+                        _is_assert_test=True,
+                    )
+                )[0]
+            else:
+                test_result = execute_test_cases(
+                    [test_case],
+                    metrics,
+                    error_config=error_config,
+                    display_config=display_config,
+                    cache_config=cache_config,
+                    identifier=get_identifier(),
+                    _use_bar_indicator=False,
+                    _is_assert_test=True,
+                )[0]
+    
+        if not test_result.success:
+            failed_metrics_data: List[MetricData] = []
+            # even for conversations, test_result right now is just the
+            # result for the last message
+            for metric_data in test_result.metrics_data:
+                if metric_data.error is not None:
+                    failed_metrics_data.append(metric_data)
+                else:
+                    # This try block is for user defined custom metrics,
+                    # which might not handle the score == undefined case elegantly
+                    try:
+                        if not metric_data.success:
+                            failed_metrics_data.append(metric_data)
+                    except Exception:
+                        failed_metrics_data.append(metric_data)
+    
+            failed_metrics_str = ", ".join(
+                [
+                    f"{metrics_data.name} (score: {metrics_data.score}, threshold: {metrics_data.threshold}, strict: {metrics_data.strict_mode}, error: {metrics_data.error}, reason: {metrics_data.reason})"
+                    for metrics_data in failed_metrics_data
+                ]
+            )
+&gt;           raise AssertionError(f"Metrics: {failed_metrics_str} failed.")
+E           AssertionError: Metrics: Correctness [GEval] (score: 0.1, threshold: 0.7, strict: False, error: None, reason: The actual output reports a failure and a connection error rather than indicating that the bootstrap process has started. It fails both evaluation criteria, as it does not acknowledge an asynchronous process and instead provides an error message regarding SSH connectivity.) failed.
+
+.venv/lib64/python3.13/site-packages/deepeval/evaluate/evaluate.py:182: AssertionError
+
+The above exception was the direct cause of the following exception:
+
+test_case = {'expected_output': 'Return a message stating that the addition process started, and instructing the user to check the....']}, 'id': 'TC-OPS-2-001', 'prompt': "Add a new system at host {new_system_host} with activation key '{key_deblike}'"}
+record_property = &lt;function record_property.&lt;locals&gt;.append_property at 0x7f05827f2020&gt;
+
+    @pytest.mark.parametrize("test_case", load_test_cases())
+    def test_uyuni_mcp_deepeval(test_case, record_property):
+        prompt_template = test_case.get("prompt")
+        expected_template = test_case.get("expected_output")
+        test_id = test_case.get("id", "unknown")
+    
+        if not prompt_template or not expected_template:
+            pytest.skip(f"Skipping malformed test case: {test_id}")
+    
+        prompt = prompt_template.format(**VARS)
+        expected_output = expected_template.format(**VARS)
+    
+        actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt)
+        actual_output = actual_output or "(No output returned by the model)"
+    
+        judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash-lite")
+        default_rubric = [
+            Rubric(score_range=(0, 3), expected_outcome="The actual output is incorrect or irrelevant."),
+            Rubric(score_range=(4, 6), expected_outcome="The actual output is partially correct or misses some key details."),
+            Rubric(score_range=(7, 10), expected_outcome="The actual output matches the expected output in content and meaning."),
+        ]
+    
+        user_geval_config = test_case.get("geval_config", {}).copy()
+        rubric = user_geval_config.pop("rubric", default_rubric)
+    
+        geval_kwargs = {
+            "name": "Correctness",
+            "evaluation_params": [LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
+            "threshold": 0.7,
+            "verbose_mode": True,
+            "model": GoogleGemini(model=judge_model),
+        }
+        geval_kwargs.update(user_geval_config)
+    
+        if isinstance(geval_kwargs["model"], str):
+            geval_kwargs["model"] = GoogleGemini(model=geval_kwargs["model"])
+    
+        used_criteria = geval_kwargs.get("criteria")
+        used_steps = geval_kwargs.get("evaluation_steps")
+    
+        if not used_criteria:
+            if not used_steps:
+                used_criteria = f"The actual output must satisfy this requirement: {expected_output}"
+            else:
+                used_criteria = "Evaluate the actual output based on the provided evaluation steps."
+    
+        if used_criteria:
+            geval_kwargs["criteria"] = used_criteria
+    
+        geval_kwargs["rubric"] = rubric
+    
+        correctness_metric = GEval(**geval_kwargs)
+        metrics = [correctness_metric]
+    
+        actual_tools = [
+            ToolCall(name=call.name, input_parameters=dict(call.args or {}))
+            for call in actual_tool_calls
+        ]
+    
+        expected_tools = None
+        if "expected_tools" in test_case:
+            expected_tools = [
+                ToolCall(name=t["name"], input_parameters=t.get("arguments", {}))
+                for t in test_case["expected_tools"]
+            ]
+            metrics.append(ToolCorrectnessMetric(model=geval_kwargs["model"]))
+    
+        if "mcp_use_criteria" in test_case:
+            mcp_use_metric = MCPUseMetric(
+                criteria=test_case["mcp_use_criteria"],
+                model=geval_kwargs["model"]
+            )
+            metrics.append(mcp_use_metric)
+    
+        deepeval_case = LLMTestCase(
+            input=prompt,
+            actual_output=actual_output,
+            expected_output=expected_output,
+            tools_called=actual_tools,
+            expected_tools=expected_tools,
+            retrieval_context=actual_tool_outputs
+        )
+    
+        try:
+            assert_test(deepeval_case, metrics)
+        except AssertionError as e:
+            pass_threshold = geval_kwargs.get("threshold", 0.7)
+            partial_threshold = 0.4
+            if isinstance(rubric, list) and len(rubric) &gt; 1:
+                partial_threshold = rubric[1].score_range[0] / 10.0
+    
+            # Soft Pass Strategy:
+            # If the score is &gt;= partial_threshold (Rubric "Partial" tier start), we treat it as a PASS with a warning.
+            # This avoids binary failures for results that are semantically useful but not perfect.
+            current_score = metrics[0].score
+    
+            # Fallback: If the score isn't populated in the metric object, extract it directly from
+            # the error message. This guarantees we have the score that triggered the assertion failure.
+            # It seems DeepEval sometimes raises the error without updating the metric object in place (bug?)
+            # We try to parse the score from the error message: "Metrics: Correctness ... (score: 0.6, ...)"
+    
+            if current_score is None:
+                match = re.search(r"score: ([0-9.]+)", str(e))
+                if match:
+                    current_score = float(match.group(1))
+    
+            if current_score is not None and current_score &gt;= partial_threshold:
+                warning_msg = f"Test '{test_id}' passed with PARTIAL CORRECTNESS. Score: {current_score} (Threshold: {pass_threshold})"
+                warnings.warn(warning_msg)
+                record_property("warning", warning_msg)
+                return
+    
+            eval_info = ""
+            if used_steps:
+                eval_info = f"Evaluation Steps:\n{json.dumps(used_steps, indent=2)}\n"
+            elif used_criteria:
+                eval_info = f"Criteria/Rubric:\n{used_criteria}\n"
+    
+            error_message = (
+                f"\n--- Deepeval Test Failed ---\n"
+                f"Test Case ID: {test_id}\n"
+                f"Prompt: {prompt}\n"
+                f"Expected Output Hint: {expected_output}\n"
+                f"----- EVALUATION DETAILS -----\n"
+                f"{eval_info}"
+                f"----- ACTUAL OUTPUT -----\n{actual_output}\n"
+                f"----- END ACTUAL OUTPUT -----\n"
+                f"Original Error: {e}"
+            )
+&gt;           raise AssertionError(error_message) from e
+E           AssertionError: 
+E           --- Deepeval Test Failed ---
+E           Test Case ID: TC-OPS-2-001
+E           Prompt: Add a new system at host 10.145.211.247 with activation key '1-DEBLIKE-KEY'
+E           Expected Output Hint: Return a message stating that the addition process started, and instructing the user to check the system list later for its status.
+E           ----- EVALUATION DETAILS -----
+E           Evaluation Steps:
+E           [
+E             "Check if the output indicates that the system addition (bootstrap) process has started.",
+E             "Verify that the message advises checking the system list later or implies the operation is asynchronous."
+E           ]
+E           ----- ACTUAL OUTPUT -----
+E           The attempt to add the system at `10.145.211.247` failed due to a connection error: `[An error has occurred during salt execution: unable to establish ssh connection.]`. Please verify that the host is accessible via SSH and that the server has the correct credentials configured.
+E           ----- END ACTUAL OUTPUT -----
+E           Original Error: Metrics: Correctness [GEval] (score: 0.1, threshold: 0.7, strict: False, error: None, reason: The actual output reports a failure and a connection error rather than indicating that the bootstrap process has started. It fails both evaluation criteria, as it does not acknowledge an asynchronous process and instead provides an error message regarding SSH connectivity.) failed.
+
+test/test_deepeval.py:350: AssertionError</failure></testcase><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case8]" time="5.284" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case9]" time="4.013" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case10]" time="4.032"><failure message="AssertionError: &#10;--- Deepeval Test Failed ---&#10;Test Case ID: TC-RBT-001&#10;Prompt: Do any of my systems require reboot?&#10;Expected Output Hint: Return a message that mlm-test-ai-rhlike-minion.mgr.suse.de require a reboot.&#10;----- EVALUATION DETAILS -----&#10;Evaluation Steps:&#10;[&#10;  &quot;Check if the output identifies systems requiring a reboot.&quot;,&#10;  &quot;Verify that the specific system mentioned in expected output is listed as requiring a reboot.&quot;&#10;]&#10;----- ACTUAL OUTPUT -----&#10;Yes, one system requires a reboot:&#10;&#10;*   **System Name:** mlm-test-ai-proxy.mgr.suse.de&#10;*   **System ID:** 1000010000&#10;*   **Reboot Status:** reboot_required&#10;----- END ACTUAL OUTPUT -----&#10;Original Error: Metrics: Correctness [GEval] (score: 0.3, threshold: 0.7, strict: False, error: None, reason: The actual output correctly identifies that a system requires a reboot, but it provides the wrong system name (mlm-test-ai-proxy.mgr.suse.de) instead of the one specified in the expected output (mlm-test-ai-rhlike-minion.mgr.suse.de).) failed.">test_case = {'expected_output': 'Return a message that {rhlike_minion_name} require a reboot.', 'geval_config': {'evaluation_steps...ected output is listed as requiring a reboot.']}, 'id': 'TC-RBT-001', 'prompt': 'Do any of my systems require reboot?'}
+record_property = &lt;function record_property.&lt;locals&gt;.append_property at 0x7f05827f2340&gt;
+
+    @pytest.mark.parametrize("test_case", load_test_cases())
+    def test_uyuni_mcp_deepeval(test_case, record_property):
+        prompt_template = test_case.get("prompt")
+        expected_template = test_case.get("expected_output")
+        test_id = test_case.get("id", "unknown")
+    
+        if not prompt_template or not expected_template:
+            pytest.skip(f"Skipping malformed test case: {test_id}")
+    
+        prompt = prompt_template.format(**VARS)
+        expected_output = expected_template.format(**VARS)
+    
+        actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt)
+        actual_output = actual_output or "(No output returned by the model)"
+    
+        judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash-lite")
+        default_rubric = [
+            Rubric(score_range=(0, 3), expected_outcome="The actual output is incorrect or irrelevant."),
+            Rubric(score_range=(4, 6), expected_outcome="The actual output is partially correct or misses some key details."),
+            Rubric(score_range=(7, 10), expected_outcome="The actual output matches the expected output in content and meaning."),
+        ]
+    
+        user_geval_config = test_case.get("geval_config", {}).copy()
+        rubric = user_geval_config.pop("rubric", default_rubric)
+    
+        geval_kwargs = {
+            "name": "Correctness",
+            "evaluation_params": [LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
+            "threshold": 0.7,
+            "verbose_mode": True,
+            "model": GoogleGemini(model=judge_model),
+        }
+        geval_kwargs.update(user_geval_config)
+    
+        if isinstance(geval_kwargs["model"], str):
+            geval_kwargs["model"] = GoogleGemini(model=geval_kwargs["model"])
+    
+        used_criteria = geval_kwargs.get("criteria")
+        used_steps = geval_kwargs.get("evaluation_steps")
+    
+        if not used_criteria:
+            if not used_steps:
+                used_criteria = f"The actual output must satisfy this requirement: {expected_output}"
+            else:
+                used_criteria = "Evaluate the actual output based on the provided evaluation steps."
+    
+        if used_criteria:
+            geval_kwargs["criteria"] = used_criteria
+    
+        geval_kwargs["rubric"] = rubric
+    
+        correctness_metric = GEval(**geval_kwargs)
+        metrics = [correctness_metric]
+    
+        actual_tools = [
+            ToolCall(name=call.name, input_parameters=dict(call.args or {}))
+            for call in actual_tool_calls
+        ]
+    
+        expected_tools = None
+        if "expected_tools" in test_case:
+            expected_tools = [
+                ToolCall(name=t["name"], input_parameters=t.get("arguments", {}))
+                for t in test_case["expected_tools"]
+            ]
+            metrics.append(ToolCorrectnessMetric(model=geval_kwargs["model"]))
+    
+        if "mcp_use_criteria" in test_case:
+            mcp_use_metric = MCPUseMetric(
+                criteria=test_case["mcp_use_criteria"],
+                model=geval_kwargs["model"]
+            )
+            metrics.append(mcp_use_metric)
+    
+        deepeval_case = LLMTestCase(
+            input=prompt,
+            actual_output=actual_output,
+            expected_output=expected_output,
+            tools_called=actual_tools,
+            expected_tools=expected_tools,
+            retrieval_context=actual_tool_outputs
+        )
+    
+        try:
+&gt;           assert_test(deepeval_case, metrics)
+
+test/test_deepeval.py:305: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+test_case = LLMTestCase(input='Do any of my systems require reboot?', actual_output='Yes, one system requires a reboot:\n\n*   **S...servers=None, mcp_tools_called=None, mcp_resources_called=None, mcp_prompts_called=None, custom_column_key_values=None)
+metrics = [&lt;deepeval.metrics.g_eval.g_eval.GEval object at 0x7f0582921c70&gt;]
+golden = None, observed_callback = None, run_async = True
+
+    def assert_test(
+        test_case: Optional[Union[LLMTestCase, ConversationalTestCase]] = None,
+        metrics: Optional[
+            Union[
+                List[BaseMetric],
+                List[BaseConversationalMetric],
+            ]
+        ] = None,
+        golden: Optional[Golden] = None,
+        observed_callback: Optional[
+            Union[Callable[[str], Any], Callable[[str], Awaitable[Any]]]
+        ] = None,
+        run_async: bool = True,
+    ):
+        validate_assert_test_inputs(
+            golden=golden,
+            observed_callback=observed_callback,
+            test_case=test_case,
+            metrics=metrics,
+        )
+    
+        async_config = AsyncConfig(throttle_value=0, max_concurrent=100)
+        display_config = DisplayConfig(
+            verbose_mode=should_verbose_print(), show_indicator=True
+        )
+        error_config = ErrorConfig(
+            ignore_errors=should_ignore_errors(),
+            skip_on_missing_params=should_skip_on_missing_params(),
+        )
+        cache_config = CacheConfig(
+            write_cache=get_is_running_deepeval(), use_cache=should_use_cache()
+        )
+    
+        if golden and observed_callback:
+            if run_async:
+                loop = get_or_create_event_loop()
+                test_result = loop.run_until_complete(
+                    a_execute_agentic_test_cases(
+                        goldens=[golden],
+                        observed_callback=observed_callback,
+                        error_config=error_config,
+                        display_config=display_config,
+                        async_config=async_config,
+                        cache_config=cache_config,
+                        identifier=get_identifier(),
+                        _use_bar_indicator=True,
+                        _is_assert_test=True,
+                    )
+                )[0]
+            else:
+                test_result = execute_agentic_test_cases(
+                    goldens=[golden],
+                    observed_callback=observed_callback,
+                    error_config=error_config,
+                    display_config=display_config,
+                    cache_config=cache_config,
+                    identifier=get_identifier(),
+                    _use_bar_indicator=False,
+                    _is_assert_test=True,
+                )[0]
+    
+        elif test_case and metrics:
+            if run_async:
+                loop = get_or_create_event_loop()
+                test_result = loop.run_until_complete(
+                    a_execute_test_cases(
+                        [test_case],
+                        metrics,
+                        error_config=error_config,
+                        display_config=display_config,
+                        async_config=async_config,
+                        cache_config=cache_config,
+                        identifier=get_identifier(),
+                        _use_bar_indicator=True,
+                        _is_assert_test=True,
+                    )
+                )[0]
+            else:
+                test_result = execute_test_cases(
+                    [test_case],
+                    metrics,
+                    error_config=error_config,
+                    display_config=display_config,
+                    cache_config=cache_config,
+                    identifier=get_identifier(),
+                    _use_bar_indicator=False,
+                    _is_assert_test=True,
+                )[0]
+    
+        if not test_result.success:
+            failed_metrics_data: List[MetricData] = []
+            # even for conversations, test_result right now is just the
+            # result for the last message
+            for metric_data in test_result.metrics_data:
+                if metric_data.error is not None:
+                    failed_metrics_data.append(metric_data)
+                else:
+                    # This try block is for user defined custom metrics,
+                    # which might not handle the score == undefined case elegantly
+                    try:
+                        if not metric_data.success:
+                            failed_metrics_data.append(metric_data)
+                    except Exception:
+                        failed_metrics_data.append(metric_data)
+    
+            failed_metrics_str = ", ".join(
+                [
+                    f"{metrics_data.name} (score: {metrics_data.score}, threshold: {metrics_data.threshold}, strict: {metrics_data.strict_mode}, error: {metrics_data.error}, reason: {metrics_data.reason})"
+                    for metrics_data in failed_metrics_data
+                ]
+            )
+&gt;           raise AssertionError(f"Metrics: {failed_metrics_str} failed.")
+E           AssertionError: Metrics: Correctness [GEval] (score: 0.3, threshold: 0.7, strict: False, error: None, reason: The actual output correctly identifies that a system requires a reboot, but it provides the wrong system name (mlm-test-ai-proxy.mgr.suse.de) instead of the one specified in the expected output (mlm-test-ai-rhlike-minion.mgr.suse.de).) failed.
+
+.venv/lib64/python3.13/site-packages/deepeval/evaluate/evaluate.py:182: AssertionError
+
+The above exception was the direct cause of the following exception:
+
+test_case = {'expected_output': 'Return a message that {rhlike_minion_name} require a reboot.', 'geval_config': {'evaluation_steps...ected output is listed as requiring a reboot.']}, 'id': 'TC-RBT-001', 'prompt': 'Do any of my systems require reboot?'}
+record_property = &lt;function record_property.&lt;locals&gt;.append_property at 0x7f05827f2340&gt;
+
+    @pytest.mark.parametrize("test_case", load_test_cases())
+    def test_uyuni_mcp_deepeval(test_case, record_property):
+        prompt_template = test_case.get("prompt")
+        expected_template = test_case.get("expected_output")
+        test_id = test_case.get("id", "unknown")
+    
+        if not prompt_template or not expected_template:
+            pytest.skip(f"Skipping malformed test case: {test_id}")
+    
+        prompt = prompt_template.format(**VARS)
+        expected_output = expected_template.format(**VARS)
+    
+        actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt)
+        actual_output = actual_output or "(No output returned by the model)"
+    
+        judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash-lite")
+        default_rubric = [
+            Rubric(score_range=(0, 3), expected_outcome="The actual output is incorrect or irrelevant."),
+            Rubric(score_range=(4, 6), expected_outcome="The actual output is partially correct or misses some key details."),
+            Rubric(score_range=(7, 10), expected_outcome="The actual output matches the expected output in content and meaning."),
+        ]
+    
+        user_geval_config = test_case.get("geval_config", {}).copy()
+        rubric = user_geval_config.pop("rubric", default_rubric)
+    
+        geval_kwargs = {
+            "name": "Correctness",
+            "evaluation_params": [LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
+            "threshold": 0.7,
+            "verbose_mode": True,
+            "model": GoogleGemini(model=judge_model),
+        }
+        geval_kwargs.update(user_geval_config)
+    
+        if isinstance(geval_kwargs["model"], str):
+            geval_kwargs["model"] = GoogleGemini(model=geval_kwargs["model"])
+    
+        used_criteria = geval_kwargs.get("criteria")
+        used_steps = geval_kwargs.get("evaluation_steps")
+    
+        if not used_criteria:
+            if not used_steps:
+                used_criteria = f"The actual output must satisfy this requirement: {expected_output}"
+            else:
+                used_criteria = "Evaluate the actual output based on the provided evaluation steps."
+    
+        if used_criteria:
+            geval_kwargs["criteria"] = used_criteria
+    
+        geval_kwargs["rubric"] = rubric
+    
+        correctness_metric = GEval(**geval_kwargs)
+        metrics = [correctness_metric]
+    
+        actual_tools = [
+            ToolCall(name=call.name, input_parameters=dict(call.args or {}))
+            for call in actual_tool_calls
+        ]
+    
+        expected_tools = None
+        if "expected_tools" in test_case:
+            expected_tools = [
+                ToolCall(name=t["name"], input_parameters=t.get("arguments", {}))
+                for t in test_case["expected_tools"]
+            ]
+            metrics.append(ToolCorrectnessMetric(model=geval_kwargs["model"]))
+    
+        if "mcp_use_criteria" in test_case:
+            mcp_use_metric = MCPUseMetric(
+                criteria=test_case["mcp_use_criteria"],
+                model=geval_kwargs["model"]
+            )
+            metrics.append(mcp_use_metric)
+    
+        deepeval_case = LLMTestCase(
+            input=prompt,
+            actual_output=actual_output,
+            expected_output=expected_output,
+            tools_called=actual_tools,
+            expected_tools=expected_tools,
+            retrieval_context=actual_tool_outputs
+        )
+    
+        try:
+            assert_test(deepeval_case, metrics)
+        except AssertionError as e:
+            pass_threshold = geval_kwargs.get("threshold", 0.7)
+            partial_threshold = 0.4
+            if isinstance(rubric, list) and len(rubric) &gt; 1:
+                partial_threshold = rubric[1].score_range[0] / 10.0
+    
+            # Soft Pass Strategy:
+            # If the score is &gt;= partial_threshold (Rubric "Partial" tier start), we treat it as a PASS with a warning.
+            # This avoids binary failures for results that are semantically useful but not perfect.
+            current_score = metrics[0].score
+    
+            # Fallback: If the score isn't populated in the metric object, extract it directly from
+            # the error message. This guarantees we have the score that triggered the assertion failure.
+            # It seems DeepEval sometimes raises the error without updating the metric object in place (bug?)
+            # We try to parse the score from the error message: "Metrics: Correctness ... (score: 0.6, ...)"
+    
+            if current_score is None:
+                match = re.search(r"score: ([0-9.]+)", str(e))
+                if match:
+                    current_score = float(match.group(1))
+    
+            if current_score is not None and current_score &gt;= partial_threshold:
+                warning_msg = f"Test '{test_id}' passed with PARTIAL CORRECTNESS. Score: {current_score} (Threshold: {pass_threshold})"
+                warnings.warn(warning_msg)
+                record_property("warning", warning_msg)
+                return
+    
+            eval_info = ""
+            if used_steps:
+                eval_info = f"Evaluation Steps:\n{json.dumps(used_steps, indent=2)}\n"
+            elif used_criteria:
+                eval_info = f"Criteria/Rubric:\n{used_criteria}\n"
+    
+            error_message = (
+                f"\n--- Deepeval Test Failed ---\n"
+                f"Test Case ID: {test_id}\n"
+                f"Prompt: {prompt}\n"
+                f"Expected Output Hint: {expected_output}\n"
+                f"----- EVALUATION DETAILS -----\n"
+                f"{eval_info}"
+                f"----- ACTUAL OUTPUT -----\n{actual_output}\n"
+                f"----- END ACTUAL OUTPUT -----\n"
+                f"Original Error: {e}"
+            )
+&gt;           raise AssertionError(error_message) from e
+E           AssertionError: 
+E           --- Deepeval Test Failed ---
+E           Test Case ID: TC-RBT-001
+E           Prompt: Do any of my systems require reboot?
+E           Expected Output Hint: Return a message that mlm-test-ai-rhlike-minion.mgr.suse.de require a reboot.
+E           ----- EVALUATION DETAILS -----
+E           Evaluation Steps:
+E           [
+E             "Check if the output identifies systems requiring a reboot.",
+E             "Verify that the specific system mentioned in expected output is listed as requiring a reboot."
+E           ]
+E           ----- ACTUAL OUTPUT -----
+E           Yes, one system requires a reboot:
+E           
+E           *   **System Name:** mlm-test-ai-proxy.mgr.suse.de
+E           *   **System ID:** 1000010000
+E           *   **Reboot Status:** reboot_required
+E           ----- END ACTUAL OUTPUT -----
+E           Original Error: Metrics: Correctness [GEval] (score: 0.3, threshold: 0.7, strict: False, error: None, reason: The actual output correctly identifies that a system requires a reboot, but it provides the wrong system name (mlm-test-ai-proxy.mgr.suse.de) instead of the one specified in the expected output (mlm-test-ai-rhlike-minion.mgr.suse.de).) failed.
+
+test/test_deepeval.py:350: AssertionError</failure></testcase><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case11]" time="5.233" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case12]" time="6.047" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case13]" time="5.077" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case14]" time="6.690" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case15]" time="5.958" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case16]" time="5.038" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case17]" time="3.844"><properties><property name="warning" value="Test 'TC-SEC-002' passed with PARTIAL CORRECTNESS. Score: 0.6 (Threshold: 0.7)" /></properties></testcase><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case18]" time="3.859" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case19]" time="4.681"><properties><property name="warning" value="Test 'TC-SYS-001' passed with PARTIAL CORRECTNESS. Score: 0.5 (Threshold: 0.7)" /></properties></testcase><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case20]" time="5.599" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case21]" time="5.780" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case22]" time="7.898" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case23]" time="6.886" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case24]" time="6.008" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case25]" time="3.945" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case26]" time="4.105" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case27]" time="5.309" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case28]" time="4.266"><failure message="TypeError: MCPUseMetric.__init__() got an unexpected keyword argument 'criteria'">test_case = {'expected_output': 'The response should schedule applying the selected update for system {rhlike_minion_id}.', 'geval... the system, and then use another tool to schedule a specific update. It should not try to schedule all updates.', ...}
+record_property = &lt;function record_property.&lt;locals&gt;.append_property at 0x7f058256d120&gt;
+
+    @pytest.mark.parametrize("test_case", load_test_cases())
+    def test_uyuni_mcp_deepeval(test_case, record_property):
+        prompt_template = test_case.get("prompt")
+        expected_template = test_case.get("expected_output")
+        test_id = test_case.get("id", "unknown")
+    
+        if not prompt_template or not expected_template:
+            pytest.skip(f"Skipping malformed test case: {test_id}")
+    
+        prompt = prompt_template.format(**VARS)
+        expected_output = expected_template.format(**VARS)
+    
+        actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt)
+        actual_output = actual_output or "(No output returned by the model)"
+    
+        judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash-lite")
+        default_rubric = [
+            Rubric(score_range=(0, 3), expected_outcome="The actual output is incorrect or irrelevant."),
+            Rubric(score_range=(4, 6), expected_outcome="The actual output is partially correct or misses some key details."),
+            Rubric(score_range=(7, 10), expected_outcome="The actual output matches the expected output in content and meaning."),
+        ]
+    
+        user_geval_config = test_case.get("geval_config", {}).copy()
+        rubric = user_geval_config.pop("rubric", default_rubric)
+    
+        geval_kwargs = {
+            "name": "Correctness",
+            "evaluation_params": [LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
+            "threshold": 0.7,
+            "verbose_mode": True,
+            "model": GoogleGemini(model=judge_model),
+        }
+        geval_kwargs.update(user_geval_config)
+    
+        if isinstance(geval_kwargs["model"], str):
+            geval_kwargs["model"] = GoogleGemini(model=geval_kwargs["model"])
+    
+        used_criteria = geval_kwargs.get("criteria")
+        used_steps = geval_kwargs.get("evaluation_steps")
+    
+        if not used_criteria:
+            if not used_steps:
+                used_criteria = f"The actual output must satisfy this requirement: {expected_output}"
+            else:
+                used_criteria = "Evaluate the actual output based on the provided evaluation steps."
+    
+        if used_criteria:
+            geval_kwargs["criteria"] = used_criteria
+    
+        geval_kwargs["rubric"] = rubric
+    
+        correctness_metric = GEval(**geval_kwargs)
+        metrics = [correctness_metric]
+    
+        actual_tools = [
+            ToolCall(name=call.name, input_parameters=dict(call.args or {}))
+            for call in actual_tool_calls
+        ]
+    
+        expected_tools = None
+        if "expected_tools" in test_case:
+            expected_tools = [
+                ToolCall(name=t["name"], input_parameters=t.get("arguments", {}))
+                for t in test_case["expected_tools"]
+            ]
+            metrics.append(ToolCorrectnessMetric(model=geval_kwargs["model"]))
+    
+        if "mcp_use_criteria" in test_case:
+&gt;           mcp_use_metric = MCPUseMetric(
+                criteria=test_case["mcp_use_criteria"],
+                model=geval_kwargs["model"]
+            )
+E           TypeError: MCPUseMetric.__init__() got an unexpected keyword argument 'criteria'
+
+test/test_deepeval.py:289: TypeError</failure></testcase><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case29]" time="8.989" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case30]" time="7.786" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case31]" time="6.761" /><testcase classname="test.test_deepeval" name="test_uyuni_mcp_deepeval[test_case32]" time="6.347"><failure message="AssertionError: &#10;--- Deepeval Test Failed ---&#10;Test Case ID: TC-UPD-007&#10;Prompt: Schedule applying the update with update id 2764 for system id 1000010000.&#10;Expected Output Hint: Update (errata ID: 2764) successfully scheduled for system 1000010000. Action URL: ...'&#10;----- EVALUATION DETAILS -----&#10;Evaluation Steps:&#10;[&#10;  &quot;Check if the output indicates that update 2764 has been successfully scheduled for system {proxy_id}.&quot;,&#10;  &quot;Look for a success message or a URL pointing to the scheduled action.&quot;&#10;]&#10;----- ACTUAL OUTPUT -----&#10;The update ID `2764` provided does not exist for system `1000010000`. I have retrieved the list of available, unscheduled errata for this system. Please verify the correct update ID from the list below and let me know which one you would like to schedule:&#10;&#10;| Update ID | Advisory Name | Synopsis | Type |&#10;| :--- | :--- | :--- | :--- |&#10;| 1084 | SUSE-SLE-Micro-6.1-310 | Recommended update for aaa_base | Bug Fix Advisory |&#10;| 1078 | SUSE-SLE-Micro-6.1-309 | moderate: Security update for libssh | Security Advisory |&#10;| 1087 | SUSE-SLE-Micro-6.1-315 | important: Security update for expat | Security Advisory |&#10;| 1097 | SUSE-SLE-Micro-6.1-318 | moderate: Security update for libxslt | Security Advisory |&#10;| ... | ... | ... | ... |&#10;| 1358 | SUSE-SLE-Micro-6.1-kernel-204 | important: Security update for the Linux Kernel | Security Advisory |&#10;| 1380 | SUSE-SLE-Micro-6.1-kernel-260 | important: Security update for the Linux Kernel | Security Advisory |&#10;| 1433 | SUSE-SLE-Micro-6.1-kernel-281 | important: Security update for the Linux Kernel | Security Advisory |&#10;| ... | ... | ... | ... |&#10;&#10;*(List truncated for brevity. There are many other updates available, please specify if you were looking for a specific one.)*&#10;----- END ACTUAL OUTPUT -----&#10;Original Error: Metrics: Correctness [GEval] (score: 0.0, threshold: 0.7, strict: False, error: None, reason: The output failed to schedule the update as requested. Instead of confirming the action for update 2764, the model reported that the ID does not exist for system 1000010000 and provided an irrelevant list of other updates.) failed.">test_case = {'expected_output': "Update (errata ID: 2764) successfully scheduled for system {proxy_id}. Action URL: ...'", 'geval_...action.']}, 'id': 'TC-UPD-007', 'prompt': 'Schedule applying the update with update id 2764 for system id {proxy_id}.'}
+record_property = &lt;function record_property.&lt;locals&gt;.append_property at 0x7f05825ba5c0&gt;
+
+    @pytest.mark.parametrize("test_case", load_test_cases())
+    def test_uyuni_mcp_deepeval(test_case, record_property):
+        prompt_template = test_case.get("prompt")
+        expected_template = test_case.get("expected_output")
+        test_id = test_case.get("id", "unknown")
+    
+        if not prompt_template or not expected_template:
+            pytest.skip(f"Skipping malformed test case: {test_id}")
+    
+        prompt = prompt_template.format(**VARS)
+        expected_output = expected_template.format(**VARS)
+    
+        actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt)
+        actual_output = actual_output or "(No output returned by the model)"
+    
+        judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash-lite")
+        default_rubric = [
+            Rubric(score_range=(0, 3), expected_outcome="The actual output is incorrect or irrelevant."),
+            Rubric(score_range=(4, 6), expected_outcome="The actual output is partially correct or misses some key details."),
+            Rubric(score_range=(7, 10), expected_outcome="The actual output matches the expected output in content and meaning."),
+        ]
+    
+        user_geval_config = test_case.get("geval_config", {}).copy()
+        rubric = user_geval_config.pop("rubric", default_rubric)
+    
+        geval_kwargs = {
+            "name": "Correctness",
+            "evaluation_params": [LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
+            "threshold": 0.7,
+            "verbose_mode": True,
+            "model": GoogleGemini(model=judge_model),
+        }
+        geval_kwargs.update(user_geval_config)
+    
+        if isinstance(geval_kwargs["model"], str):
+            geval_kwargs["model"] = GoogleGemini(model=geval_kwargs["model"])
+    
+        used_criteria = geval_kwargs.get("criteria")
+        used_steps = geval_kwargs.get("evaluation_steps")
+    
+        if not used_criteria:
+            if not used_steps:
+                used_criteria = f"The actual output must satisfy this requirement: {expected_output}"
+            else:
+                used_criteria = "Evaluate the actual output based on the provided evaluation steps."
+    
+        if used_criteria:
+            geval_kwargs["criteria"] = used_criteria
+    
+        geval_kwargs["rubric"] = rubric
+    
+        correctness_metric = GEval(**geval_kwargs)
+        metrics = [correctness_metric]
+    
+        actual_tools = [
+            ToolCall(name=call.name, input_parameters=dict(call.args or {}))
+            for call in actual_tool_calls
+        ]
+    
+        expected_tools = None
+        if "expected_tools" in test_case:
+            expected_tools = [
+                ToolCall(name=t["name"], input_parameters=t.get("arguments", {}))
+                for t in test_case["expected_tools"]
+            ]
+            metrics.append(ToolCorrectnessMetric(model=geval_kwargs["model"]))
+    
+        if "mcp_use_criteria" in test_case:
+            mcp_use_metric = MCPUseMetric(
+                criteria=test_case["mcp_use_criteria"],
+                model=geval_kwargs["model"]
+            )
+            metrics.append(mcp_use_metric)
+    
+        deepeval_case = LLMTestCase(
+            input=prompt,
+            actual_output=actual_output,
+            expected_output=expected_output,
+            tools_called=actual_tools,
+            expected_tools=expected_tools,
+            retrieval_context=actual_tool_outputs
+        )
+    
+        try:
+&gt;           assert_test(deepeval_case, metrics)
+
+test/test_deepeval.py:305: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+test_case = LLMTestCase(input='Schedule applying the update with update id 2764 for system id 1000010000.', actual_output='The upd...servers=None, mcp_tools_called=None, mcp_resources_called=None, mcp_prompts_called=None, custom_column_key_values=None)
+metrics = [&lt;deepeval.metrics.g_eval.g_eval.GEval object at 0x7f0582760050&gt;]
+golden = None, observed_callback = None, run_async = True
+
+    def assert_test(
+        test_case: Optional[Union[LLMTestCase, ConversationalTestCase]] = None,
+        metrics: Optional[
+            Union[
+                List[BaseMetric],
+                List[BaseConversationalMetric],
+            ]
+        ] = None,
+        golden: Optional[Golden] = None,
+        observed_callback: Optional[
+            Union[Callable[[str], Any], Callable[[str], Awaitable[Any]]]
+        ] = None,
+        run_async: bool = True,
+    ):
+        validate_assert_test_inputs(
+            golden=golden,
+            observed_callback=observed_callback,
+            test_case=test_case,
+            metrics=metrics,
+        )
+    
+        async_config = AsyncConfig(throttle_value=0, max_concurrent=100)
+        display_config = DisplayConfig(
+            verbose_mode=should_verbose_print(), show_indicator=True
+        )
+        error_config = ErrorConfig(
+            ignore_errors=should_ignore_errors(),
+            skip_on_missing_params=should_skip_on_missing_params(),
+        )
+        cache_config = CacheConfig(
+            write_cache=get_is_running_deepeval(), use_cache=should_use_cache()
+        )
+    
+        if golden and observed_callback:
+            if run_async:
+                loop = get_or_create_event_loop()
+                test_result = loop.run_until_complete(
+                    a_execute_agentic_test_cases(
+                        goldens=[golden],
+                        observed_callback=observed_callback,
+                        error_config=error_config,
+                        display_config=display_config,
+                        async_config=async_config,
+                        cache_config=cache_config,
+                        identifier=get_identifier(),
+                        _use_bar_indicator=True,
+                        _is_assert_test=True,
+                    )
+                )[0]
+            else:
+                test_result = execute_agentic_test_cases(
+                    goldens=[golden],
+                    observed_callback=observed_callback,
+                    error_config=error_config,
+                    display_config=display_config,
+                    cache_config=cache_config,
+                    identifier=get_identifier(),
+                    _use_bar_indicator=False,
+                    _is_assert_test=True,
+                )[0]
+    
+        elif test_case and metrics:
+            if run_async:
+                loop = get_or_create_event_loop()
+                test_result = loop.run_until_complete(
+                    a_execute_test_cases(
+                        [test_case],
+                        metrics,
+                        error_config=error_config,
+                        display_config=display_config,
+                        async_config=async_config,
+                        cache_config=cache_config,
+                        identifier=get_identifier(),
+                        _use_bar_indicator=True,
+                        _is_assert_test=True,
+                    )
+                )[0]
+            else:
+                test_result = execute_test_cases(
+                    [test_case],
+                    metrics,
+                    error_config=error_config,
+                    display_config=display_config,
+                    cache_config=cache_config,
+                    identifier=get_identifier(),
+                    _use_bar_indicator=False,
+                    _is_assert_test=True,
+                )[0]
+    
+        if not test_result.success:
+            failed_metrics_data: List[MetricData] = []
+            # even for conversations, test_result right now is just the
+            # result for the last message
+            for metric_data in test_result.metrics_data:
+                if metric_data.error is not None:
+                    failed_metrics_data.append(metric_data)
+                else:
+                    # This try block is for user defined custom metrics,
+                    # which might not handle the score == undefined case elegantly
+                    try:
+                        if not metric_data.success:
+                            failed_metrics_data.append(metric_data)
+                    except Exception:
+                        failed_metrics_data.append(metric_data)
+    
+            failed_metrics_str = ", ".join(
+                [
+                    f"{metrics_data.name} (score: {metrics_data.score}, threshold: {metrics_data.threshold}, strict: {metrics_data.strict_mode}, error: {metrics_data.error}, reason: {metrics_data.reason})"
+                    for metrics_data in failed_metrics_data
+                ]
+            )
+&gt;           raise AssertionError(f"Metrics: {failed_metrics_str} failed.")
+E           AssertionError: Metrics: Correctness [GEval] (score: 0.0, threshold: 0.7, strict: False, error: None, reason: The output failed to schedule the update as requested. Instead of confirming the action for update 2764, the model reported that the ID does not exist for system 1000010000 and provided an irrelevant list of other updates.) failed.
+
+.venv/lib64/python3.13/site-packages/deepeval/evaluate/evaluate.py:182: AssertionError
+
+The above exception was the direct cause of the following exception:
+
+test_case = {'expected_output': "Update (errata ID: 2764) successfully scheduled for system {proxy_id}. Action URL: ...'", 'geval_...action.']}, 'id': 'TC-UPD-007', 'prompt': 'Schedule applying the update with update id 2764 for system id {proxy_id}.'}
+record_property = &lt;function record_property.&lt;locals&gt;.append_property at 0x7f05825ba5c0&gt;
+
+    @pytest.mark.parametrize("test_case", load_test_cases())
+    def test_uyuni_mcp_deepeval(test_case, record_property):
+        prompt_template = test_case.get("prompt")
+        expected_template = test_case.get("expected_output")
+        test_id = test_case.get("id", "unknown")
+    
+        if not prompt_template or not expected_template:
+            pytest.skip(f"Skipping malformed test case: {test_id}")
+    
+        prompt = prompt_template.format(**VARS)
+        expected_output = expected_template.format(**VARS)
+    
+        actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt)
+        actual_output = actual_output or "(No output returned by the model)"
+    
+        judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash-lite")
+        default_rubric = [
+            Rubric(score_range=(0, 3), expected_outcome="The actual output is incorrect or irrelevant."),
+            Rubric(score_range=(4, 6), expected_outcome="The actual output is partially correct or misses some key details."),
+            Rubric(score_range=(7, 10), expected_outcome="The actual output matches the expected output in content and meaning."),
+        ]
+    
+        user_geval_config = test_case.get("geval_config", {}).copy()
+        rubric = user_geval_config.pop("rubric", default_rubric)
+    
+        geval_kwargs = {
+            "name": "Correctness",
+            "evaluation_params": [LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
+            "threshold": 0.7,
+            "verbose_mode": True,
+            "model": GoogleGemini(model=judge_model),
+        }
+        geval_kwargs.update(user_geval_config)
+    
+        if isinstance(geval_kwargs["model"], str):
+            geval_kwargs["model"] = GoogleGemini(model=geval_kwargs["model"])
+    
+        used_criteria = geval_kwargs.get("criteria")
+        used_steps = geval_kwargs.get("evaluation_steps")
+    
+        if not used_criteria:
+            if not used_steps:
+                used_criteria = f"The actual output must satisfy this requirement: {expected_output}"
+            else:
+                used_criteria = "Evaluate the actual output based on the provided evaluation steps."
+    
+        if used_criteria:
+            geval_kwargs["criteria"] = used_criteria
+    
+        geval_kwargs["rubric"] = rubric
+    
+        correctness_metric = GEval(**geval_kwargs)
+        metrics = [correctness_metric]
+    
+        actual_tools = [
+            ToolCall(name=call.name, input_parameters=dict(call.args or {}))
+            for call in actual_tool_calls
+        ]
+    
+        expected_tools = None
+        if "expected_tools" in test_case:
+            expected_tools = [
+                ToolCall(name=t["name"], input_parameters=t.get("arguments", {}))
+                for t in test_case["expected_tools"]
+            ]
+            metrics.append(ToolCorrectnessMetric(model=geval_kwargs["model"]))
+    
+        if "mcp_use_criteria" in test_case:
+            mcp_use_metric = MCPUseMetric(
+                criteria=test_case["mcp_use_criteria"],
+                model=geval_kwargs["model"]
+            )
+            metrics.append(mcp_use_metric)
+    
+        deepeval_case = LLMTestCase(
+            input=prompt,
+            actual_output=actual_output,
+            expected_output=expected_output,
+            tools_called=actual_tools,
+            expected_tools=expected_tools,
+            retrieval_context=actual_tool_outputs
+        )
+    
+        try:
+            assert_test(deepeval_case, metrics)
+        except AssertionError as e:
+            pass_threshold = geval_kwargs.get("threshold", 0.7)
+            partial_threshold = 0.4
+            if isinstance(rubric, list) and len(rubric) &gt; 1:
+                partial_threshold = rubric[1].score_range[0] / 10.0
+    
+            # Soft Pass Strategy:
+            # If the score is &gt;= partial_threshold (Rubric "Partial" tier start), we treat it as a PASS with a warning.
+            # This avoids binary failures for results that are semantically useful but not perfect.
+            current_score = metrics[0].score
+    
+            # Fallback: If the score isn't populated in the metric object, extract it directly from
+            # the error message. This guarantees we have the score that triggered the assertion failure.
+            # It seems DeepEval sometimes raises the error without updating the metric object in place (bug?)
+            # We try to parse the score from the error message: "Metrics: Correctness ... (score: 0.6, ...)"
+    
+            if current_score is None:
+                match = re.search(r"score: ([0-9.]+)", str(e))
+                if match:
+                    current_score = float(match.group(1))
+    
+            if current_score is not None and current_score &gt;= partial_threshold:
+                warning_msg = f"Test '{test_id}' passed with PARTIAL CORRECTNESS. Score: {current_score} (Threshold: {pass_threshold})"
+                warnings.warn(warning_msg)
+                record_property("warning", warning_msg)
+                return
+    
+            eval_info = ""
+            if used_steps:
+                eval_info = f"Evaluation Steps:\n{json.dumps(used_steps, indent=2)}\n"
+            elif used_criteria:
+                eval_info = f"Criteria/Rubric:\n{used_criteria}\n"
+    
+            error_message = (
+                f"\n--- Deepeval Test Failed ---\n"
+                f"Test Case ID: {test_id}\n"
+                f"Prompt: {prompt}\n"
+                f"Expected Output Hint: {expected_output}\n"
+                f"----- EVALUATION DETAILS -----\n"
+                f"{eval_info}"
+                f"----- ACTUAL OUTPUT -----\n{actual_output}\n"
+                f"----- END ACTUAL OUTPUT -----\n"
+                f"Original Error: {e}"
+            )
+&gt;           raise AssertionError(error_message) from e
+E           AssertionError: 
+E           --- Deepeval Test Failed ---
+E           Test Case ID: TC-UPD-007
+E           Prompt: Schedule applying the update with update id 2764 for system id 1000010000.
+E           Expected Output Hint: Update (errata ID: 2764) successfully scheduled for system 1000010000. Action URL: ...'
+E           ----- EVALUATION DETAILS -----
+E           Evaluation Steps:
+E           [
+E             "Check if the output indicates that update 2764 has been successfully scheduled for system {proxy_id}.",
+E             "Look for a success message or a URL pointing to the scheduled action."
+E           ]
+E           ----- ACTUAL OUTPUT -----
+E           The update ID `2764` provided does not exist for system `1000010000`. I have retrieved the list of available, unscheduled errata for this system. Please verify the correct update ID from the list below and let me know which one you would like to schedule:
+E           
+E           | Update ID | Advisory Name | Synopsis | Type |
+E           | :--- | :--- | :--- | :--- |
+E           | 1084 | SUSE-SLE-Micro-6.1-310 | Recommended update for aaa_base | Bug Fix Advisory |
+E           | 1078 | SUSE-SLE-Micro-6.1-309 | moderate: Security update for libssh | Security Advisory |
+E           | 1087 | SUSE-SLE-Micro-6.1-315 | important: Security update for expat | Security Advisory |
+E           | 1097 | SUSE-SLE-Micro-6.1-318 | moderate: Security update for libxslt | Security Advisory |
+E           | ... | ... | ... | ... |
+E           | 1358 | SUSE-SLE-Micro-6.1-kernel-204 | important: Security update for the Linux Kernel | Security Advisory |
+E           | 1380 | SUSE-SLE-Micro-6.1-kernel-260 | important: Security update for the Linux Kernel | Security Advisory |
+E           | 1433 | SUSE-SLE-Micro-6.1-kernel-281 | important: Security update for the Linux Kernel | Security Advisory |
+E           | ... | ... | ... | ... |
+E           
+E           *(List truncated for brevity. There are many other updates available, please specify if you were looking for a specific one.)*
+E           ----- END ACTUAL OUTPUT -----
+E           Original Error: Metrics: Correctness [GEval] (score: 0.0, threshold: 0.7, strict: False, error: None, reason: The output failed to schedule the update as requested. Instead of confirming the action for update 2764, the model reported that the ID does not exist for system 1000010000 and provided an irrelevant list of other updates.) failed.
+
+test/test_deepeval.py:350: AssertionError</failure></testcase></testsuite></testsuites>
