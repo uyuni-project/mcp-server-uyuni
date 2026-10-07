@@ -64,8 +64,7 @@ class Goose(DeepEvalBaseLLM):
                 error_message += f"\nStderr: {stderr_str}"
                 if self.stats_collector is not None:
                     self.stats_collector.append((self.test_id, stderr_str))
-            warnings.warn(error_message)
-            return f"COMMAND_FAILED: {error_message}"
+            raise RuntimeError(error_message) from e
 
     async def a_generate(self, prompt: str) -> str:
         command = ["goose", "run", "--text", prompt, "--model", self.model, "--quiet", "--stats"]
@@ -78,8 +77,7 @@ class Goose(DeepEvalBaseLLM):
             self.stats_collector.append((self.test_id, stderr_str))
         if proc.returncode != 0:
             error_message = f"Goose command failed with code {proc.returncode}:\n{stderr_str}"
-            warnings.warn(error_message)
-            return f"COMMAND_FAILED: {error_message}"
+            raise RuntimeError(error_message)
         return stdout.decode('utf-8').strip()
 
     def get_model_name(self):
