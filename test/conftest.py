@@ -54,3 +54,4 @@ def pytest_sessionfinish(session, exitstatus):
     if tokens_per_sec_rates:
         print(f"Avg. Tokens/Sec: {statistics.mean(tokens_per_sec_rates):.2f} (min: {min(tokens_per_sec_rates):.2f}, max: {max(tokens_per_sec_rates):.2f})")
     print("--------------------------")
+    
