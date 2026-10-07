@@ -37,10 +37,15 @@ def pytest_sessionfinish(session, exitstatus):
 
     first_token_times = []
     tokens_per_sec_rates = []
+    total_input_tokens = 0
     total_output_tokens = 0
+    total_tokens_consumed = 0
 
     for test_id, stat_block in all_stats:
         print(f"  - Test: {test_id}")
+        run_input_tokens = 0
+        run_output_tokens = 0
+        run_total_tokens = 0
         for line in stat_block.splitlines():
             if "Time to first token:" in line:
                 match = re.search(r"(\d+\.\d+)s", line)
@@ -50,13 +55,31 @@ def pytest_sessionfinish(session, exitstatus):
                 match = re.search(r"(\d+\.\d+)", line)
                 if match:
                     tokens_per_sec_rates.append(float(match.group(1)))
+            if "Input tokens:" in line:
+                match = re.search(r"(\d+)", line)
+                if match:
+                    run_input_tokens += int(match.group(1))
             if "Output tokens:" in line:
                 match = re.search(r"(\d+)", line)
                 if match:
-                    total_output_tokens += int(match.group(1))
+                    run_output_tokens += int(match.group(1))
+            if "Total tokens:" in line:
+                match = re.search(r"(\d+)", line)
+                if match:
+                    run_total_tokens += int(match.group(1))
+
+        if run_total_tokens == 0:
+            run_total_tokens = run_input_tokens + run_output_tokens
+
+        total_input_tokens += run_input_tokens
+        total_output_tokens += run_output_tokens
+        total_tokens_consumed += run_total_tokens
 
     print(f"Total Goose Runs: {len(all_stats)}")
+    if total_input_tokens:
+        print(f"Total Input Tokens: {total_input_tokens}")
     print(f"Total Output Tokens: {total_output_tokens}")
+    print(f"Total Tokens Consumed: {total_tokens_consumed}")
     if first_token_times:
         print(f"Avg. Time to First Token: {statistics.mean(first_token_times):.2f}s (min: {min(first_token_times):.2f}s, max: {max(first_token_times):.2f}s)")
     if tokens_per_sec_rates:
