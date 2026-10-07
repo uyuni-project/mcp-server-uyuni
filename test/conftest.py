@@ -21,8 +21,16 @@ def pytest_sessionfinish(session, exitstatus):
     This hook is called after the entire test session finishes.
     It will parse all collected stats and print an aggregated summary.
     """
-    print("\n--- Goose Stats Summary ---")
-    all_stats = session.config.goose_stats
+    try:
+        status_name = pytest.ExitCode(exitstatus).name
+    except (ValueError, TypeError):
+        status_name = str(exitstatus)
+
+    print(f"\n--- Goose Stats Summary (Session Exit Status: {status_name}) ---")
+    if exitstatus in (pytest.ExitCode.INTERRUPTED, pytest.ExitCode.INTERNAL_ERROR, pytest.ExitCode.USAGE_ERROR):
+        print(f"Warning: Test session ended abnormally ({status_name}). Goose stats may be incomplete.")
+
+    all_stats = getattr(session.config, "goose_stats", [])
     if not all_stats:
         print("No goose stats were collected.")
         return
