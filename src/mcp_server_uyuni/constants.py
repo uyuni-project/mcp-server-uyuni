@@ -11,3 +11,6 @@ AdvisoryType = Literal[
     "Product Enhancement Advisory",
     "Bug Fix Advisory",
 ]
+
+ResponseFormat = Literal["summary", "standard", "detailed"]
+ApplicationStatus = Literal["Pending", "Queued"]
