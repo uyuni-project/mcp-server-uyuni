@@ -25,7 +25,7 @@ from fastmcp import FastMCP, Context
 
 from .constants import Transport, AdvisoryType
 from .logging_config import get_logger
-from .uyuni_api import call as call_uyuni_api, login as uyuni_login, TIMEOUT_HAPPENED
+from .api.client import call as call_uyuni_api, login as uyuni_login, TIMEOUT_HAPPENED, make_client
 from .config import CONFIG
 from .auth import AuthProvider
 from .errors import (
@@ -87,8 +87,7 @@ else:
 
 def _make_client() -> httpx.AsyncClient:
     """Create an AsyncClient with the configured SSL and timeout settings."""
-    timeout = httpx.Timeout(CONFIG["UYUNI_MCP_TIMEOUT"], connect=10.0)
-    return httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"], timeout=timeout)
+    return make_client()
 
 class AuthTokenMiddleware(Middleware):
     async def on_call_tool(self, ctx: MiddlewareContext, call_next):
