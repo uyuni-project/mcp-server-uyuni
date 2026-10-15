@@ -18,6 +18,13 @@ os.environ.setdefault("UYUNI_MCP_SSL_VERIFY", "false")
 from mcp_server_uyuni import server
 from mcp_server_uyuni.errors import HTTPError, AuthError, NotFoundError, UnexpectedResponse
 
+
+@pytest.fixture(autouse=True)
+def enable_writes_for_legacy_tool_tests(monkeypatch):
+    # Config may have been imported before this module during full-suite collection.
+    monkeypatch.setitem(server.CONFIG, "UYUNI_MCP_WRITE_TOOLS_ENABLED", True)
+
+
 @pytest.fixture
 def mock_ctx():
     """Fixture for the MCP context."""
