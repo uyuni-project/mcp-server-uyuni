@@ -408,6 +408,9 @@ async def test_schedule_system_reboot(mock_uyuni, mock_ctx):
     base_url = server.CONFIG["UYUNI_SERVER"]
     system_id = 1001
 
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/listSystems").mock(
+        return_value=Response(200, json={"success": True, "result": [{"id": 1001, "name": "sys1"}]})
+    )
     route_reboot = mock_uyuni.post(f"{base_url}/rhn/manager/api/system/scheduleReboot").mock(
         return_value=Response(200, json={"success": True, "result": 12346})
     )
@@ -416,6 +419,28 @@ async def test_schedule_system_reboot(mock_uyuni, mock_ctx):
     assert "successfully scheduled" in result
     assert f"{base_url}/rhn/schedule/ActionDetails.do?aid=12346" in result
     assert route_reboot.called
+
+@pytest.mark.asyncio
+async def test_schedule_system_reboot_system_not_found(mock_uyuni, mock_ctx):
+    base_url = server.CONFIG["UYUNI_SERVER"]
+    system_id = 999999999
+
+    mock_uyuni.get(f"{base_url}/rhn/manager/api/system/listSystems").mock(
+        return_value=Response(200, json={"success": True, "result": [{"id": 1001, "name": "sys1"}]})
+    )
+    route_reboot = mock_uyuni.post(f"{base_url}/rhn/manager/api/system/scheduleReboot").mock(
+        return_value=Response(200, json={"success": True, "result": 12346})
+    )
+    # The client supports elicitation, but no approval must be requested for a missing system
+    mock_ctx.session.check_client_capability.return_value = True
+    mock_ctx.elicit = AsyncMock()
+
+    result = await server._schedule_system_reboot(system_id, "mock_token", mock_ctx)
+
+    assert f"System with ID {system_id} not found" in result
+    assert "No reboot was scheduled" in result
+    assert not route_reboot.called
+    mock_ctx.elicit.assert_not_called()
 
 @pytest.mark.asyncio
 async def test_cancel_action(mock_uyuni, mock_ctx):
