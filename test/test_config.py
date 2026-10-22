@@ -64,3 +64,31 @@ def test_auth_provider_uses_issuer_and_static_audience():
     assert verifier_kwargs["jwks_uri"] == "https://auth.example.com/realms/demo/protocol/openid-connect/certs"
     assert verifier_kwargs["audience"] == "mcp-server-uyuni"
     assert verifier_kwargs["required_scopes"] == ["mcp:read", "mcp:write"]
+
+
+def test_config_ssl_ca_cert_defaults_to_none(monkeypatch):
+    monkeypatch.setenv("UYUNI_SERVER", "https://mock-server.local")
+    monkeypatch.delenv("UYUNI_MCP_SSL_CA_CERT", raising=False)
+
+    config_module = _reload_config_module()
+
+    assert config_module.CONFIG["UYUNI_MCP_SSL_CA_CERT"] is None
+
+
+def test_config_accepts_existing_ssl_ca_cert(monkeypatch, tmp_path):
+    ca_file = tmp_path / "ca.pem"
+    ca_file.write_text("placeholder")
+    monkeypatch.setenv("UYUNI_SERVER", "https://mock-server.local")
+    monkeypatch.setenv("UYUNI_MCP_SSL_CA_CERT", f"  {ca_file}  ")
+
+    config_module = _reload_config_module()
+
+    assert config_module.CONFIG["UYUNI_MCP_SSL_CA_CERT"] == str(ca_file)
+
+
+def test_config_rejects_missing_ssl_ca_cert(monkeypatch, tmp_path):
+    monkeypatch.setenv("UYUNI_SERVER", "https://mock-server.local")
+    monkeypatch.setenv("UYUNI_MCP_SSL_CA_CERT", str(tmp_path / "missing.pem"))
+
+    with pytest.raises(ImportError, match="UYUNI_MCP_SSL_CA_CERT path does not exist"):
+        _reload_config_module()
