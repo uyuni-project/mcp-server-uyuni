@@ -177,41 +177,22 @@ async def run_mcp_agent(prompt: str, model: str = None, test_id: str = None, sta
             )
 
             if agent_provider == "goose":
-                # The goose CLI does not support native tool calling, so we will simulate it
-                # by providing the tool definitions in the prompt and parsing the output.
-                # This is a simplified, single-turn implementation.
-                tools_json_str = json.dumps(formatted_tools, indent=2)
-                goose_prompt = (
-                    f"You have access to the following tools:\n"
-                    f"```json\n{tools_json_str}\n```\n"
-                    f"Based on the user's request, decide if a tool should be called. "
-                    f"If so, respond with a single JSON object containing 'tool_name' and 'arguments'. "
-                    f"If not, respond with a natural language summary.\n\n"
-                    f"User Request: {prompt}"
-                )
-                
+                # Goose already has mcp-server-uyuni configured as an extension,
+                # so we let it handle tool selection and execution natively.
                 goose_model = Goose(model=model, test_id=test_id, stats_collector=stats_collector)
-                response_text = await goose_model.a_generate(goose_prompt)
+                response_text = await goose_model.a_generate(directive_prompt)
 
-                try:
-                    # Attempt to parse the response as a tool call
-                    parsed_json = json.loads(response_text)
-                    if "tool_name" in parsed_json and "arguments" in parsed_json:
-                        tool_name = parsed_json["tool_name"]
-                        tool_args = parsed_json["arguments"]
-                        
-                        # Execute the tool call
-                        result = await session.call_tool(tool_name, tool_args)
-                        tool_output_text = "\n".join([c.text for c in result.content if c.type == "text"])
-                        
-                        # For this simplified flow, we return the tool output as the final answer
-                        return tool_output_text, [ToolCall(name=tool_name, input_parameters=tool_args)], [tool_output_text]
-                except (json.JSONDecodeError, TypeError):
-                    # If parsing fails, assume it's a natural language response
-                    pass
+                # Extract any tools Goose executed natively (e.g. "▸ tool_name ...")
+                native_tool_matches = re.findall(r"▸\s+(\w+)(?:\s+[\w-]+)?", response_text)
+                if native_tool_matches:
+                    detected_tools = [
+                        ToolCall(name=tool_name, input_parameters={})
+                        for tool_name in native_tool_matches
+                    ]
+                else:
+                    detected_tools = []
 
-                # Return the direct text response if no tool was called or parsed
-                return response_text, [], []
+                return response_text, detected_tools, [response_text]
 
             # --- Gemini Agent Logic ---
             client = genai.Client(api_key=os.environ.get("GOOGLE_API_KEY"))
@@ -304,12 +285,27 @@ def load_test_cases():
 # Load test cases once and generate descriptive IDs for pytest
 ALL_TEST_CASES = load_test_cases()
 
+_test_run_counter = 0
+
 @pytest.mark.parametrize(
     "test_case",
     ALL_TEST_CASES,
     ids=[case.get("id", f"unnamed_case_{i}") for i, case in enumerate(ALL_TEST_CASES)]
 )
 def test_uyuni_mcp_deepeval(test_case, record_property, goose_stats_collector):
+def test_uyuni_mcp_deepeval(test_case, record_property, goose_stats_collector, request):
+    global _test_run_counter
+    _test_run_counter += 1
+    total_tests = (
+        request.session.testscollected
+        if hasattr(request, "session") and hasattr(request.session, "testscollected")
+        else len(ALL_TEST_CASES)
+    )
+    test_id = test_case.get("id", "unknown")
+    print(f"\n==================================================", flush=True)
+    print(f"[{_test_run_counter}/{total_tests}] Running test case: {test_id}", flush=True)
+    print(f"==================================================", flush=True)
+
     prompt_template = test_case.get("prompt")
     expected_template = test_case.get("expected_output")
     test_id = test_case.get("id", "unknown")
@@ -319,6 +315,7 @@ def test_uyuni_mcp_deepeval(test_case, record_property, goose_stats_collector):
 
     prompt = prompt_template.format(**VARS)
     expected_output = expected_template.format(**VARS)
+    print(f"Prompt: {prompt}\n", flush=True)
 
     actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt, test_id, goose_stats_collector)
     actual_output = actual_output or "(No output returned by the model)"
@@ -390,8 +387,7 @@ def test_uyuni_mcp_deepeval(test_case, record_property, goose_stats_collector):
 
     if "mcp_use_criteria" in test_case:
         mcp_use_metric = MCPUseMetric(
-            criteria=test_case["mcp_use_criteria"],
-            model=geval_kwargs["model"]
+                model=geval_kwargs["model"]
         )
         metrics.append(mcp_use_metric)
 
