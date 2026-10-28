@@ -292,7 +292,6 @@ _test_run_counter = 0
     ALL_TEST_CASES,
     ids=[case.get("id", f"unnamed_case_{i}") for i, case in enumerate(ALL_TEST_CASES)]
 )
-def test_uyuni_mcp_deepeval(test_case, record_property, goose_stats_collector):
 def test_uyuni_mcp_deepeval(test_case, record_property, goose_stats_collector, request):
     global _test_run_counter
     _test_run_counter += 1
@@ -308,7 +307,6 @@ def test_uyuni_mcp_deepeval(test_case, record_property, goose_stats_collector, r
 
     prompt_template = test_case.get("prompt")
     expected_template = test_case.get("expected_output")
-    test_id = test_case.get("id", "unknown")
 
     if not prompt_template or not expected_template:
         pytest.skip(f"Skipping malformed test case: {test_id}")
