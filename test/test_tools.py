@@ -235,6 +235,24 @@ def test_client_supports_elicitation(mock_ctx):
     assert server.client_supports_elicitation(mock_ctx) is True
 
 
+def test_client_supports_elicitation_disabled_by_env(mock_ctx, monkeypatch):
+    monkeypatch.setenv("UYUNI_MCP_DISABLE_ELICITATION", "true")
+    mock_ctx.session.check_client_capability.return_value = True
+    assert server.client_supports_elicitation(mock_ctx) is False
+
+
+@pytest.mark.asyncio
+async def test_elicit_approval_disabled_by_env(mock_ctx, monkeypatch):
+    monkeypatch.setenv("UYUNI_MCP_DISABLE_ELICITATION", "true")
+    mock_ctx.session.check_client_capability.return_value = True
+    mock_ctx.elicit = AsyncMock()
+
+    result = await server.elicit_approval(mock_ctx, "prompt")
+
+    assert result is True
+    mock_ctx.elicit.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_elicit_approval_skips_when_capability_missing(mock_ctx):
     mock_ctx.session.check_client_capability.return_value = False

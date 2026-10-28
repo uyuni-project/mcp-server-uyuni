@@ -2,7 +2,7 @@
   {
     "id": "TC-RBT-001",
     "prompt": "Do any of my systems require reboot?",
-    "expected_output": "Return a message that {rhlike_minion_name} require a reboot.",
+    "expected_output": "Identify at least one specific system that requires a reboot, such as {rhlike_minion_name} or {proxy_name}.",
     "geval_config": {
       "evaluation_steps": [
         "Check if the output identifies systems requiring a reboot.",

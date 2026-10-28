@@ -37,12 +37,28 @@ from .utils import (
     build_list_meta,
     paginate_items,
     matches_optional_filter,
-    client_supports_elicitation,
-    elicit_approval,
+    client_supports_elicitation as _base_client_supports_elicitation,
+    elicit_approval as _base_elicit_approval,
 )
 
 class ActivationKeySchema(BaseModel):
     activation_key: str
+
+def is_elicitation_disabled() -> bool:
+    """Check if elicitation is explicitly disabled via environment variable."""
+    return os.environ.get("UYUNI_MCP_DISABLE_ELICITATION", "").lower() in ("true", "1", "yes")
+
+def client_supports_elicitation(ctx: Context, *args, **kwargs) -> bool:
+    """Check if client supports elicitation, respecting UYUNI_MCP_DISABLE_ELICITATION."""
+    if is_elicitation_disabled():
+        return False
+    return _base_client_supports_elicitation(ctx, *args, **kwargs)
+
+async def elicit_approval(ctx: Context, *args, **kwargs) -> bool:
+    """Elicit user approval if supported and not disabled, otherwise auto-approve."""
+    if is_elicitation_disabled():
+        return True
+    return await _base_elicit_approval(ctx, *args, **kwargs)
 
 def _get_public_base_url(config: Dict[str, Any]) -> str:
     public_url = config.get("UYUNI_MCP_PUBLIC_URL")
