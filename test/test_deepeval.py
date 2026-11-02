@@ -1,3 +1,5 @@
+# run with GOOSE_PROVIDER=ollama GOOSE_MODEL=ministral-3:8b AGENT_PROVIDER=goose AGENT_MODEL=ministral-3:8b JUDGE_PROVIDER=goose JUDGE_MODEL=ministral-3:8b uv run --env-file .venv/config pytest -s test/test_deepeval.py 2>&1 | tee results.after.revert.ministral-3.8b
+
 import pytest
 import json
 import os
@@ -15,6 +17,10 @@ from deepeval.metrics.g_eval import Rubric
 from deepeval.models.base_model import DeepEvalBaseLLM
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
+# Automated tests run non-interactively; unconditionally disable elicitation and enable write tools
+os.environ["UYUNI_MCP_DISABLE_ELICITATION"] = "true"
+os.environ["UYUNI_MCP_WRITE_TOOLS_ENABLED"] = "true"
 
 TEST_CONFIG_FILE = 'test_config.json'
 
@@ -40,8 +46,9 @@ def load_vars():
 VARS = load_vars()
 
 class Goose(DeepEvalBaseLLM):
-    def __init__(self, model="ministral-3:3b", stats_collector=None, test_id=None):
+    def __init__(self, model="ministral-3:3b", stats_collector=None, test_id=None, provider="ollama"):
         self.model = model
+        self.provider = provider
         self.stats_collector = stats_collector
         self.test_id = test_id or "unknown"
 
@@ -49,10 +56,17 @@ class Goose(DeepEvalBaseLLM):
         return self.model
 
     def generate(self, prompt: str) -> str:
-        command = ["goose", "run", "--text", prompt, "--model", self.model, "--quiet", "--stats"]
+        command = ["goose", "run", "--text", prompt, "--provider", self.provider, "--model", self.model, "--quiet", "--stats"]
         try:
+            env = {
+                **os.environ,
+                "GOOSE_PROVIDER": self.provider,
+                "GOOSE_MODEL": self.model,
+                "UYUNI_MCP_DISABLE_ELICITATION": "true",
+                "UYUNI_MCP_WRITE_TOOLS_ENABLED": "true",
+            }
             result = subprocess.run(
-                command, stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True, encoding="utf-8"
+                command, stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True, encoding="utf-8", env=env
             )
             if self.stats_collector is not None and result.stderr:
                 self.stats_collector.append((self.test_id, result.stderr))
@@ -67,9 +81,16 @@ class Goose(DeepEvalBaseLLM):
             raise RuntimeError(error_message) from e
 
     async def a_generate(self, prompt: str) -> str:
-        command = ["goose", "run", "--text", prompt, "--model", self.model, "--quiet", "--stats"]
+        command = ["goose", "run", "--text", prompt, "--provider", self.provider, "--model", self.model, "--quiet", "--stats"]
+        env = {
+            **os.environ,
+            "GOOSE_PROVIDER": self.provider,
+            "GOOSE_MODEL": self.model,
+            "UYUNI_MCP_DISABLE_ELICITATION": "true",
+            "UYUNI_MCP_WRITE_TOOLS_ENABLED": "true",
+        }
         proc = await asyncio.create_subprocess_exec(
-            *command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            *command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env
         )
         stdout, stderr = await proc.communicate()
         stderr_str = stderr.decode('utf-8').strip()
@@ -147,7 +168,11 @@ async def run_mcp_agent(prompt: str, model: str = None, test_id: str = None, sta
     server_params = StdioServerParameters(
         command="uv",
         args=["run", "mcp-server-uyuni"],
-        env={**os.environ, "UYUNI_MCP_WRITE_TOOLS_ENABLED": "true"}
+        env={
+            **os.environ,
+            "UYUNI_MCP_WRITE_TOOLS_ENABLED": "true",
+            "UYUNI_MCP_DISABLE_ELICITATION": "true",
+        }
     )
 
     async with stdio_client(server_params) as (read, write):
@@ -359,11 +384,6 @@ def test_uyuni_mcp_deepeval(test_case, record_property, goose_stats_collector, r
             geval_kwargs["model"] = GoogleGemini(model=geval_kwargs["model"])
 
     used_criteria = geval_kwargs.get("criteria")
-    used_criteria += (
-        "\nIMPORTANT JUDGING RULE: Do NOT penalize the output if it includes extra helpful conversation "
-        "(e.g., offering to register a system) or uses synonyms (e.g., 'issue with identifier' instead of 'invalid'), "
-        "as long as the core requirement of the expected output is met logically."
-    )
     used_steps = geval_kwargs.get("evaluation_steps")
 
     if not used_criteria:
@@ -373,6 +393,11 @@ def test_uyuni_mcp_deepeval(test_case, record_property, goose_stats_collector, r
             used_criteria = "Evaluate the actual output based on the provided evaluation steps."
 
     if used_criteria:
+        used_criteria += (
+            "\nIMPORTANT JUDGING RULE: Do NOT penalize the output if it includes extra helpful conversation "
+            "(e.g., offering to register a system) or uses synonyms (e.g., 'issue with identifier' instead of 'invalid'), "
+            "as long as the core requirement of the expected output is met logically."
+        )
         geval_kwargs["criteria"] = used_criteria
 
     geval_kwargs["rubric"] = rubric
@@ -409,7 +434,7 @@ def test_uyuni_mcp_deepeval(test_case, record_property, goose_stats_collector, r
         expected_output=expected_output,
         tools_called=actual_tools,
         expected_tools=expected_tools,
-        retrieval_context=actual_tool_outputs
+        retrieval_context=actual_tool_outputs,
     )
 
     try:
