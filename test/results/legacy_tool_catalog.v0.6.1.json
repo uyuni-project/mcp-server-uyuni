@@ -1,0 +1,1480 @@
+{
+  "catalogs": [
+    {
+      "serialized_schema_bytes": 11294,
+      "tool_count": 18,
+      "tools": [
+        {
+          "annotations": null,
+          "description": "\n    List active systems in Uyuni.\n    Inputs: optional `limit`, `offset`.\n    `limit` is capped at 500.\n    Returns: `items` with active systems (`system_name`, `system_id`) and `meta`.\n    Note: use `system_id` for other system tools.\n    ",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "limit": {
+                "default": 50,
+                "type": "integer"
+              },
+              "offset": {
+                "default": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "name": "list_systems",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 525
+        },
+        {
+          "annotations": null,
+          "description": "Get details for one system.\n\nInputs: `system_identifier` (`system_name` or `system_id`).\nName not found: resolve with `find_systems_by_name`, then pass `system_id`.\nReturns: `system_id`, `system_name`, `last_boot`, `uuid`, `cpu`, `network`, `installed_products`.\nUse system_id when possible.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "system_identifier": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "system_identifier"
+            ],
+            "type": "object"
+          },
+          "name": "get_system_details",
+          "output_schema": null,
+          "serialized_schema_bytes": 530
+        },
+        {
+          "annotations": null,
+          "description": "List events for one system.\n\nInputs: `system_identifier` (`system_name` or `system_id`); optional `offset`, `limit`, `earliest_date`.\nName not found: resolve with `find_systems_by_name`, then pass `system_id`.\nReturns: newest-first event list with `id`, `history_type`, `status`, `summary`, `completed`.\nUse `get_system_event_details` for one event.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "earliest_date": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "limit": {
+                "default": 10,
+                "type": "integer"
+              },
+              "offset": {
+                "default": 0,
+                "type": "integer"
+              },
+              "system_identifier": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "system_identifier"
+            ],
+            "type": "object"
+          },
+          "name": "get_system_event_history",
+          "output_schema": null,
+          "serialized_schema_bytes": 751
+        },
+        {
+          "annotations": null,
+          "description": "Get one event detail.\n\nInputs: `system_identifier` (`system_name` or `system_id`), `event_id`.\nName not found: resolve with `find_systems_by_name`, then pass `system_id`.\nReturns: event object including status, timestamps, result fields, and optional additional_info.\n`event_id` should come from `get_system_event_history`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "event_id": {
+                "type": "integer"
+              },
+              "system_identifier": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "system_identifier",
+              "event_id"
+            ],
+            "type": "object"
+          },
+          "name": "get_system_event_details",
+          "output_schema": null,
+          "serialized_schema_bytes": 609
+        },
+        {
+          "annotations": null,
+          "description": "Find systems by hostname.\n\nInputs: `name`; optional `limit`, `offset`.\nUse this first when user input is a partial hostname.\nIf multiple systems match, ask the user to choose one `system_id`.\n`limit` is capped at 500.\nReturns: `items` with matching systems (`system_name`, `system_id`) and `meta`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "limit": {
+                "default": 50,
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "offset": {
+                "default": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "type": "object"
+          },
+          "name": "find_systems_by_name",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 634
+        },
+        {
+          "annotations": null,
+          "description": "Find systems by IP address.\n\nInputs: `ip_address`; optional `limit`, `offset`.\n`limit` is capped at 500.\nReturns: `items` with matching systems (`system_name`, `system_id`, `ip`) and `meta`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "ip_address": {
+                "type": "string"
+              },
+              "limit": {
+                "default": 50,
+                "type": "integer"
+              },
+              "offset": {
+                "default": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "ip_address"
+            ],
+            "type": "object"
+          },
+          "name": "find_systems_by_ip",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 535
+        },
+        {
+          "annotations": null,
+          "description": "Get pending updates for one system.\n\nInputs: `system_identifier` (`system_name` or `system_id`; prefer `system_id`).\nName not found: resolve with `find_systems_by_name`, then pass `system_id`.\nBest for compact default update view.\nReturns: compact update list plus counts and `meta`.\nDefault behavior omits CVEs for lower token usage.\nFor pagination and CVE expansion, use `query_system_updates`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "system_identifier": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "system_identifier"
+            ],
+            "type": "object"
+          },
+          "name": "get_system_updates",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 678
+        },
+        {
+          "annotations": null,
+          "description": "Summarize pending updates for one system.\n\nInputs: `system_identifier` (`system_name` or `system_id`); optional `advisory_types`.\nName not found: resolve with `find_systems_by_name`, then pass `system_id`.\nBest for counts only.\n`advisory_types` accepts: `Security Advisory`, `Product Enhancement Advisory`, `Bug Fix Advisory`.\nReturns: update counts and `meta`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "advisory_types": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "enum": [
+                        "Security Advisory",
+                        "Product Enhancement Advisory",
+                        "Bug Fix Advisory"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "system_identifier": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "system_identifier"
+            ],
+            "type": "object"
+          },
+          "name": "summarize_system_updates",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 830
+        },
+        {
+          "annotations": null,
+          "description": "Query pending updates for one system.\n\nInputs: `system_identifier` (`system_name` or `system_id`); optional `limit`, `offset`, `include_cves`, `advisory_types`.\nName not found: resolve with `find_systems_by_name`, then pass `system_id`.\nBest for pagination and optional CVE expansion.\nPagination behavior: `limit <= 0` returns no items (counts still available);\npositive `limit` is capped at 200.\nReturns: `updates` with pending updates for the system and `meta`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "advisory_types": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "enum": [
+                        "Security Advisory",
+                        "Product Enhancement Advisory",
+                        "Bug Fix Advisory"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "include_cves": {
+                "default": false,
+                "type": "boolean"
+              },
+              "limit": {
+                "default": 25,
+                "type": "integer"
+              },
+              "offset": {
+                "default": 0,
+                "type": "integer"
+              },
+              "system_identifier": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "system_identifier"
+            ],
+            "type": "object"
+          },
+          "name": "query_system_updates",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 1059
+        },
+        {
+          "annotations": null,
+          "description": "Check all active systems for pending updates.\n\nInputs: optional `include_updates`, `include_cves`, `system_limit`, `system_offset`, `updates_per_system`.\nBest for fleet scan; set `include_updates=true` to include per-system update items.\n`system_limit` is capped at 200 for response paging.\nReturns: `items` with systems that have pending updates (plus optional update details) and `meta`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "include_cves": {
+                "default": false,
+                "type": "boolean"
+              },
+              "include_updates": {
+                "default": false,
+                "type": "boolean"
+              },
+              "system_limit": {
+                "default": 25,
+                "type": "integer"
+              },
+              "system_offset": {
+                "default": 0,
+                "type": "integer"
+              },
+              "updates_per_system": {
+                "default": 10,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "name": "check_all_systems_for_updates",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 859
+        },
+        {
+          "annotations": null,
+          "description": "Summarize fleet update status.\n\nInputs: optional `system_limit`, `system_offset`.\n`system_limit` is capped at 200.\nReturns: paged list of systems with update counts in `items` and `meta`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "system_limit": {
+                "default": 25,
+                "type": "integer"
+              },
+              "system_offset": {
+                "default": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "name": "summarize_fleet_updates",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 494
+        },
+        {
+          "annotations": null,
+          "description": "List systems affected by a CVE.\n\nInputs: `cve_identifier`; optional `limit`, `offset`.\n`limit` is capped at 500.\nReturns: `items` with unique affected systems (`system_id`, `system_name`) and `meta`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "cve_identifier": {
+                "type": "string"
+              },
+              "limit": {
+                "default": 50,
+                "type": "integer"
+              },
+              "offset": {
+                "default": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "cve_identifier"
+            ],
+            "type": "object"
+          },
+          "name": "list_systems_needing_update_for_cve",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 569
+        },
+        {
+          "annotations": null,
+          "description": "List systems that require reboot.\n\nInputs: optional `limit`, `offset`.\n`limit` is capped at 500.\nReturns: `items` with systems requiring reboot (`system_id`, `system_name`, `reboot_status`) and `meta`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "limit": {
+                "default": 50,
+                "type": "integer"
+              },
+              "offset": {
+                "default": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "name": "list_systems_needing_reboot",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 498
+        },
+        {
+          "annotations": null,
+          "description": "Query scheduled actions.\n\nInputs: optional `limit`, `offset`, `action_types`, `scheduler`.\n`action_types` and `scheduler` are optional exact-match filters; prefer values from `meta.observed_action_types` and `meta.observed_schedulers`.\n`limit` is capped at 500; use `meta.next_offset` to page.\nReturns: `items` with scheduled actions and `meta`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "action_types": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "limit": {
+                "default": 50,
+                "type": "integer"
+              },
+              "offset": {
+                "default": 0,
+                "type": "integer"
+              },
+              "scheduler": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              }
+            },
+            "type": "object"
+          },
+          "name": "list_all_scheduled_actions",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 816
+        },
+        {
+          "annotations": null,
+          "description": "List activation keys available to the current user.\n\nInputs: none.\nReturns: list of objects with `key` and `description`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {},
+            "type": "object"
+          },
+          "name": "list_activation_keys",
+          "output_schema": {
+            "properties": {
+              "result": {
+                "items": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object",
+            "x-fastmcp-wrap-result": true
+          },
+          "serialized_schema_bytes": 462
+        },
+        {
+          "annotations": null,
+          "description": "List unscheduled errata for one system.\n\nInputs: `system_id`.\nProvide `system_id` as a numeric string.\nReturns: errata list for that system.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "system_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "system_id"
+            ],
+            "type": "object"
+          },
+          "name": "get_unscheduled_errata",
+          "output_schema": {
+            "properties": {
+              "result": {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object",
+            "x-fastmcp-wrap-result": true
+          },
+          "serialized_schema_bytes": 525
+        },
+        {
+          "annotations": null,
+          "description": "List system groups.\n\nInputs: none.\nReturns: list with `id`, `name`, `description`, and `system_count`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {},
+            "type": "object"
+          },
+          "name": "list_system_groups",
+          "output_schema": {
+            "properties": {
+              "result": {
+                "items": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object",
+            "x-fastmcp-wrap-result": true
+          },
+          "serialized_schema_bytes": 441
+        },
+        {
+          "annotations": null,
+          "description": "List systems in one group.\n\nInputs: `group_name`.\nReturns: list of `system_id` and `system_name`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "group_name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "group_name"
+            ],
+            "type": "object"
+          },
+          "name": "list_group_systems",
+          "output_schema": {
+            "properties": {
+              "result": {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object",
+            "x-fastmcp-wrap-result": true
+          },
+          "serialized_schema_bytes": 479
+        }
+      ],
+      "write_enabled": false
+    },
+    {
+      "serialized_schema_bytes": 16555,
+      "tool_count": 27,
+      "tools": [
+        {
+          "annotations": null,
+          "description": "\n    List active systems in Uyuni.\n    Inputs: optional `limit`, `offset`.\n    `limit` is capped at 500.\n    Returns: `items` with active systems (`system_name`, `system_id`) and `meta`.\n    Note: use `system_id` for other system tools.\n    ",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "limit": {
+                "default": 50,
+                "type": "integer"
+              },
+              "offset": {
+                "default": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "name": "list_systems",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 525
+        },
+        {
+          "annotations": null,
+          "description": "Get details for one system.\n\nInputs: `system_identifier` (`system_name` or `system_id`).\nName not found: resolve with `find_systems_by_name`, then pass `system_id`.\nReturns: `system_id`, `system_name`, `last_boot`, `uuid`, `cpu`, `network`, `installed_products`.\nUse system_id when possible.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "system_identifier": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "system_identifier"
+            ],
+            "type": "object"
+          },
+          "name": "get_system_details",
+          "output_schema": null,
+          "serialized_schema_bytes": 530
+        },
+        {
+          "annotations": null,
+          "description": "List events for one system.\n\nInputs: `system_identifier` (`system_name` or `system_id`); optional `offset`, `limit`, `earliest_date`.\nName not found: resolve with `find_systems_by_name`, then pass `system_id`.\nReturns: newest-first event list with `id`, `history_type`, `status`, `summary`, `completed`.\nUse `get_system_event_details` for one event.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "earliest_date": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "limit": {
+                "default": 10,
+                "type": "integer"
+              },
+              "offset": {
+                "default": 0,
+                "type": "integer"
+              },
+              "system_identifier": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "system_identifier"
+            ],
+            "type": "object"
+          },
+          "name": "get_system_event_history",
+          "output_schema": null,
+          "serialized_schema_bytes": 751
+        },
+        {
+          "annotations": null,
+          "description": "Get one event detail.\n\nInputs: `system_identifier` (`system_name` or `system_id`), `event_id`.\nName not found: resolve with `find_systems_by_name`, then pass `system_id`.\nReturns: event object including status, timestamps, result fields, and optional additional_info.\n`event_id` should come from `get_system_event_history`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "event_id": {
+                "type": "integer"
+              },
+              "system_identifier": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "system_identifier",
+              "event_id"
+            ],
+            "type": "object"
+          },
+          "name": "get_system_event_details",
+          "output_schema": null,
+          "serialized_schema_bytes": 609
+        },
+        {
+          "annotations": null,
+          "description": "Find systems by hostname.\n\nInputs: `name`; optional `limit`, `offset`.\nUse this first when user input is a partial hostname.\nIf multiple systems match, ask the user to choose one `system_id`.\n`limit` is capped at 500.\nReturns: `items` with matching systems (`system_name`, `system_id`) and `meta`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "limit": {
+                "default": 50,
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "offset": {
+                "default": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "type": "object"
+          },
+          "name": "find_systems_by_name",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 634
+        },
+        {
+          "annotations": null,
+          "description": "Find systems by IP address.\n\nInputs: `ip_address`; optional `limit`, `offset`.\n`limit` is capped at 500.\nReturns: `items` with matching systems (`system_name`, `system_id`, `ip`) and `meta`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "ip_address": {
+                "type": "string"
+              },
+              "limit": {
+                "default": 50,
+                "type": "integer"
+              },
+              "offset": {
+                "default": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "ip_address"
+            ],
+            "type": "object"
+          },
+          "name": "find_systems_by_ip",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 535
+        },
+        {
+          "annotations": null,
+          "description": "Get pending updates for one system.\n\nInputs: `system_identifier` (`system_name` or `system_id`; prefer `system_id`).\nName not found: resolve with `find_systems_by_name`, then pass `system_id`.\nBest for compact default update view.\nReturns: compact update list plus counts and `meta`.\nDefault behavior omits CVEs for lower token usage.\nFor pagination and CVE expansion, use `query_system_updates`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "system_identifier": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "system_identifier"
+            ],
+            "type": "object"
+          },
+          "name": "get_system_updates",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 678
+        },
+        {
+          "annotations": null,
+          "description": "Summarize pending updates for one system.\n\nInputs: `system_identifier` (`system_name` or `system_id`); optional `advisory_types`.\nName not found: resolve with `find_systems_by_name`, then pass `system_id`.\nBest for counts only.\n`advisory_types` accepts: `Security Advisory`, `Product Enhancement Advisory`, `Bug Fix Advisory`.\nReturns: update counts and `meta`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "advisory_types": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "enum": [
+                        "Security Advisory",
+                        "Product Enhancement Advisory",
+                        "Bug Fix Advisory"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "system_identifier": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "system_identifier"
+            ],
+            "type": "object"
+          },
+          "name": "summarize_system_updates",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 830
+        },
+        {
+          "annotations": null,
+          "description": "Query pending updates for one system.\n\nInputs: `system_identifier` (`system_name` or `system_id`); optional `limit`, `offset`, `include_cves`, `advisory_types`.\nName not found: resolve with `find_systems_by_name`, then pass `system_id`.\nBest for pagination and optional CVE expansion.\nPagination behavior: `limit <= 0` returns no items (counts still available);\npositive `limit` is capped at 200.\nReturns: `updates` with pending updates for the system and `meta`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "advisory_types": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "enum": [
+                        "Security Advisory",
+                        "Product Enhancement Advisory",
+                        "Bug Fix Advisory"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "include_cves": {
+                "default": false,
+                "type": "boolean"
+              },
+              "limit": {
+                "default": 25,
+                "type": "integer"
+              },
+              "offset": {
+                "default": 0,
+                "type": "integer"
+              },
+              "system_identifier": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "system_identifier"
+            ],
+            "type": "object"
+          },
+          "name": "query_system_updates",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 1059
+        },
+        {
+          "annotations": null,
+          "description": "Check all active systems for pending updates.\n\nInputs: optional `include_updates`, `include_cves`, `system_limit`, `system_offset`, `updates_per_system`.\nBest for fleet scan; set `include_updates=true` to include per-system update items.\n`system_limit` is capped at 200 for response paging.\nReturns: `items` with systems that have pending updates (plus optional update details) and `meta`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "include_cves": {
+                "default": false,
+                "type": "boolean"
+              },
+              "include_updates": {
+                "default": false,
+                "type": "boolean"
+              },
+              "system_limit": {
+                "default": 25,
+                "type": "integer"
+              },
+              "system_offset": {
+                "default": 0,
+                "type": "integer"
+              },
+              "updates_per_system": {
+                "default": 10,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "name": "check_all_systems_for_updates",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 859
+        },
+        {
+          "annotations": null,
+          "description": "Summarize fleet update status.\n\nInputs: optional `system_limit`, `system_offset`.\n`system_limit` is capped at 200.\nReturns: paged list of systems with update counts in `items` and `meta`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "system_limit": {
+                "default": 25,
+                "type": "integer"
+              },
+              "system_offset": {
+                "default": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "name": "summarize_fleet_updates",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 494
+        },
+        {
+          "annotations": null,
+          "description": "Schedule all pending updates for one system.\n\nInputs: `system_identifier` (`system_name` or `system_id`).\nName not found: resolve with `find_systems_by_name`, then pass `system_id`.\nReturns: scheduled action URL or error text.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "system_identifier": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "system_identifier"
+            ],
+            "type": "object"
+          },
+          "name": "schedule_pending_updates_to_system",
+          "output_schema": {
+            "properties": {
+              "result": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object",
+            "x-fastmcp-wrap-result": true
+          },
+          "serialized_schema_bytes": 586
+        },
+        {
+          "annotations": null,
+          "description": "Schedule one specific update for one system.\n\nInputs: `system_identifier` (`system_name` or `system_id`), `errata_id`.\nName not found: resolve with `find_systems_by_name`, then pass `system_id`.\nReturns: scheduled action URL or error text.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "errata_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ]
+              },
+              "system_identifier": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "system_identifier",
+              "errata_id"
+            ],
+            "type": "object"
+          },
+          "name": "schedule_specific_update",
+          "output_schema": {
+            "properties": {
+              "result": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object",
+            "x-fastmcp-wrap-result": true
+          },
+          "serialized_schema_bytes": 662
+        },
+        {
+          "annotations": null,
+          "description": "\n    Register a new system in Uyuni via SSH bootstrap.\n    Inputs: `host`; optional `activation_key`, `ssh_port`, `ssh_user`, `proxy_id`, `salt_ssh`.\n    Returns: success or error message.\n    Requires `UYUNI_SSH_PRIV_KEY` on the server.\n    ",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "activation_key": {
+                "default": "",
+                "type": "string"
+              },
+              "host": {
+                "type": "string"
+              },
+              "proxy_id": {
+                "default": null,
+                "type": "integer"
+              },
+              "salt_ssh": {
+                "default": false,
+                "type": "boolean"
+              },
+              "ssh_port": {
+                "default": 22,
+                "type": "integer"
+              },
+              "ssh_user": {
+                "default": "root",
+                "type": "string"
+              }
+            },
+            "required": [
+              "host"
+            ],
+            "type": "object"
+          },
+          "name": "add_system",
+          "output_schema": {
+            "properties": {
+              "result": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object",
+            "x-fastmcp-wrap-result": true
+          },
+          "serialized_schema_bytes": 781
+        },
+        {
+          "annotations": null,
+          "description": "\n    Remove a system from Uyuni.\n    Inputs: `system_identifier` (`system_name` or `system_id`); optional `cleanup`.\n    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.\n    Returns: success or error message.\n    This is a destructive operation.\n    ",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "cleanup": {
+                "default": true,
+                "type": "boolean"
+              },
+              "system_identifier": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "system_identifier"
+            ],
+            "type": "object"
+          },
+          "name": "remove_system",
+          "output_schema": {
+            "properties": {
+              "result": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object",
+            "x-fastmcp-wrap-result": true
+          },
+          "serialized_schema_bytes": 662
+        },
+        {
+          "annotations": null,
+          "description": "List systems affected by a CVE.\n\nInputs: `cve_identifier`; optional `limit`, `offset`.\n`limit` is capped at 500.\nReturns: `items` with unique affected systems (`system_id`, `system_name`) and `meta`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "cve_identifier": {
+                "type": "string"
+              },
+              "limit": {
+                "default": 50,
+                "type": "integer"
+              },
+              "offset": {
+                "default": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "cve_identifier"
+            ],
+            "type": "object"
+          },
+          "name": "list_systems_needing_update_for_cve",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 569
+        },
+        {
+          "annotations": null,
+          "description": "List systems that require reboot.\n\nInputs: optional `limit`, `offset`.\n`limit` is capped at 500.\nReturns: `items` with systems requiring reboot (`system_id`, `system_name`, `reboot_status`) and `meta`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "limit": {
+                "default": 50,
+                "type": "integer"
+              },
+              "offset": {
+                "default": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "name": "list_systems_needing_reboot",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 498
+        },
+        {
+          "annotations": null,
+          "description": "Schedule an immediate reboot for one system.\n\nInputs: `system_identifier` (`system_name` or `system_id`).\nName not found: resolve with `find_systems_by_name`, then pass `system_id`.\nReturns: reboot action URL or error text.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "system_identifier": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "system_identifier"
+            ],
+            "type": "object"
+          },
+          "name": "schedule_system_reboot",
+          "output_schema": {
+            "properties": {
+              "result": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object",
+            "x-fastmcp-wrap-result": true
+          },
+          "serialized_schema_bytes": 571
+        },
+        {
+          "annotations": null,
+          "description": "Query scheduled actions.\n\nInputs: optional `limit`, `offset`, `action_types`, `scheduler`.\n`action_types` and `scheduler` are optional exact-match filters; prefer values from `meta.observed_action_types` and `meta.observed_schedulers`.\n`limit` is capped at 500; use `meta.next_offset` to page.\nReturns: `items` with scheduled actions and `meta`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "action_types": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "limit": {
+                "default": 50,
+                "type": "integer"
+              },
+              "offset": {
+                "default": 0,
+                "type": "integer"
+              },
+              "scheduler": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              }
+            },
+            "type": "object"
+          },
+          "name": "list_all_scheduled_actions",
+          "output_schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "serialized_schema_bytes": 816
+        },
+        {
+          "annotations": null,
+          "description": "Cancel a scheduled action.\n\nInputs: `action_id`.\nReturns: success or error message.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "action_id": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "action_id"
+            ],
+            "type": "object"
+          },
+          "name": "cancel_action",
+          "output_schema": {
+            "properties": {
+              "result": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object",
+            "x-fastmcp-wrap-result": true
+          },
+          "serialized_schema_bytes": 406
+        },
+        {
+          "annotations": null,
+          "description": "List activation keys available to the current user.\n\nInputs: none.\nReturns: list of objects with `key` and `description`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {},
+            "type": "object"
+          },
+          "name": "list_activation_keys",
+          "output_schema": {
+            "properties": {
+              "result": {
+                "items": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object",
+            "x-fastmcp-wrap-result": true
+          },
+          "serialized_schema_bytes": 462
+        },
+        {
+          "annotations": null,
+          "description": "List unscheduled errata for one system.\n\nInputs: `system_id`.\nProvide `system_id` as a numeric string.\nReturns: errata list for that system.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "system_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "system_id"
+            ],
+            "type": "object"
+          },
+          "name": "get_unscheduled_errata",
+          "output_schema": {
+            "properties": {
+              "result": {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object",
+            "x-fastmcp-wrap-result": true
+          },
+          "serialized_schema_bytes": 525
+        },
+        {
+          "annotations": null,
+          "description": "List system groups.\n\nInputs: none.\nReturns: list with `id`, `name`, `description`, and `system_count`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {},
+            "type": "object"
+          },
+          "name": "list_system_groups",
+          "output_schema": {
+            "properties": {
+              "result": {
+                "items": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object",
+            "x-fastmcp-wrap-result": true
+          },
+          "serialized_schema_bytes": 441
+        },
+        {
+          "annotations": null,
+          "description": "\n    Create a new system group in Uyuni.\n\n    Inputs: `name`; optional `description`.\n    System groups in Uyuni are flat (no nesting).\n    Returns: success or error message.\n    ",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "description": {
+                "default": "",
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "type": "object"
+          },
+          "name": "create_system_group",
+          "output_schema": {
+            "properties": {
+              "result": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object",
+            "x-fastmcp-wrap-result": true
+          },
+          "serialized_schema_bytes": 545
+        },
+        {
+          "annotations": null,
+          "description": "List systems in one group.\n\nInputs: `group_name`.\nReturns: list of `system_id` and `system_name`.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "group_name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "group_name"
+            ],
+            "type": "object"
+          },
+          "name": "list_group_systems",
+          "output_schema": {
+            "properties": {
+              "result": {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object",
+            "x-fastmcp-wrap-result": true
+          },
+          "serialized_schema_bytes": 479
+        },
+        {
+          "annotations": null,
+          "description": "Add systems to a group.\n\nInputs: `group_name`, `system_identifiers`.\nReturns: success or error message.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "group_name": {
+                "type": "string"
+              },
+              "system_identifiers": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "group_name",
+              "system_identifiers"
+            ],
+            "type": "object"
+          },
+          "name": "add_systems_to_group",
+          "output_schema": {
+            "properties": {
+              "result": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object",
+            "x-fastmcp-wrap-result": true
+          },
+          "serialized_schema_bytes": 519
+        },
+        {
+          "annotations": null,
+          "description": "Remove systems from a group.\n\nInputs: `group_name`, `system_identifiers`.\nReturns: success or error message.",
+          "input_schema": {
+            "additionalProperties": false,
+            "properties": {
+              "group_name": {
+                "type": "string"
+              },
+              "system_identifiers": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "group_name",
+              "system_identifiers"
+            ],
+            "type": "object"
+          },
+          "name": "remove_systems_from_group",
+          "output_schema": {
+            "properties": {
+              "result": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "result"
+            ],
+            "type": "object",
+            "x-fastmcp-wrap-result": true
+          },
+          "serialized_schema_bytes": 529
+        }
+      ],
+      "write_enabled": true
+    }
+  ],
+  "version": "0.6.1"
+}
