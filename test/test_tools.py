@@ -1072,3 +1072,153 @@ def test_get_public_base_url_rewrites_wildcard_bind_host():
     }
 
     assert server._get_public_base_url(config) == "http://127.0.0.1:8000"
+
+
+def _write_test_ca_and_server_cert(tmp_path):
+    """Create a private CA and a localhost server certificate signed by it."""
+    import datetime
+    import ipaddress
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    ca_key = ec.generate_private_key(ec.SECP256R1())
+    ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Test Internal Root CA")])
+    ca_cert = (
+        x509.CertificateBuilder()
+        .subject_name(ca_name)
+        .issuer_name(ca_name)
+        .public_key(ca_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(days=1))
+        .not_valid_after(now + datetime.timedelta(days=1))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .add_extension(
+            x509.KeyUsage(
+                digital_signature=True, content_commitment=False, key_encipherment=False,
+                data_encipherment=False, key_agreement=False, key_cert_sign=True,
+                crl_sign=True, encipher_only=False, decipher_only=False,
+            ),
+            critical=True,
+        )
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(ca_key.public_key()), critical=False)
+        .sign(ca_key, hashes.SHA256())
+    )
+
+    server_key = ec.generate_private_key(ec.SECP256R1())
+    server_cert = (
+        x509.CertificateBuilder()
+        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")]))
+        .issuer_name(ca_name)
+        .public_key(server_key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(days=1))
+        .not_valid_after(now + datetime.timedelta(days=1))
+        .add_extension(
+            x509.SubjectAlternativeName([
+                x509.DNSName("localhost"),
+                x509.IPAddress(ipaddress.ip_address("127.0.0.1")),
+            ]),
+            critical=False,
+        )
+        .add_extension(
+            x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()), critical=False
+        )
+        .sign(ca_key, hashes.SHA256())
+    )
+
+    ca_path = tmp_path / "internal-ca.pem"
+    ca_path.write_bytes(ca_cert.public_bytes(serialization.Encoding.PEM))
+    server_pem = tmp_path / "server.pem"
+    server_pem.write_bytes(
+        server_cert.public_bytes(serialization.Encoding.PEM)
+        + server_key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption(),
+        )
+    )
+    return ca_path, server_pem
+
+
+def _ssl_config(verify=True, ca_cert=None):
+    return {"UYUNI_MCP_SSL_VERIFY": verify, "UYUNI_MCP_SSL_CA_CERT": ca_cert}
+
+
+def test_build_ssl_verify_defaults_to_true_without_ca_cert():
+    assert server._build_ssl_verify(_ssl_config()) is True
+
+
+def test_build_ssl_verify_disabled_ignores_ca_cert(tmp_path):
+    ca_path, _ = _write_test_ca_and_server_cert(tmp_path)
+
+    assert server._build_ssl_verify(_ssl_config(verify=False, ca_cert=str(ca_path))) is False
+
+
+def test_build_ssl_verify_adds_ca_cert_to_default_bundle(tmp_path):
+    import ssl
+
+    ca_path, _ = _write_test_ca_and_server_cert(tmp_path)
+    default_ca_count = len(httpx.create_ssl_context().get_ca_certs())
+
+    ssl_context = server._build_ssl_verify(_ssl_config(ca_cert=str(ca_path)))
+
+    assert isinstance(ssl_context, ssl.SSLContext)
+    assert ssl_context.verify_mode == ssl.CERT_REQUIRED
+    assert ssl_context.check_hostname is True
+    ca_subjects = [dict(x[0] for x in ca["subject"]) for ca in ssl_context.get_ca_certs()]
+    assert {"commonName": "Test Internal Root CA"} in ca_subjects
+    assert len(ca_subjects) == default_ca_count + 1
+
+
+def test_build_ssl_verify_rejects_invalid_ca_cert(tmp_path):
+    bad_ca = tmp_path / "not-a-cert.pem"
+    bad_ca.write_text("this is not a certificate")
+
+    with pytest.raises(RuntimeError, match="UYUNI_MCP_SSL_CA_CERT"):
+        server._build_ssl_verify(_ssl_config(ca_cert=str(bad_ca)))
+
+
+@pytest.mark.asyncio
+async def test_custom_ca_cert_allows_tls_to_server_with_internal_ca(tmp_path):
+    """End-to-end: a server signed by an internal CA is only trusted with UYUNI_MCP_SSL_CA_CERT."""
+    import ssl
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    ca_path, server_pem = _write_test_ca_and_server_cert(tmp_path)
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"ok")
+
+        def log_message(self, *args):
+            pass
+
+    httpd = HTTPServer(("127.0.0.1", 0), Handler)
+    server_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    server_ctx.load_cert_chain(server_pem)
+    httpd.socket = server_ctx.wrap_socket(httpd.socket, server_side=True)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    url = f"https://localhost:{httpd.server_address[1]}/"
+
+    try:
+        default_verify = server._build_ssl_verify(_ssl_config())
+        async with httpx.AsyncClient(verify=default_verify) as client:
+            with pytest.raises(httpx.ConnectError, match="CERTIFICATE_VERIFY_FAILED"):
+                await client.get(url)
+
+        custom_verify = server._build_ssl_verify(_ssl_config(ca_cert=str(ca_path)))
+        async with httpx.AsyncClient(verify=custom_verify) as client:
+            response = await client.get(url)
+        assert response.status_code == 200
+        assert response.text == "ok"
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
