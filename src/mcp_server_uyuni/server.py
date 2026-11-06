@@ -1292,12 +1292,17 @@ async def remove_system(system_identifier: str, ctx: Context, cleanup: bool = Tr
     return await _remove_system(system_identifier, ctx, token, cleanup)
 
 
+async def _system_exists(system_id: str, token: str) -> bool:
+    """Return True if a system with the given numeric ID is registered."""
+    active_systems = await _list_systems(token)
+    return any(s.get('system_id') == system_id for s in active_systems)
+
+
 async def _remove_system(system_identifier: str, ctx: Context, token: str, cleanup: bool = True) -> str:
     system_id = await _resolve_system_id(system_identifier, ctx, token)
 
     # Check if the system exists before proceeding
-    active_systems = await _list_systems(token)
-    if not any(s.get('system_id') == system_id for s in active_systems):
+    if not await _system_exists(system_id, token):
         message = f"System with ID {system_id} not found."
         logger.warning(message)
         return message
@@ -1528,6 +1533,12 @@ async def schedule_system_reboot(system_identifier: str, ctx:Context) -> str:
 
 async def _schedule_system_reboot(system_identifier: str, token: str, ctx: Context) -> str:
     system_id = await _resolve_system_id(system_identifier, ctx, token)
+
+    # Numeric IDs are not validated by _resolve_system_id, so check before asking for approval
+    if not await _system_exists(system_id, token):
+        message = f"System with ID {system_id} not found. No reboot was scheduled."
+        logger.warning(message)
+        return message
 
     if not await elicit_approval(
         ctx,
