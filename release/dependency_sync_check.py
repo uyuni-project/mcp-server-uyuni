@@ -88,16 +88,22 @@ def canonical_key(name: str) -> str:
     We strip Python RPM prefixes and normalize common separators so that, for example:
       python-jaraco.context -> jaraco-context
       jaraco_context        -> jaraco-context
-      python-python-dotenv -> python-dotenv
+      python-python-dotenv -> dotenv
+      python-dotenv        -> dotenv
     """
-    normalized = name.strip().replace("_", "-").replace(".", "-")
+    normalized = name.strip().replace("_", "-").replace(".", "-").lower()
 
-    for prefix in ("python-", "python3-", "python311-", "python312-", "python313-"):
-        if normalized.startswith(prefix):
-            normalized = normalized[len(prefix):]
-            break
+    prefixes = ("python-", "python3-", "python311-", "python312-", "python313-")
+    changed = True
+    while changed:
+        changed = False
+        for prefix in prefixes:
+            if normalized.startswith(prefix) and len(normalized) > len(prefix):
+                normalized = normalized[len(prefix):]
+                changed = True
+                break
 
-    return normalized.lower()
+    return normalized
 
 
 def extract_spec_version(spec_text: Optional[str]) -> Optional[str]:

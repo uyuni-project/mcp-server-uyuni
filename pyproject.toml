@@ -1,14 +1,13 @@
 [project]
 name = "mcp-server-uyuni"
-version = "0.5.2"
+version = "0.6.2"
 description = "Model Context Protocol Server for Uyuni Server"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "fastmcp==3.3.1",
+    "fastmcp-slim[server]==3.4.11",
     "httpx",
     "pydantic",
-    "mcp",
 ]
 
 [project.scripts]
@@ -24,8 +23,7 @@ dev-dependencies = [
     "pytest-asyncio>=0.26.0",
     "respx>=0.22.0",
     "deepeval==3.8.9",
-    "google-genai",
-    "requests>=2.33.1",
+    "google-genai"
 ]
 # For a flat layout with mcp_server_uyuni.py in the root,
 # Hatchling's auto-detection will find it when 'packages' is omitted.
