@@ -1,0 +1,42 @@
+name: OBS to Gitea Sync Health Check
+
+on:
+  schedule:
+    # Runs at 00:00 UTC every Sunday
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+    # Allows manual triggering from the GitHub Actions UI
+    inputs:
+      project_name:
+        description: 'OBS Project Name override (Optional)'
+        required: false
+        default: 'systemsmanagement:Uyuni:AI'
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Install Dependencies
+        run: uv pip install -r pyproject.toml --system
+
+      - name: Run Sync Health Check
+        run: |
+          # Use the manually input project name if provided, otherwise fallback to default
+          PROJECT="${{ github.event.inputs.project_name || 'systemsmanagement:Uyuni:AI' }}"
+          
+          echo "Starting health check for OBS project: $PROJECT"
+          python obs_gitea_sync_check.py "$PROJECT"
