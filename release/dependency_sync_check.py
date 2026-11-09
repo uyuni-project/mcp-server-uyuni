@@ -23,6 +23,11 @@ SUFFIX_MAPPING = {
     "dtc": "devel:tools:compiler",
 }
 
+# Mapping of Python/PyPI package canonical keys to the OBS source package
+# canonical key that provides them (e.g., as a subpackage built from the same spec).
+OBS_SUBPACKAGE_MAP: Dict[str, str] = {
+    "fastmcp-slim": "fastmcp",
+}
 
 @dataclass
 class ObsPackage:
@@ -104,6 +109,14 @@ def canonical_key(name: str) -> str:
                 break
 
     return normalized
+
+
+def get_parent_package_key(key: str) -> Optional[str]:
+    """Resolves a subpackage canonical key to its parent OBS package canonical key."""
+    for subpkg, parent in OBS_SUBPACKAGE_MAP.items():
+        if canonical_key(subpkg) == key:
+            return canonical_key(parent)
+    return None
 
 
 def extract_spec_version(spec_text: Optional[str]) -> Optional[str]:
@@ -631,6 +644,13 @@ def compare_uv_lock_to_obs(
 
     for key, (uv_name, uv_version) in sorted(uv_index.items()):
         obs_pkg = obs_packages.get(key)
+        is_subpackage = False
+
+        if not obs_pkg:
+            parent_key = get_parent_package_key(key)
+            if parent_key and parent_key in obs_packages:
+                obs_pkg = obs_packages[parent_key]
+                is_subpackage = True
 
         if not obs_pkg:
             results.append(
@@ -647,16 +667,22 @@ def compare_uv_lock_to_obs(
             continue
 
         status = version_status(uv_version, obs_pkg.version)
+        pkg_display_name = uv_name if is_subpackage else obs_pkg.name
+        obs_display_version = (
+            f"{obs_pkg.version} (subpackage of {obs_pkg.name})"
+            if is_subpackage
+            else obs_pkg.version
+        )
 
         if status == "same":
             results.append(
                 CheckResult(
-                    package=obs_pkg.name,
+                    package=pkg_display_name,
                     status="OK",
                     action="-",
                     details={
                         "uv.lock": uv_version,
-                        "OBS": obs_pkg.version,
+                        "OBS": obs_display_version,
                     },
                 )
             )
@@ -664,7 +690,7 @@ def compare_uv_lock_to_obs(
         elif status == "different":
             details = {
                 "uv.lock": uv_version,
-                "OBS": obs_pkg.version,
+                "OBS": obs_display_version,
                 "Origin": obs_pkg.origin,
             }
 
@@ -673,7 +699,7 @@ def compare_uv_lock_to_obs(
 
             results.append(
                 CheckResult(
-                    package=obs_pkg.name,
+                    package=pkg_display_name,
                     status="UV_OBS_VERSION_MISMATCH",
                     action="Decide direction: update uv.lock if OBS/devel is desired, or update OBS staging if uv.lock is desired",
                     details=details,
@@ -683,12 +709,12 @@ def compare_uv_lock_to_obs(
         else:
             results.append(
                 CheckResult(
-                    package=obs_pkg.name,
+                    package=pkg_display_name,
                     status="UNKNOWN_VERSION_COMPARISON",
                     action="Manual check required; version contains macros or could not be read",
                     details={
                         "uv.lock": uv_version,
-                        "OBS": obs_pkg.version,
+                        "OBS": obs_display_version,
                         "Origin": obs_pkg.origin,
                     },
                 )
@@ -776,21 +802,37 @@ def compare_product_to_obs(
 
     for key, product in sorted(product_submodules.items(), key=lambda item: item[1].name.lower()):
         obs_pkg = obs_packages.get(key)
-
         if obs_pkg:
             continue
+
+        parent_key = get_parent_package_key(key)
+        if parent_key and parent_key in obs_packages:
+            parent_obs = obs_packages[parent_key]
+            action = (
+                f"Obsolete submodule: '{product.name}' is now provided as a subpackage by "
+                f"OBS package '{parent_obs.name}'. Remove this submodule from the product repository."
+            )
+            details = {
+                "Product": product.version,
+                "Commit": product.commit[:12],
+                "OBS": f"[Provided by {parent_obs.name}]",
+                "Path": product.path,
+            }
+        else:
+            action = "Consider removing this product submodule or adding the corresponding package to OBS staging"
+            details = {
+                "Product": product.version,
+                "Commit": product.commit[:12],
+                "OBS": "[Missing]",
+                "Path": product.path,
+            }
 
         results.append(
             CheckResult(
                 package=product.name,
                 status="PRODUCT_ORPHAN_SUBMODULE",
-                action="Consider removing this product submodule or adding the corresponding package to OBS staging",
-                details={
-                    "Product": product.version,
-                    "Commit": product.commit[:12],
-                    "OBS": "[Missing]",
-                    "Path": product.path,
-                },
+                action=action,
+                details=details,
             )
         )
 
