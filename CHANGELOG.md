@@ -1,3 +1,24 @@
+## 0.6.3 (2026-11-10)
+
+### Security
+
+* **deps:** upgrade `multidict` to 6.9.1 to patch CVE-2026-104874 (GHSA-54p9-h82j-f925)
+* **deps:** upgrade `authlib` to 1.9.1 to patch CVE-2026-96760, CVE-2026-114614, CVE-2026-114616, CVE-2026-114617, CVE-2026-114618, CVE-2026-114619, CVE-2026-114620, GHSA-c73q-w75p-j82v, and GHSA-7vr2-2fgp-9w7p
+* **deps:** upgrade `aiohttp` to 3.14.4 to patch CVE-2026-111064, CVE-2026-111065, CVE-2026-111066, CVE-2026-111749, GHSA-f9xw-jh8m-3mwq, GHSA-pqxq-w44r-73xw, GHSA-5wr8-gcqf-gqf3, and GHSA-2g87-pp6c-29x5
+* **deps:** upgrade `pyasn1` to 0.6.5 to patch CVE-2026-119196, CVE-2026-119197, CVE-2026-119195 CVE-2026-119194GHSA-2qm8-x737-gmw5, GHSA-mm57-4v3p-rchx, GHSA-9m75-vc3g-4x39, and GHSA-fm9c-5rcf-2q5p
+* **deps:** upgrade `mcp` to 1.30.0 to patch CVE-2026-116685, GHSA-w4fh-qvv9-3v23, GHSA-rwrf-2pqf-9j8j, and GHSA-84m7-p3x7-pcfv
+* **deps:** upgrade `joserfc` to 1.7.7 to patch CVE-2026-119283 and CVE-2026-119284 (GHSA-9pg5-8c7x-5hfx, GHSA-jpxq-7h8p-2q76)
+* **deps:** upgrade `dnspython` to 2.9.0 to patch CVE-2026-114605 (GHSA-45c3-73f7-pv4m)
+* **deps:** upgrade `fastmcp-slim` to 3.4.11 to patch GHSA-7xgj-8392-5q4r (Dependabot alert #114)
+* **deps:** upgrade `certifi` to 2026.10.23 to patch GHSA-6q48-6c7w-9gw2 (Dependabot alert #116)
+* **deps:** upgrade `opentelemetry-api` to 1.45.1 to patch GHSA-xcq7-p3pf-p88h
+* **deps:** upgrade `setuptools` to 84.1.0 to patch GHSA-xmj3-9gf7-h52w
+
+### Packaging
+
+* **packaging:** align openSUSE Factory spec file dependencies (`anyio` 4.15.1, `typing-extensions` 4.16.0)
+* **deps:** update `yarl` to 1.25.1 as an indirect dependency required by the `aiohttp` upgrade
+
 ## 0.6.2 (2026-10-06)
 
 ### Security
