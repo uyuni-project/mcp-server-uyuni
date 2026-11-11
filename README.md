@@ -80,6 +80,9 @@ UYUNI_PASS=password
 #
 # Set to 'false' to disable SSL certificate verification. Defaults to 'true'.
 UYUNI_MCP_SSL_VERIFY=true
+# Path to a PEM file (or a c_rehash'ed directory) with CA certificates to trust in
+# addition to the default CA bundle, e.g. when the Uyuni server uses an internal CA.
+# UYUNI_MCP_SSL_CA_CERT=/etc/pki/trust/anchors/internal-root-ca.pem
 
 # Set to 'true' to enable tools that perform write actions (e.g., POST requests). Defaults to 'false'.
 UYUNI_MCP_WRITE_TOOLS_ENABLED=false
@@ -205,6 +208,15 @@ Then, run the container:
 
 ```bash
 docker run --env-file /path/to/uyuni-config.env -p 8080:8080 ghcr.io/uyuni-project/mcp-server-uyuni:latest
+```
+
+If your Uyuni server uses a certificate signed by an internal CA, mount the CA certificate into the container and point `UYUNI_MCP_SSL_CA_CERT` to it instead of disabling `UYUNI_MCP_SSL_VERIFY`:
+
+```bash
+docker run --env-file /path/to/uyuni-config.env -p 8080:8080 \
+  -v /path/to/internal-root-ca.pem:/certs/internal-root-ca.pem:ro \
+  -e UYUNI_MCP_SSL_CA_CERT=/certs/internal-root-ca.pem \
+  ghcr.io/uyuni-project/mcp-server-uyuni:latest
 ```
 
 Your MCP client can then connect to the server using its URL.

@@ -72,6 +72,14 @@ UYUNI_MCP_SSL_VERIFY = (
     not in ("false", "0", "no")
 )
 
+# Optional PEM file, or directory of CA certificates prepared with c_rehash,
+# trusted in addition to the default CA bundle (e.g. an internal root CA).
+UYUNI_MCP_SSL_CA_CERT = os.environ.get("UYUNI_MCP_SSL_CA_CERT", "").strip() or None
+if UYUNI_MCP_SSL_CA_CERT and not os.path.exists(UYUNI_MCP_SSL_CA_CERT):
+    raise ImportError(
+        f"Failed to import config: UYUNI_MCP_SSL_CA_CERT path does not exist: {UYUNI_MCP_SSL_CA_CERT}"
+    )
+
 UYUNI_MCP_WRITE_TOOLS_ENABLED = (
     os.environ.get('UYUNI_MCP_WRITE_TOOLS_ENABLED', 'false').lower()
     in ('true', '1', 'yes')
@@ -96,6 +104,7 @@ CONFIG = {
     "UYUNI_USER": UYUNI_USER,
     "UYUNI_PASS": UYUNI_PASS,
     "UYUNI_MCP_SSL_VERIFY": UYUNI_MCP_SSL_VERIFY,
+    "UYUNI_MCP_SSL_CA_CERT": UYUNI_MCP_SSL_CA_CERT,
     "UYUNI_MCP_WRITE_TOOLS_ENABLED": UYUNI_MCP_WRITE_TOOLS_ENABLED,
     "UYUNI_MCP_TIMEOUT": UYUNI_MCP_TIMEOUT,
     "UYUNI_MCP_TRANSPORT": UYUNI_MCP_TRANSPORT,
