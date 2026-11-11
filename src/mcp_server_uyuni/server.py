@@ -1954,6 +1954,272 @@ async def _manage_group_systems(group_name: str, system_identifiers: List[str], 
             msg = f"Failed to {action_str[0]} systems. Check server logs. (API Result: {api_result})"
             logger.error(msg)
 
+@write_tool()
+async def schedule_apply_highstate_system(system_identifier: str, ctx: Context) -> str:
+    """Schedule application of a Salt highstate to one system.
+
+    Inputs: `system_identifier` (`system_name` or `system_id`; prefer `system_id`).
+    Name not found: resolve with `find_systems_by_name`, then pass `system_id`.
+    Best for action ID of the highstate task.
+    Returns: action ID of the highstate task`.
+    """
+
+    log_string = f"Scheduling highstate for {system_identifier}"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    token = await extract_token(ctx)
+
+    return await _schedule_apply_highstate_system(system_identifier, token, ctx)
+
+async def _schedule_apply_highstate_system(system_identifier: str, token: str, ctx: Context) -> str:
+    """Fetch, enrich, filter, and paginate updates for a single system."""
+    system_id = await _resolve_system_id(system_identifier, ctx, token)
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    schedule_apply_highstate_system = '/rhn/manager/api/system/scheduleApplyHighstate'
+
+    async with _make_client() as client:
+        payload = {"sid": int(system_id), "earliestOccurrence": now_iso, "test": False}
+        api_result = await call_uyuni_api(
+            client=client,
+            method="POST",
+            api_path=schedule_apply_highstate_system,
+            json_body=payload,
+            error_context=f"scheduling highstate for system {system_identifier}",
+            token=token
+        )
+
+        # uyuni's scheduleApplyHighstate API returns an integer action ID directly in 'result'
+        if isinstance(api_result, int):
+            action_id = api_result
+            action_detail_url = _get_action_url(action_id)
+            success_message = f"System highstate successfully scheduled. Action URL: {action_detail_url}"
+            logger.info(success_message)
+            return success_message
+        else:
+            return "Unexpected API response format when scheduling highstate. Check server logs for details."
+
+@mcp.tool()
+async def list_contentmanagement_project(ctx: Context) -> List[Dict[str, Any]]:
+    """List contentmanagement projects.
+
+    Inputs: none.
+    Returns: list of CLM projects.
+    """
+    log_string = f"Listing of all contextmanagement projects"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    token = await extract_token(ctx)
+
+    return await _list_contentmanagement_project(token, ctx)
+
+async def _list_contentmanagement_project(token: str, ctx: Context) -> List[Dict[str, str]]:
+    list_systems_path = '/rhn/manager/api/contentmanagement/listProjects'
+
+    async with _make_client() as client:
+        api_result = await call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path=list_systems_path,
+            error_context="listing contentmanagement projects",
+            token=token
+        )
+    filtered_projects = []
+    if isinstance(api_result, list):
+        for group_data in api_result:
+            if isinstance(group_data, dict):
+                filtered_projects.append({'id': str(group_data.get('id')), 'name': group_data.get('name'),
+                                        'description': group_data.get('description'), 'system_count': str(group_data.get('system_count'))})
+            else:
+                msg = f"Unexpected item format in system group project"
+                logger.warning(msg)
+                await ctx.warning(msg)
+    return filtered_projects
+
+@mcp.tool()
+async def list_contentmanagement_projects(ctx: Context) -> List[Dict[str, Any]]:
+    """List contentmanagement projects.
+
+    Inputs: none.
+    Returns: list of CLM projects.
+    """
+    log_string = f"Listing of all contextmanagement projects"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    token = await extract_token(ctx)
+
+    return await _list_contentmanagement_project(token, ctx)
+
+async def _list_contentmanagement_projects(token: str, ctx: Context) -> List[Dict[str, str]]:
+    projects = '/rhn/manager/api/contentmanagement/listProjects'
+
+    async with _make_client() as client:
+        api_result = await call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path=projects,
+            error_context="listing contentmanagement projects",
+            token=token
+        )
+    filtered_projects = []
+    if isinstance(api_result, list):
+        for project_data in api_result:
+            if isinstance(project_data, dict):
+                filtered_projects.append({'id': str(project_data.get('id')), 'name': project_data.get('name'),
+                                          'label': project_data.get('label')})
+            else:
+                msg = f"Unexpected item format in contentmanagement projects"
+                logger.warning(msg)
+                await ctx.warning(msg)
+    return filtered_projects
+
+@mcp.tool()
+async def list_contentmanagement_listProjectEnvironments(project: str, ctx: Context) -> List[Dict[str, Any]]:
+    """List contentmanagement projects.
+
+    Inputs: none.
+    Returns: list of CLM projects.
+    """
+    log_string = f"Listing of all contextmanagement projects"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    token = await extract_token(ctx)
+
+    return await _list_contentmanagement_listProjectEnvironments(project, token, ctx)
+
+async def _list_contentmanagement_listProjectEnvironments(project: str, token: str, ctx: Context) -> List[Dict[str, str]]:
+    list_project_environments = '/rhn/manager/api/contentmanagement/listProjectEnvironments'
+
+    async with _make_client() as client:
+        payload = {"projectLabel": project}
+        api_result = await call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path=list_project_environments,
+            json_body=payload,
+            error_context="listing contentmanagement project environments",
+            token=token
+        )
+    filtered_project_environments = []
+    if isinstance(api_result, list):
+        for environment_data in api_result:
+            if isinstance(environment_data, dict):
+                filtered_project_environments.append({'id': str(environment_data.get('id')), 'name': environment_data.get('name'),
+                                          'description': environment_data.get('description'), 'label': environment_data.get('label'),
+                                          'previousEnvironmentLabel': environment_data.get('previousEnvironmentLabel'),
+                                          'nextEnvironmentLabel': environment_data.get('nextEnvironmentLabel'),
+                                          'status': environment_data.get('status'),
+                                          'contentProjectLabel': environment_data.get('contentProjectLabel'),})
+            else:
+                msg = f"Unexpected item format in contentmanager project environments for {project}"
+                logger.warning(msg)
+                await ctx.warning(msg)
+    return filtered_project_environments
+
+@mcp.tool()
+async def search_channel_to_clm(channel: str, ctx: Context) -> List[Dict[str, Any]]:
+    """Search to which CLM a channel belongs.
+
+    Inputs: channel.
+    Returns: CLM project and Stage.
+    """
+    log_string = f"Listing of all contextmanagement projects"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    token = await extract_token(ctx)
+
+    return await _search_channel_to_clm(channel, token, ctx)
+
+async def _search_channel_to_clm(channel: str, token: str, ctx: Context) -> dict[str, str | None | Any] | set[None]:
+
+    projects = _list_contentmanagement_project(token, ctx)
+
+    if isinstance(projects, list):
+        for project_data in projects:
+            if isinstance(project_data, dict):
+                if channel.startswith(project_data.get('label')):
+                    environment_data = await _list_contentmanagement_listProjectEnvironments(project_data.get('name'), token, ctx)
+                    for environment_data_item in environment_data:
+                        if isinstance(environment_data, list):
+                            if channel.startswith(f"{project_data.get('label')}-{environment_data_item.get('label')}"):
+                                return {"project": project_data.get('name'), "environment": environment_data_item.get('name')}
+                        else:
+                            msg = f"Unexpected item format in contentmanager project environments for {project_data.get('label')}"
+                            logger.warning(msg)
+                            await ctx.warning(msg)
+            else:
+                msg = "Unexpected item format in projects"
+                logger.warning(msg)
+                await ctx.warning(msg)
+    else:
+        msg = f"Unexpected item format in contentmanager project environments for {channel}"
+        logger.warning(msg)
+        await ctx.warning(msg)
+    msg = f"No project found for {channel}"
+    logger.info(msg)
+    return {None, None}
+
+@mcp.tool()
+async def search_system_to_clm(system_identifier: str, ctx: Context) -> dict[str, str | None | Any] | set[None]:
+    """Search to which CLM a channel belongs.
+
+    Inputs: channel.
+    Returns: CLM project and Stage.
+    """
+    log_string = f"Listing of all contextmanagement projects"
+    logger.info(log_string)
+    await ctx.info(log_string)
+
+    token = await extract_token(ctx)
+
+    return await _search_system_to_clm(system_identifier, token, ctx)
+
+async def _search_system_to_clm(system_identifier: str, token: str, ctx: Context) -> None | \
+                                                                                                             dict[
+                                                                                                                 str, str | None | Any] | \
+                                                                                                             set[
+                                                                                                                 None] | str:
+
+    system_id = await _resolve_system_id(system_identifier, ctx, token)
+    get_subscribed_basechannel = '/rhn/manager/api/system/getSubscribedBaseChannel'
+
+    async with _make_client() as client:
+        payload = {"sid": int(system_id)}
+        api_result = await call_uyuni_api(
+            client=client,
+            method="GET",
+            api_path=get_subscribed_basechannel,
+            json_body=payload,
+            error_context=f"fetching subscribed base channel for system {system_identifier}",
+            token=token
+        )
+        logger.info(f"MB: Subscribed base channel for system {system_identifier}: {api_result}")
+        if isinstance(api_result, list):
+            for channel_data in api_result:
+                if isinstance(channel_data, dict):
+                    if channel_data.get('label') is not None:
+                        logger.info(f"System {system_identifier} has base channel {channel_data.get('label')}")
+                        return await _search_channel_to_clm(channel_data.get('label'), token, ctx)
+                else:
+                    msg = f"Unexpected item format in contentmanager project environments for {channel_data.get('label')}"
+                    logger.warning(msg)
+                    await ctx.warning(msg)
+        else:
+            return "Unexpected API response. Check server logs for details."
+
+
+
+
+
+
+
+
+
 def main_cli():
 
     logger.info("Running {product} MCP server.")

@@ -55,6 +55,7 @@ It is designed to be run as a container remotely (HTTP) or locally (stdio), offe
 * `create_system_group`: Creates a new system group in Uyuni.
 * `add_systems_to_group`: Adds systems to a system group.
 * `remove_systems_from_group`: Removes systems from a system group.
+* `schedule_apply_highstate_system`: Schedules a Salt highstate to be applied to a system.
 
 ## Getting Started
 
