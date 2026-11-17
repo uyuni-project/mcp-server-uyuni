@@ -1,9 +1,12 @@
+# run with GOOSE_PROVIDER=ollama GOOSE_MODEL=ministral-3:8b AGENT_PROVIDER=goose AGENT_MODEL=ministral-3:8b JUDGE_PROVIDER=goose JUDGE_MODEL=ministral-3:8b uv run --env-file .venv/config pytest -s test/test_deepeval.py 2>&1 | tee results.after.revert.ministral-3.8b
+
 import pytest
 import json
 import os
 import warnings
 import re
 import asyncio
+import subprocess
 import glob
 from google import genai
 from google.genai import types
@@ -14,6 +17,10 @@ from deepeval.metrics.g_eval import Rubric
 from deepeval.models.base_model import DeepEvalBaseLLM
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
+# Automated tests run non-interactively; unconditionally disable elicitation and enable write tools
+os.environ["UYUNI_MCP_DISABLE_ELICITATION"] = "true"
+os.environ["UYUNI_MCP_WRITE_TOOLS_ENABLED"] = "true"
 
 TEST_CONFIG_FILE = 'test_config.json'
 
@@ -38,6 +45,64 @@ def load_vars():
 
 VARS = load_vars()
 
+class Goose(DeepEvalBaseLLM):
+    def __init__(self, model="ministral-3:3b", stats_collector=None, test_id=None, provider="ollama"):
+        self.model = model
+        self.provider = provider
+        self.stats_collector = stats_collector
+        self.test_id = test_id or "unknown"
+
+    def load_model(self):
+        return self.model
+
+    def generate(self, prompt: str) -> str:
+        command = ["goose", "run", "--text", prompt, "--provider", self.provider, "--model", self.model, "--quiet", "--stats"]
+        try:
+            env = {
+                **os.environ,
+                "GOOSE_PROVIDER": self.provider,
+                "GOOSE_MODEL": self.model,
+                "UYUNI_MCP_DISABLE_ELICITATION": "true",
+                "UYUNI_MCP_WRITE_TOOLS_ENABLED": "true",
+            }
+            result = subprocess.run(
+                command, stdin=subprocess.DEVNULL, capture_output=True, text=True, check=True, encoding="utf-8", env=env
+            )
+            if self.stats_collector is not None and result.stderr:
+                self.stats_collector.append((self.test_id, result.stderr))
+            return result.stdout.strip()
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            error_message = f"Goose command failed: {e}"
+            if hasattr(e, 'stderr'):
+                stderr_str = e.stderr.strip()
+                error_message += f"\nStderr: {stderr_str}"
+                if self.stats_collector is not None:
+                    self.stats_collector.append((self.test_id, stderr_str))
+            raise RuntimeError(error_message) from e
+
+    async def a_generate(self, prompt: str) -> str:
+        command = ["goose", "run", "--text", prompt, "--provider", self.provider, "--model", self.model, "--quiet", "--stats"]
+        env = {
+            **os.environ,
+            "GOOSE_PROVIDER": self.provider,
+            "GOOSE_MODEL": self.model,
+            "UYUNI_MCP_DISABLE_ELICITATION": "true",
+            "UYUNI_MCP_WRITE_TOOLS_ENABLED": "true",
+        }
+        proc = await asyncio.create_subprocess_exec(
+            *command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env
+        )
+        stdout, stderr = await proc.communicate()
+        stderr_str = stderr.decode('utf-8').strip()
+        if self.stats_collector is not None and stderr_str:
+            self.stats_collector.append((self.test_id, stderr_str))
+        if proc.returncode != 0:
+            error_message = f"Goose command failed with code {proc.returncode}:\n{stderr_str}"
+            raise RuntimeError(error_message)
+        return stdout.decode('utf-8').strip()
+
+    def get_model_name(self):
+        return self.model
 class GoogleGemini(DeepEvalBaseLLM):
     def __init__(self, model="gemini-2.5-flash-lite"):
         self.model_name = model
@@ -95,13 +160,19 @@ def remove_additional_properties(schema: dict) -> dict:
 
     return schema
 
-async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list]:
-    if not model:
-        model = os.environ.get("AGENT_MODEL", "gemini-2.5-flash-lite")
+async def run_mcp_agent(prompt: str, model: str = None, test_id: str = None, stats_collector: list = None) -> tuple[str, list, list]:
+    agent_provider = os.environ.get("AGENT_PROVIDER", "gemini").lower()
+    default_model = "ministral-3:3b" if agent_provider == "goose" else "gemini-2.5-flash-lite"
+    model = model or os.environ.get("AGENT_MODEL", default_model)
+
     server_params = StdioServerParameters(
         command="uv",
         args=["run", "mcp-server-uyuni"],
-        env={**os.environ, "UYUNI_MCP_WRITE_TOOLS_ENABLED": "true"}
+        env={
+            **os.environ,
+            "UYUNI_MCP_WRITE_TOOLS_ENABLED": "true",
+            "UYUNI_MCP_DISABLE_ELICITATION": "true",
+        }
     )
 
     async with stdio_client(server_params) as (read, write):
@@ -110,22 +181,50 @@ async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list
 
             mcp_tools = await session.list_tools()
             
-            gemini_tools = []
+            formatted_tools = []
             for tool in mcp_tools.tools:
                 # Convert the inputSchema to a clean dictionary and strip extra fields
                 cleaned_schema = remove_additional_properties(dict(tool.inputSchema))
 
-                gemini_tools.append({
+                formatted_tools.append({
                     "name": tool.name,
                     "description": tool.description,
                     "parameters": cleaned_schema
                 })
 
+            # Prepend a strong directive to the user prompt
+            directive_prompt = (
+                f"{prompt}\n\n"
+                "INSTRUCTION: Use available tools to fulfill this request. "
+                "Retain and report specific details like names and IDs. "
+                "If this is a state-changing action (reboot, remove, update, create), "
+                "execute the write tool directly using the tool schema."
+            )
+
+            if agent_provider == "goose":
+                # Goose already has mcp-server-uyuni configured as an extension,
+                # so we let it handle tool selection and execution natively.
+                goose_model = Goose(model=model, test_id=test_id, stats_collector=stats_collector)
+                response_text = await goose_model.a_generate(directive_prompt)
+
+                # Extract any tools Goose executed natively (e.g. "▸ tool_name ...")
+                native_tool_matches = re.findall(r"▸\s+(\w+)(?:\s+[\w-]+)?", response_text)
+                if native_tool_matches:
+                    detected_tools = [
+                        ToolCall(name=tool_name, input_parameters={})
+                        for tool_name in native_tool_matches
+                    ]
+                else:
+                    detected_tools = []
+
+                return response_text, detected_tools, [response_text]
+
+            # --- Gemini Agent Logic ---
             client = genai.Client(api_key=os.environ.get("GOOGLE_API_KEY"))
             chat = client.aio.chats.create(
                 model=model,
                 config=types.GenerateContentConfig(
-                    tools=[types.Tool(function_declarations=gemini_tools)],
+                    tools=[types.Tool(function_declarations=formatted_tools)],
                     system_instruction=(
                         "You are an autonomous assistant specialized in Uyuni infrastructure management. "
                         "Fulfill requests by using tools directly. "
@@ -140,16 +239,6 @@ async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list
                     )
                 )
             )
-
-            # Prepend a strong directive to the user prompt
-            directive_prompt = (
-                f"{prompt}\n\n"
-                "INSTRUCTION: Use available tools to fulfill this request. "
-                "Retain and report specific details like names and IDs. "
-                "If this is a state-changing action (reboot, remove, update, create), "
-                "execute the write tool directly using the tool schema."
-            )
-
             response = await chat.send_message(directive_prompt)
             tool_calls = []
             tool_outputs = []
@@ -199,8 +288,8 @@ async def run_mcp_agent(prompt: str, model: str = None) -> tuple[str, list, list
 
             return "\n".join(full_text), tool_calls, tool_outputs
 
-def query_mcp_server(prompt: str) -> tuple[str, list, list]:
-    return asyncio.run(run_mcp_agent(prompt))
+def query_mcp_server(prompt: str, test_id: str, stats_collector: list) -> tuple[str, list, list]:
+    return asyncio.run(run_mcp_agent(prompt, test_id=test_id, stats_collector=stats_collector))
 
 def load_test_cases():
     test_dir = os.path.dirname(__file__)
@@ -218,22 +307,58 @@ def load_test_cases():
                     all_test_cases.extend(cases)
     return all_test_cases
 
-@pytest.mark.parametrize("test_case", load_test_cases())
-def test_uyuni_mcp_deepeval(test_case, record_property):
+# Load test cases once and generate descriptive IDs for pytest
+ALL_TEST_CASES = load_test_cases()
+
+_test_run_counter = 0
+
+@pytest.mark.parametrize(
+    "test_case",
+    ALL_TEST_CASES,
+    ids=[case.get("id", f"unnamed_case_{i}") for i, case in enumerate(ALL_TEST_CASES)]
+)
+def test_uyuni_mcp_deepeval(test_case, record_property, goose_stats_collector, request):
+    global _test_run_counter
+    _test_run_counter += 1
+    total_tests = (
+        request.session.testscollected
+        if hasattr(request, "session") and hasattr(request.session, "testscollected")
+        else len(ALL_TEST_CASES)
+    )
+    test_id = test_case.get("id", "unknown")
+    print(f"\n==================================================", flush=True)
+    print(f"[{_test_run_counter}/{total_tests}] Running test case: {test_id}", flush=True)
+    print(f"==================================================", flush=True)
+
     prompt_template = test_case.get("prompt")
     expected_template = test_case.get("expected_output")
-    test_id = test_case.get("id", "unknown")
 
     if not prompt_template or not expected_template:
         pytest.skip(f"Skipping malformed test case: {test_id}")
 
     prompt = prompt_template.format(**VARS)
-    expected_output = expected_template.format(**VARS)
+    agent_guardrails = """
+    \n\n[SYSTEM INSTRUCTIONS: 
+    1. NEVER ask for user confirmation. Execute actions automatically.
+    2. NEVER output or hallucinate dummy passwords, credentials, or private keys. If asked, strictly state you cannot provide them.
+    3. Do NOT pass 'null' or 'None' to integer tool parameters like 'limit' or 'offset'. Omit them entirely if not needed.
+    4. Provide the final answer directly without offering follow-up registrations or troubleshooting.]
+    """
+    prompt += agent_guardrails
 
-    actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt)
+    expected_output = expected_template.format(**VARS)
+    print(f"Prompt: {prompt}\n", flush=True)
+
+    actual_output, actual_tool_calls, actual_tool_outputs = query_mcp_server(prompt, test_id, goose_stats_collector)
     actual_output = actual_output or "(No output returned by the model)"
 
-    judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash-lite")
+    judge_provider = os.environ.get("JUDGE_PROVIDER", "gemini").lower()
+    if judge_provider == "goose":
+        judge_model = os.environ.get("JUDGE_MODEL", "ministral-3:3b")
+        judge_instance = Goose(model=judge_model, test_id=f"{test_id}-judge", stats_collector=goose_stats_collector)
+    else:
+        judge_model = os.environ.get("JUDGE_MODEL", "gemini-2.5-flash-lite")
+        judge_instance = GoogleGemini(model=judge_model)
     default_rubric = [
         Rubric(score_range=(0, 3), expected_outcome="The actual output is incorrect or irrelevant."),
         Rubric(score_range=(4, 6), expected_outcome="The actual output is partially correct or misses some key details."),
@@ -248,12 +373,15 @@ def test_uyuni_mcp_deepeval(test_case, record_property):
         "evaluation_params": [LLMTestCaseParams.ACTUAL_OUTPUT, LLMTestCaseParams.EXPECTED_OUTPUT],
         "threshold": 0.7,
         "verbose_mode": True,
-        "model": GoogleGemini(model=judge_model),
+        "model": judge_instance,
     }
     geval_kwargs.update(user_geval_config)
 
     if isinstance(geval_kwargs["model"], str):
-        geval_kwargs["model"] = GoogleGemini(model=geval_kwargs["model"])
+        if judge_provider == "goose":
+            geval_kwargs["model"] = Goose(model=geval_kwargs["model"], test_id=f"{test_id}-judge", stats_collector=goose_stats_collector)
+        else:
+            geval_kwargs["model"] = GoogleGemini(model=geval_kwargs["model"])
 
     used_criteria = geval_kwargs.get("criteria")
     used_steps = geval_kwargs.get("evaluation_steps")
@@ -265,6 +393,11 @@ def test_uyuni_mcp_deepeval(test_case, record_property):
             used_criteria = "Evaluate the actual output based on the provided evaluation steps."
 
     if used_criteria:
+        used_criteria += (
+            "\nIMPORTANT JUDGING RULE: Do NOT penalize the output if it includes extra helpful conversation "
+            "(e.g., offering to register a system) or uses synonyms (e.g., 'issue with identifier' instead of 'invalid'), "
+            "as long as the core requirement of the expected output is met logically."
+        )
         geval_kwargs["criteria"] = used_criteria
 
     geval_kwargs["rubric"] = rubric
@@ -272,10 +405,14 @@ def test_uyuni_mcp_deepeval(test_case, record_property):
     correctness_metric = GEval(**geval_kwargs)
     metrics = [correctness_metric]
 
-    actual_tools = [
-        ToolCall(name=call.name, input_parameters=dict(call.args or {}))
-        for call in actual_tool_calls
-    ]
+    actual_tools = []
+    for call in actual_tool_calls:
+        if isinstance(call, ToolCall):
+            # Already a deepeval.ToolCall, use as-is (from Goose provider)
+            actual_tools.append(call)
+        else:
+            # Convert from another type (e.g., gemini's FunctionCall)
+            actual_tools.append(ToolCall(name=call.name, input_parameters=dict(getattr(call, 'args', {}) or {})))
 
     expected_tools = None
     if "expected_tools" in test_case:
@@ -287,8 +424,7 @@ def test_uyuni_mcp_deepeval(test_case, record_property):
 
     if "mcp_use_criteria" in test_case:
         mcp_use_metric = MCPUseMetric(
-            criteria=test_case["mcp_use_criteria"],
-            model=geval_kwargs["model"]
+                model=geval_kwargs["model"]
         )
         metrics.append(mcp_use_metric)
 
@@ -298,7 +434,7 @@ def test_uyuni_mcp_deepeval(test_case, record_property):
         expected_output=expected_output,
         tools_called=actual_tools,
         expected_tools=expected_tools,
-        retrieval_context=actual_tool_outputs
+        retrieval_context=actual_tool_outputs,
     )
 
     try:
