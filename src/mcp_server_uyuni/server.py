@@ -14,6 +14,7 @@
 
 import inspect
 import os
+import ssl
 import asyncio
 from typing import Any, List, Dict, Optional, Union, Coroutine
 import httpx
@@ -85,10 +86,40 @@ else:
     if CONFIG["UYUNI_MCP_TRANSPORT"] == Transport.HTTP.value:
         logger.warning("HTTP transport is running without UYUNI_AUTH_SERVER; requests are unauthenticated.")
 
+def _build_ssl_verify(config: Dict[str, Any]) -> Union[bool, ssl.SSLContext]:
+    """
+    Return the `verify` value for httpx clients.
+
+    If UYUNI_MCP_SSL_CA_CERT is set, the CA certificates it points to are
+    trusted in addition to the default CA bundle.
+    """
+    ca_cert = config["UYUNI_MCP_SSL_CA_CERT"]
+    if not config["UYUNI_MCP_SSL_VERIFY"]:
+        if ca_cert:
+            logger.warning("UYUNI_MCP_SSL_CA_CERT is ignored because UYUNI_MCP_SSL_VERIFY is disabled.")
+        return False
+    if not ca_cert:
+        return True
+
+    ssl_context = httpx.create_ssl_context()
+    try:
+        if os.path.isdir(ca_cert):
+            ssl_context.load_verify_locations(capath=ca_cert)
+        else:
+            ssl_context.load_verify_locations(cafile=ca_cert)
+    except (OSError, ssl.SSLError) as e:
+        raise RuntimeError(f"Failed to load CA certificates from UYUNI_MCP_SSL_CA_CERT '{ca_cert}': {e}") from e
+    logger.info(f"Trusting additional CA certificates from {ca_cert}")
+    return ssl_context
+
+
+ssl_verify = _build_ssl_verify(CONFIG)
+
+
 def _make_client() -> httpx.AsyncClient:
     """Create an AsyncClient with the configured SSL and timeout settings."""
     timeout = httpx.Timeout(CONFIG["UYUNI_MCP_TIMEOUT"], connect=10.0)
-    return httpx.AsyncClient(verify=CONFIG["UYUNI_MCP_SSL_VERIFY"], timeout=timeout)
+    return httpx.AsyncClient(verify=ssl_verify, timeout=timeout)
 
 class AuthTokenMiddleware(Middleware):
     async def on_call_tool(self, ctx: MiddlewareContext, call_next):
