@@ -872,6 +872,26 @@ async def test_auth_failure_401(mock_uyuni):
     assert f"{base_url}/rhn/manager/api/oidcLogin" in str(excinfo.value)
 
 @pytest.mark.asyncio
+async def test_basic_auth_login_uses_http_api_endpoint(respx_mock):
+    # /rhn/manager/api/login is the Web UI login, which refuses read-only API users;
+    # the HTTP API login is auth/login.
+    base_url = server.CONFIG["UYUNI_SERVER"]
+    login_route = respx_mock.post(f"{base_url}/rhn/manager/api/auth/login").mock(
+        return_value=Response(200, json={"success": True, "message": None})
+    )
+    respx_mock.get(f"{base_url}/rhn/manager/api/system/listSystems").mock(
+        return_value=Response(200, json={"success": True, "result": []})
+    )
+
+    await server._list_systems(None)
+
+    assert login_route.call_count == 1
+    assert json.loads(login_route.calls[0].request.content) == {
+        "login": server.CONFIG["UYUNI_USER"],
+        "password": server.CONFIG["UYUNI_PASS"],
+    }
+
+@pytest.mark.asyncio
 async def test_add_system_already_exists(mock_uyuni, mock_ctx, monkeypatch):
     base_url = server.CONFIG["UYUNI_SERVER"]
     monkeypatch.setenv("UYUNI_SSH_PRIV_KEY", "secret")

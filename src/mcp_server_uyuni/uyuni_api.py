@@ -28,7 +28,7 @@ async def _authenticate_client(
     error_context: Optional[str] = None,
 ) -> None:
     """Authenticate an AsyncClient using token (OIDC) or username/password."""
-    login_url = CONFIG["UYUNI_SERVER"] + '/rhn/manager/api/login'
+    login_url = CONFIG["UYUNI_SERVER"] + '/rhn/manager/api/auth/login'
 
     try:
         if token:
