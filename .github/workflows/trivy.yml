@@ -1,0 +1,49 @@
+name: Trivy Security Scan
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * *"
+
+permissions:
+  security-events: write
+  contents: read
+
+jobs:
+  container-scan:
+    name: Scan Container Image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Determine latest image tag
+        id: image-tag
+        run: |
+          LATEST_GIT_TAG=$(git tag -l "v*" --sort=-v:refname | head -n 1)
+          if [ -n "$LATEST_GIT_TAG" ]; then
+            IMAGE_TAG="${LATEST_GIT_TAG#v}"
+          else
+            IMAGE_TAG="latest"
+          fi
+          echo "tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Run Trivy container scanner
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: "image"
+          image-ref: "ghcr.io/uyuni-project/mcp-server-uyuni:${{ steps.image-tag.outputs.tag }}"
+          format: "sarif"
+          output: "trivy-image-results.sarif"
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
+
+      - name: Upload Trivy container results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4.34.1
+        if: always()
+        with:
+          sarif_file: "trivy-image-results.sarif"
+          category: trivy-container-scan

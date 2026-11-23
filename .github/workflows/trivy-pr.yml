@@ -1,0 +1,38 @@
+name: Trivy PR Security Gate
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  security-events: write
+  contents: read
+
+jobs:
+  repo-scan:
+    name: Scan Dependencies & Secrets
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run Trivy filesystem scanner
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          scanners: "vuln,secret"
+          severity: "CRITICAL,HIGH"
+          format: "sarif"
+          output: "trivy-pr-results.sarif"
+          exit-code: "1"
+
+      - name: Upload results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v4.34.1
+        if: always() && github.event_name != 'pull_request'
+        with:
+          sarif_file: "trivy-pr-results.sarif"
+          category: trivy-pr-fs-scan
